@@ -741,6 +741,7 @@ export const ContactsOrbit = {
       const preview = li.querySelector("[id^='conversation-preview-']")
       const meta = li.querySelector("p.text-xs")
       const img = li.querySelector("img")
+      const profileButton = li.querySelector("button[id^='conversation-avatar-']")
       const initialsEl = li.querySelector("span.uppercase")
       const previewText = preview ? preview.textContent.trim() : ""
 
@@ -754,6 +755,7 @@ export const ContactsOrbit = {
         meta: meta ? meta.textContent.replace(/\s+/g, " ").trim() : "",
         unread: li.dataset.unread === "true",
         avatarUrl: img ? img.getAttribute("src") : null,
+        profileButton,
         initials: initialsEl ? initialsEl.textContent.trim().slice(0, 3) : "?",
       }
     })
@@ -778,9 +780,17 @@ export const ContactsOrbit = {
         // snapshot is what left every card reading "Decrypting..." forever,
         // since the observer below ignores changes while the viewer is null
         // and nothing mutates the list again afterwards.
-        this.viewer = SCENES[wanted](THREE, this.el, this.readItems(), (item) => {
-          if (item && item.link) item.link.click()
-        })
+        this.viewer = SCENES[wanted](
+          THREE,
+          this.el,
+          this.readItems(),
+          (item) => {
+            if (item && item.link) item.link.click()
+          },
+          (item) => {
+            if (item && item.profileButton) item.profileButton.click()
+          },
+        )
         this.el.setAttribute("data-orbit-ready", "true")
       })
       .catch(() => {
@@ -831,6 +841,22 @@ function createViewerShell(container, label) {
   return { stage, readout, liveRegion, prevBtn, openBtn, nextBtn }
 }
 
+function loadAvatarImage(item, onLoad) {
+  if (!item.avatarUrl) return null
+
+  const image = new Image()
+  image.crossOrigin = "anonymous"
+  image.onload = () => onLoad(image)
+  image.src = item.avatarUrl
+
+  if (image.complete && image.naturalWidth) {
+    image.onload = null
+    return image
+  }
+
+  return null
+}
+
 function createOrbitViewer(THREE, container, items, onOpen) {
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
   const CARD_W = 1.95
@@ -866,6 +892,7 @@ function createOrbitViewer(THREE, container, items, onOpen) {
   let lastX = 0
   let wheelAcc = 0
   let running = true
+  let itemGeneration = 0
 
   function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath()
@@ -1160,17 +1187,20 @@ function createOrbitViewer(THREE, container, items, onOpen) {
   }
 
   function setItems(next) {
-    // Avatars are ordinary <img> elements already in the DOM; reuse them as
-    // textures when they have loaded, and fall back to initials otherwise.
-    data = next.map((item) => {
-      let image = null
-      if (item.avatarUrl) {
-        const img = new Image()
-        img.crossOrigin = "anonymous"
-        img.src = item.avatarUrl
-        if (img.complete && img.naturalWidth) image = img
-      }
-      return Object.assign({}, item, { image })
+    const generation = ++itemGeneration
+    data = next.map((item, itemIndex) => {
+      const entry = Object.assign({}, item, { image: null })
+      entry.image = loadAvatarImage(entry, (image) => {
+        if (!running || generation !== itemGeneration) return
+        entry.image = image
+        const card = cards[itemIndex]
+        if (!card) return
+        const texture = drawCard(entry)
+        if (card.mat.map) card.mat.map.dispose()
+        card.mat.map = texture
+        card.mat.needsUpdate = true
+      })
+      return entry
     })
     buildCards()
     setIndex(Math.min(index, data.length - 1), false)
@@ -1203,7 +1233,7 @@ function createOrbitViewer(THREE, container, items, onOpen) {
 // Builds the Soiree scene: every conversation is a guest at a small party,
 // wearing its profile picture and holding a drink. Some are seated at the
 // table, the rest mingle around it. Same contract as the Orbit viewer.
-function createSoireeViewer(THREE, container, items, onOpen) {
+function createSoireeViewer(THREE, container, items, onOpen, onProfile) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
   const shell = createViewerShell(
     container,
@@ -1471,21 +1501,21 @@ function createSoireeViewer(THREE, container, items, onOpen) {
     drink.add(liquid)
     rightArm.fore.userData.tip.add(drink)
 
-    const ring = new THREE.Mesh(
-      track(new THREE.RingGeometry(0.3, 0.42, 32)),
+    const halo = new THREE.Mesh(
+      track(new THREE.TorusGeometry(0.31, 0.025, 12, 40)),
       track(
         new THREE.MeshBasicMaterial({
-          color: 0xffb45c,
+          color: 0xffd27a,
           transparent: true,
           opacity: 0,
-          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
           depthWrite: false,
         }),
       ),
     )
-    ring.rotation.x = -Math.PI / 2
-    ring.position.y = 0.012
-    root.add(ring)
+    halo.rotation.x = Math.PI / 2
+    halo.position.y = HEAD_Y + 0.38
+    body.add(halo)
 
     // generous invisible column, so clicking anywhere on a guest works
     const hit = new THREE.Mesh(
@@ -1500,7 +1530,7 @@ function createSoireeViewer(THREE, container, items, onOpen) {
       root,
       body,
       head,
-      ring,
+      halo,
       hit,
       rightArm,
       leftArm,
@@ -1522,6 +1552,7 @@ function createSoireeViewer(THREE, container, items, onOpen) {
   let moved = 0
   let lastX = 0
   let running = true
+  let itemGeneration = 0
 
   function clearGuests() {
     guests.forEach((g) => room.remove(g.root))
@@ -1543,6 +1574,8 @@ function createSoireeViewer(THREE, container, items, onOpen) {
         ? -(TABLE_R + 0.4) + Math.abs(x) * 0.16
         : 0.3 - Math.abs(x) * 0.32 + jitter * 0.4
       const g = makeGuest(item, seated)
+      g.head.userData.index = i
+      g.hit.userData.index = i
       g.root.position.set(x + jitter * 0.5, 0, z)
       g.baseRot = Math.atan2(-g.root.position.x, -(g.root.position.z - 0.15)) + jitter * 0.7
       g.root.rotation.y = g.baseRot
@@ -1572,10 +1605,15 @@ function createSoireeViewer(THREE, container, items, onOpen) {
     ndc.x = ((cx - r.left) / r.width) * 2 - 1
     ndc.y = -((cy - r.top) / r.height) * 2 + 1
     raycaster.setFromCamera(ndc, camera)
+
+    const headHits = raycaster.intersectObjects(guests.map((g) => g.head), false)
+    if (headHits.length) {
+      return { index: headHits[0].object.userData.index, target: "profile" }
+    }
+
     const hits = raycaster.intersectObjects(guests.map((g) => g.hit), false)
     if (!hits.length) return null
-    for (let i = 0; i < guests.length; i++) if (guests[i].hit === hits[0].object) return i
-    return null
+    return { index: hits[0].object.userData.index, target: "conversation" }
   }
 
   function open() {
@@ -1604,8 +1642,14 @@ function createSoireeViewer(THREE, container, items, onOpen) {
     if (moved < 6) {
       const hit = pick(e.clientX, e.clientY)
       if (hit !== null) {
-        if (hit === index) open()
-        else select(hit, true)
+        if (hit.target === "profile" && data[hit.index]?.profileButton) {
+          select(hit.index, true)
+          onProfile(data[hit.index])
+        } else if (hit.index === index) {
+          open()
+        } else {
+          select(hit.index, true)
+        }
       }
     }
   }
@@ -1698,7 +1742,9 @@ function createSoireeViewer(THREE, container, items, onOpen) {
 
       const want = sel ? -room.rotation.y : g.baseRot
       g.root.rotation.y += (want - g.root.rotation.y) * Math.min(1, dt * 4)
-      g.ring.material.opacity += ((sel ? 0.55 : 0) - g.ring.material.opacity) * Math.min(1, dt * 6)
+      const haloOpacity = sel ? (reduce ? 0.82 : 0.72 + Math.sin(t * 2.4) * 0.12) : 0
+      g.halo.material.opacity +=
+        (haloOpacity - g.halo.material.opacity) * Math.min(1, dt * 6)
 
       // Heads always look at the viewer so profile pictures stay readable,
       // even for guests turned away. Cancel the parent's world rotation first.
@@ -1717,15 +1763,20 @@ function createSoireeViewer(THREE, container, items, onOpen) {
   }
 
   function setItems(next) {
-    data = next.map((item) => {
-      let image = null
-      if (item.avatarUrl) {
-        const img = new Image()
-        img.crossOrigin = "anonymous"
-        img.src = item.avatarUrl
-        if (img.complete && img.naturalWidth) image = img
-      }
-      return Object.assign({}, item, { image })
+    const generation = ++itemGeneration
+    data = next.map((item, itemIndex) => {
+      const entry = Object.assign({}, item, { image: null })
+      entry.image = loadAvatarImage(entry, (image) => {
+        if (!running || generation !== itemGeneration) return
+        entry.image = image
+        const guest = guests[itemIndex]
+        if (!guest) return
+        const texture = headTexture(entry)
+        if (guest.head.material.map) guest.head.material.map.dispose()
+        guest.head.material.map = texture
+        guest.head.material.needsUpdate = true
+      })
+      return entry
     })
     placeGuests()
     select(Math.min(index, data.length - 1), false)
