@@ -840,6 +840,47 @@
   --c-row-radius: 0;
   --c-row-pad: 0;
   --c-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Chrome tokens for the appearance dropdown. The playful themes paint their
+     own ground, so the select cannot keep the site palette or it reads as a
+     foreign control sitting on the panel. Defaults follow the site theme,
+     which is what Quiet wants. */
+  --c-chrome-bg: var(--color-base-100);
+  --c-chrome-fg: var(--color-base-content);
+  --c-chrome-hair: var(--c-hair);
+}
+
+/* Form controls are UI chrome, not part of the themed artwork. Two problems
+   to fix for every themed control — the appearance dropdown, the group
+   "add member" select, and the add-friend / note fields:
+
+     1. A theme that sets a display face on the workspace (Arial Black for
+        Comic Pop, monospace for Arcade and Blueprint) has it inherited by
+        controls, where a heavy display font is unreadable at input size.
+     2. daisyUI paints controls from the *site* palette, so on a theme that
+        commits to its own ground they read as a foreign control pasted onto
+        the panel — and can land dark-on-dark or light-on-light outright.
+
+   Native <option> popups inherit unreliably, so they get explicit colors too;
+   without that, a light panel under a dark site theme (or the reverse)
+   renders unreadable text in the open dropdown. */
+#contacts-workspace:not([data-contacts-theme="classic"]) :is(select, input, textarea) {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  background-color: var(--c-chrome-bg);
+  color: var(--c-chrome-fg);
+  border-color: var(--c-chrome-hair);
+}
+
+#contacts-workspace:not([data-contacts-theme="classic"]) :is(option, optgroup) {
+  background-color: var(--c-chrome-bg);
+  color: var(--c-chrome-fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#contacts-workspace:not([data-contacts-theme="classic"]) :is(input, textarea)::placeholder {
+  color: color-mix(in oklab, var(--c-chrome-fg) 55%, transparent);
 }
 
 /* Flatten the section shells: no card border, background, shadow, or arrow. */
@@ -969,6 +1010,9 @@
   --c-label: #ff7aa8;
   --c-row-radius: 12px;
   --c-row-pad: 0.6rem;
+  --c-chrome-bg: #ffe6ef;
+  --c-chrome-fg: #4a2540;
+  --c-chrome-hair: rgba(255, 92, 138, 0.4);
   border-radius: 24px;
   background: #fff5f8;
   color: #4a2540;
@@ -1013,6 +1057,9 @@
   --c-label: #8b98d6;
   --c-row-radius: 12px;
   --c-row-pad: 0.6rem;
+  --c-chrome-bg: #151d38;
+  --c-chrome-fg: #e7ecff;
+  --c-chrome-hair: rgba(150, 180, 255, 0.32);
   border-radius: 22px;
   background: #0b1020;
   color: #e7ecff;
@@ -1075,6 +1122,9 @@
   --c-label: #00f0ff;
   --c-row-radius: 6px;
   --c-row-pad: 0.6rem;
+  --c-chrome-bg: #10141f;
+  --c-chrome-fg: #eafcff;
+  --c-chrome-hair: rgba(0, 240, 255, 0.45);
   border-radius: 10px;
   background: #07070d;
   color: #eafcff;
@@ -1144,6 +1194,9 @@
   --c-label: #7fd4ff;
   --c-row-radius: 4px;
   --c-row-pad: 0.6rem;
+  --c-chrome-bg: #16325e;
+  --c-chrome-fg: #dbeaff;
+  --c-chrome-hair: rgba(127, 212, 255, 0.5);
   border-radius: 8px;
   background: #0e2247;
   color: #dbeaff;
@@ -1231,6 +1284,9 @@
   --c-label: #161616;
   --c-row-radius: 8px;
   --c-row-pad: 0.6rem;
+  --c-chrome-bg: #ffffff;
+  --c-chrome-fg: #161616;
+  --c-chrome-hair: #161616;
   border: 3px solid #161616;
   border-radius: 18px;
   background: #fff7e6;
@@ -1303,6 +1359,10 @@
   --c-label: #5eeaff;
   --c-row-radius: 10px;
   --c-row-pad: 0.6rem;
+  /* Solid, not the panel's gradient: a native select popup cannot render one. */
+  --c-chrome-bg: #2b1560;
+  --c-chrome-fg: #ffe9ff;
+  --c-chrome-hair: rgba(94, 234, 255, 0.45);
   border-radius: 20px;
   background: linear-gradient(180deg, #241056 0%, #6b2ff7 42%, #ff5c8a 100%);
   color: #ffe9ff;
