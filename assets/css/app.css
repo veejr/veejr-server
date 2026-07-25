@@ -992,12 +992,16 @@
   pointer-events: none;
 }
 
-#contacts-workspace[data-contacts-theme="bubblegum"] > *,
-#contacts-workspace[data-contacts-theme="aurora"] > *,
-#contacts-workspace[data-contacts-theme="arcade"] > *,
-#contacts-workspace[data-contacts-theme="blueprint"] > *,
-#contacts-workspace[data-contacts-theme="comic"] > *,
-#contacts-workspace[data-contacts-theme="vapor"] > * {
+/* Lift the page content above the ::before texture. The profile dialog is
+   excluded deliberately: it is a direct child but an overlay, and this
+   selector outranks Tailwind's .fixed, so including it would drop the modal
+   back to position: relative and trap it inside the panel's overflow. */
+#contacts-workspace[data-contacts-theme="bubblegum"] > *:not(#profile-dialog),
+#contacts-workspace[data-contacts-theme="aurora"] > *:not(#profile-dialog),
+#contacts-workspace[data-contacts-theme="arcade"] > *:not(#profile-dialog),
+#contacts-workspace[data-contacts-theme="blueprint"] > *:not(#profile-dialog),
+#contacts-workspace[data-contacts-theme="comic"] > *:not(#profile-dialog),
+#contacts-workspace[data-contacts-theme="vapor"] > *:not(#profile-dialog) {
   position: relative;
   z-index: 1;
 }
