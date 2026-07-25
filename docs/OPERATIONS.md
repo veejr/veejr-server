@@ -448,6 +448,10 @@ in Firebase and remove the old Docker secret.
   currently an accepted federated friend, its avatar metadata is absent, the
   recorded home authority is unreachable, or the response failed the JPEG size
   and format checks.
+- An upstream `406` in local logs indicates that a texture fetch used an
+  image-only `Accept` header against a peer whose public avatar route still
+  passes through Phoenix's HTML browser pipeline. Current clients send a
+  browser-compatible header for older-peer interoperability.
 - Check the local Phoenix logs and test server-to-server HTTPS connectivity to
   the remote user's recorded authority. The browser does not fetch the remote
   texture directly, so changing browser CORS settings is not a fix.

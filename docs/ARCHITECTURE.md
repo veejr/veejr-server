@@ -171,6 +171,9 @@ then fetches the canonical, versioned `/avatars/:username` path from the
 friend's recorded home authority, rejects redirects, bounds the response size,
 and validates the response as an accepted JPEG before returning it. Failures
 and unauthorized lookups return `404` without distinguishing the cause.
+The upstream request advertises both HTML and JPEG support because deployed
+peers route public avatars through Phoenix's browser pipeline, which rejects a
+narrow image-only `Accept` header before reaching the avatar controller.
 
 The proxy response is same-origin and privately, immutably cached by avatar
 version. Public `GET /avatars/:username` responses also include

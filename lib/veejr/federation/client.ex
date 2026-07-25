@@ -36,7 +36,10 @@ defmodule Veejr.Federation.Client do
     case Req.get(req(authority),
            url: "/avatars/#{URI.encode(username)}",
            params: [v: version],
-           headers: [{"accept", "image/jpeg"}],
+           # Public avatars live in the browser pipeline on existing peers.
+           # Include text/html so Plug.Accepts accepts the request before the
+           # controller returns its image/jpeg response.
+           headers: [{"accept", "text/html, image/jpeg;q=0.9, */*;q=0.8"}],
            redirect: false,
            decode_body: false,
            into: into

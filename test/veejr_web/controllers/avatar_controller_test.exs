@@ -54,6 +54,8 @@ defmodule VeejrWeb.AvatarControllerTest do
     Req.Test.stub(Veejr.FederationStub, fn request ->
       assert request.request_path == "/avatars/carol"
       assert request.query_string == "v=3"
+      assert [accept] = Plug.Conn.get_req_header(request, "accept")
+      assert accept =~ "text/html"
 
       request
       |> Plug.Conn.put_resp_content_type("image/jpeg")
