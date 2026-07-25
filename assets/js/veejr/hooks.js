@@ -772,7 +772,13 @@ export const ContactsOrbit = {
       .then((THREE) => {
         // The appearance may have changed while the library was downloading.
         if (this.active !== wanted || !SCENES[wanted] || this.viewer) return
-        this.viewer = SCENES[wanted](THREE, this.el, items, (item) => {
+        // Re-read rather than using the snapshot taken before the download:
+        // ConversationPreview decrypts on mount, so by the time the library
+        // arrives the previews have usually landed. Building from the stale
+        // snapshot is what left every card reading "Decrypting..." forever,
+        // since the observer below ignores changes while the viewer is null
+        // and nothing mutates the list again afterwards.
+        this.viewer = SCENES[wanted](THREE, this.el, this.readItems(), (item) => {
           if (item && item.link) item.link.click()
         })
         this.el.setAttribute("data-orbit-ready", "true")
