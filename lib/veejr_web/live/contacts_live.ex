@@ -867,7 +867,7 @@ defmodule VeejrWeb.ContactsLive do
          {"comic", "Comic Pop"},
          {"vapor", "Vaporwave"}
        ]},
-      {"Experimental", [{"orbit", "Orbit (3D)"}]}
+      {"Experimental", [{"orbit", "Orbit (3D)"}, {"soiree", "Soiree (3D party)"}]}
     ]
   end
 

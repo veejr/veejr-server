@@ -1484,6 +1484,68 @@
   display: none;
 }
 
+/* ===================================================================
+   SOIREE — the same machinery as Orbit with a warm, candlelit room.
+   Each conversation is a guest wearing its profile picture, holding a
+   drink; some seated at the table, the rest mingling.
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="soiree"] {
+  --c-hair: rgba(255, 205, 150, 0.18);
+  --c-label: #b39ba8;
+  --c-row-radius: 10px;
+  --c-row-pad: 0.6rem;
+  --c-chrome-bg: #241726;
+  --c-chrome-fg: #f6ecdf;
+  --c-chrome-hair: rgba(255, 205, 150, 0.34);
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem;
+  border-radius: 20px;
+  background: radial-gradient(120% 80% at 50% 0%, #241726 0%, #120d18 65%);
+  color: #f6ecdf;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.55);
+}
+
+#contacts-workspace[data-contacts-theme="soiree"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(2px 2px at 16% 12%, rgba(255, 200, 130, 0.5), transparent 62%),
+    radial-gradient(2px 2px at 40% 8%, rgba(255, 180, 92, 0.42), transparent 62%),
+    radial-gradient(2px 2px at 63% 13%, rgba(255, 210, 150, 0.45), transparent 62%),
+    radial-gradient(2px 2px at 85% 9%, rgba(255, 180, 92, 0.4), transparent 62%);
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] > *:not(#profile-dialog) {
+  position: relative;
+  z-index: 1;
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] header p { color: #b39ba8; }
+
+#contacts-workspace[data-contacts-theme="soiree"] code {
+  background: rgba(255, 205, 150, 0.14);
+  color: #ffe6c9;
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] .contacts-orbit { display: block; }
+
+#contacts-workspace[data-contacts-theme="soiree"] .contacts-orbit[data-orbit-ready] ~ .contacts-conversation-list {
+  display: none;
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] .orbit-stage {
+  height: 27rem;
+  background: radial-gradient(closest-side, rgba(255, 180, 92, 0.16), transparent 78%);
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] .orbit-stage:focus-visible {
+  outline-color: #ffb45c;
+}
+
 .orbit-stage {
   position: relative;
   height: 24rem;
