@@ -17,8 +17,11 @@ defmodule VeejrWeb do
   those modules here.
   """
 
+  # "vendor" holds runtime libraries that are deliberately kept out of the
+  # esbuild bundle and fetched on demand instead — currently three.min.js,
+  # loaded only when the Contacts "Orbit" appearance is selected.
   def static_paths,
-    do: ~w(assets fonts images videos favicon.ico robots.txt sw.js manifest.webmanifest)
+    do: ~w(assets fonts images videos vendor favicon.ico robots.txt sw.js manifest.webmanifest)
 
   def router do
     quote do

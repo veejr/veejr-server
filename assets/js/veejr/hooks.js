@@ -583,6 +583,7 @@ export const ContactsTheme = {
       "blueprint",
       "comic",
       "vapor",
+      "orbit",
     ])
     this.onThemeChange = (event) => {
       const select = event.target.closest("[data-contacts-theme-select]")
@@ -623,6 +624,554 @@ export const ContactsTheme = {
 
     if (persist) localStorage.setItem(this.storageKey, selected)
   },
+}
+
+// The Contacts "Orbit" appearance: a WebGL carousel for picking a
+// conversation. Three.js is deliberately NOT in the app bundle — it is a
+// static file under /vendor and is fetched the first time someone selects
+// this appearance, so everyone else pays nothing for it.
+//
+// The carousel reads the conversation list that LiveView already rendered
+// instead of taking its own copy of the data. That keeps it correct with
+// client-side decrypted previews (which arrive after mount, via the
+// ConversationPreview hook) and means no server changes were needed.
+let threeLoader = null
+
+function loadThree(src) {
+  if (window.THREE) return Promise.resolve(window.THREE)
+  if (threeLoader) return threeLoader
+
+  threeLoader = new Promise((resolve, reject) => {
+    const tag = document.createElement("script")
+    tag.src = src
+    tag.async = true
+    tag.onload = () => (window.THREE ? resolve(window.THREE) : reject(new Error("three absent")))
+    tag.onerror = () => reject(new Error("three failed to load"))
+    document.head.appendChild(tag)
+  })
+
+  // Let a later attempt retry rather than caching the rejection forever.
+  threeLoader.catch(() => {
+    threeLoader = null
+  })
+  return threeLoader
+}
+
+function webglAvailable() {
+  try {
+    const c = document.createElement("canvas")
+    return !!(window.WebGLRenderingContext && (c.getContext("webgl2") || c.getContext("webgl")))
+  } catch (_e) {
+    return false
+  }
+}
+
+export const ContactsOrbit = {
+  mounted() {
+    this.workspace = this.el.closest("#contacts-workspace")
+    this.list = this.el.parentElement.querySelector(".contacts-conversation-list")
+    this.active = false
+    this.viewer = null
+
+    // Follow the appearance dropdown: build on entering Orbit, tear down on
+    // leaving it, so no WebGL context is held by the other themes.
+    this.themeObserver = new MutationObserver(() => this.sync())
+    if (this.workspace) {
+      this.themeObserver.observe(this.workspace, {
+        attributes: true,
+        attributeFilter: ["data-contacts-theme"],
+      })
+    }
+
+    // Previews decrypt after mount and threads change over time; rebuild the
+    // cards when the underlying list does.
+    this.listObserver = new MutationObserver(() => {
+      if (this.active && this.viewer) this.viewer.setItems(this.readItems())
+    })
+    if (this.list) {
+      this.listObserver.observe(this.list, { subtree: true, childList: true, characterData: true })
+    }
+
+    this.sync()
+  },
+
+  updated() {
+    if (this.active && this.viewer) this.viewer.setItems(this.readItems())
+  },
+
+  destroyed() {
+    if (this.themeObserver) this.themeObserver.disconnect()
+    if (this.listObserver) this.listObserver.disconnect()
+    this.teardown()
+  },
+
+  sync() {
+    const wanted = this.workspace && this.workspace.dataset.contactsTheme === "orbit"
+    if (wanted === this.active) return
+    this.active = wanted
+    if (wanted) this.build()
+    else this.teardown()
+  },
+
+  teardown() {
+    if (this.viewer) {
+      this.viewer.dispose()
+      this.viewer = null
+    }
+    this.el.innerHTML = ""
+    this.el.removeAttribute("data-orbit-ready")
+  },
+
+  // Scrape what LiveView rendered. Falling back to the list on any surprise is
+  // intentional: this must never be the reason someone cannot reach a thread.
+  readItems() {
+    if (!this.list) return []
+    return Array.from(this.list.querySelectorAll("li")).map((li) => {
+      const link = li.querySelector("a[id^='open-conversation-']")
+      const title = li.querySelector("p.truncate")
+      const preview = li.querySelector("[id^='conversation-preview-']")
+      const meta = li.querySelector("p.text-xs")
+      const img = li.querySelector("img")
+      const initialsEl = li.querySelector("span.uppercase")
+      const previewText = preview ? preview.textContent.trim() : ""
+
+      return {
+        // Keep the element: opening a thread clicks the real link so it goes
+        // through LiveView's router exactly as it would from the list.
+        link: link,
+        title: title ? title.textContent.trim() : "Conversation",
+        // While a preview is still decrypting it renders as a loading dot.
+        preview: previewText && previewText.length ? previewText : "Decrypting...",
+        meta: meta ? meta.textContent.replace(/\s+/g, " ").trim() : "",
+        unread: li.dataset.unread === "true",
+        avatarUrl: img ? img.getAttribute("src") : null,
+        initials: initialsEl ? initialsEl.textContent.trim().slice(0, 3) : "?",
+      }
+    })
+  },
+
+  build() {
+    const items = this.readItems()
+    if (!items.length) return
+
+    // No WebGL, or Three unreachable: leave the plain list in place. The CSS
+    // only hides the list once the mount reports itself ready.
+    if (!webglAvailable()) return
+
+    loadThree(this.el.dataset.threeSrc)
+      .then((THREE) => {
+        if (!this.active || this.viewer) return
+        this.viewer = createOrbitViewer(THREE, this.el, items, (item) => {
+          if (item && item.link) item.link.click()
+        })
+        this.el.setAttribute("data-orbit-ready", "true")
+      })
+      .catch(() => {
+        // Stay on the list; nothing to clean up.
+        this.el.removeAttribute("data-orbit-ready")
+      })
+  },
+}
+
+// Builds the Orbit carousel. Kept free of hook/LiveView specifics so it can be
+// reasoned about (and thrown away) on its own: it takes THREE, a container, the
+// items to show, and what to do when one is opened.
+function createOrbitViewer(THREE, container, items, onOpen) {
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const CARD_W = 1.95
+  const CARD_H = 2.52
+  const RADIUS = 3.55
+
+  const stage = document.createElement("div")
+  stage.className = "orbit-stage"
+  stage.tabIndex = 0
+  stage.setAttribute("role", "application")
+  stage.setAttribute(
+    "aria-label",
+    "Conversation carousel. Left and right arrows move between conversations, Enter opens the front one.",
+  )
+
+  const readout = document.createElement("div")
+  readout.className = "orbit-readout"
+  readout.setAttribute("aria-hidden", "true")
+  readout.innerHTML = '<span class="orbit-who"></span><span class="orbit-msg"></span>'
+
+  const liveRegion = document.createElement("p")
+  liveRegion.className = "orbit-live sr-only"
+  liveRegion.setAttribute("aria-live", "polite")
+
+  const controls = document.createElement("div")
+  controls.className = "orbit-controls"
+  const prevBtn = document.createElement("button")
+  const openBtn = document.createElement("button")
+  const nextBtn = document.createElement("button")
+  prevBtn.type = nextBtn.type = openBtn.type = "button"
+  prevBtn.className = nextBtn.className = "btn btn-sm"
+  openBtn.className = "btn btn-primary btn-sm"
+  prevBtn.textContent = "Prev"
+  nextBtn.textContent = "Next"
+  openBtn.textContent = "Open conversation"
+  prevBtn.setAttribute("aria-label", "Previous conversation")
+  nextBtn.setAttribute("aria-label", "Next conversation")
+  controls.append(prevBtn, openBtn, nextBtn)
+
+  container.append(stage, readout, liveRegion, controls)
+
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 100)
+  camera.position.set(0, 0.35, 6.9)
+  camera.lookAt(0, -0.05, 0)
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+  stage.appendChild(renderer.domElement)
+
+  const ring = new THREE.Group()
+  scene.add(ring)
+
+  let cards = []
+  let data = []
+  let rotation = 0
+  let target = 0
+  let index = 0
+  let step = 0
+  let dragging = false
+  let moved = 0
+  let lastX = 0
+  let wheelAcc = 0
+  let running = true
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.arcTo(x + w, y, x + w, y + h, r)
+    ctx.arcTo(x + w, y + h, x, y + h, r)
+    ctx.arcTo(x, y + h, x, y, r)
+    ctx.arcTo(x, y, x + w, y, r)
+    ctx.closePath()
+  }
+
+  function wrapText(ctx, text, maxW, maxLines) {
+    const words = text.split(" ")
+    const lines = []
+    let line = ""
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word
+      if (ctx.measureText(test).width > maxW && line) {
+        lines.push(line)
+        line = word
+      } else {
+        line = test
+      }
+      if (lines.length === maxLines) break
+    }
+    if (lines.length < maxLines && line) lines.push(line)
+    return lines
+  }
+
+  // A stable colour per conversation so cards stay recognisable between visits.
+  function hueFor(text) {
+    let h = 0
+    for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) % 360
+    return h
+  }
+
+  function drawCard(item) {
+    const cv = document.createElement("canvas")
+    cv.width = 512
+    cv.height = 660
+    const ctx = cv.getContext("2d")
+    const hue = hueFor(item.title)
+
+    ctx.fillStyle = "#151a30"
+    roundRect(ctx, 8, 8, 496, 644, 34)
+    ctx.fill()
+    const edge = ctx.createLinearGradient(0, 0, 0, 660)
+    edge.addColorStop(0, "rgba(160,185,255,.30)")
+    edge.addColorStop(1, "rgba(160,185,255,.06)")
+    ctx.strokeStyle = edge
+    ctx.lineWidth = 3
+    roundRect(ctx, 8, 8, 496, 644, 34)
+    ctx.stroke()
+
+    const cx = 256
+    const cy = 210
+    const r = 108
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, 0, Math.PI * 2)
+    ctx.closePath()
+    ctx.clip()
+    if (item.image) {
+      ctx.drawImage(item.image, cx - r, cy - r, r * 2, r * 2)
+    } else {
+      const g = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r)
+      g.addColorStop(0, `hsl(${hue} 80% 62%)`)
+      g.addColorStop(1, `hsl(${(hue + 48) % 360} 78% 52%)`)
+      ctx.fillStyle = g
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+      ctx.fillStyle = "#fff"
+      ctx.font = `800 ${item.initials.length > 2 ? 62 : 76}px ui-sans-serif, system-ui, sans-serif`
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
+      ctx.fillText(item.initials, cx, cy + 4)
+    }
+    ctx.restore()
+    ctx.strokeStyle = "rgba(255,255,255,.22)"
+    ctx.lineWidth = 5
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, 0, Math.PI * 2)
+    ctx.stroke()
+
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.fillStyle = "#e8ecff"
+    ctx.font = "800 44px ui-sans-serif, system-ui, sans-serif"
+    const name = item.title.length > 17 ? `${item.title.slice(0, 16)}...` : item.title
+    ctx.fillText(name, cx, 396)
+
+    ctx.fillStyle = "#9aa6d0"
+    ctx.font = "400 30px ui-sans-serif, system-ui, sans-serif"
+    wrapText(ctx, item.preview, 416, 2).forEach((l, i) => ctx.fillText(l, cx, 452 + i * 38))
+
+    ctx.fillStyle = "rgba(142,154,196,.72)"
+    ctx.font = "400 24px ui-sans-serif, system-ui, sans-serif"
+    ctx.fillText(item.meta.length > 34 ? `${item.meta.slice(0, 33)}...` : item.meta, cx, 566)
+
+    if (item.unread) {
+      ctx.fillStyle = "#ff5c8a"
+      roundRect(ctx, 194, 596, 124, 34, 17)
+      ctx.fill()
+      ctx.fillStyle = "#fff"
+      ctx.font = "800 20px ui-sans-serif, system-ui, sans-serif"
+      ctx.fillText("UNREAD", cx, 614)
+    }
+
+    const tex = new THREE.CanvasTexture(cv)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.anisotropy = 8
+    return tex
+  }
+
+  function disposeCards() {
+    cards.forEach((c) => {
+      ring.remove(c.holder)
+      c.mesh.geometry.dispose()
+      if (c.mat.map) c.mat.map.dispose()
+      c.mat.dispose()
+      if (c.rim) {
+        c.rim.geometry.dispose()
+        if (c.rim.material.map) c.rim.material.map.dispose()
+        c.rim.material.dispose()
+      }
+    })
+    cards = []
+  }
+
+  function buildCards() {
+    disposeCards()
+    step = (Math.PI * 2) / Math.max(data.length, 1)
+    cards = data.map((item, i) => {
+      const holder = new THREE.Group()
+      const mat = new THREE.MeshBasicMaterial({
+        map: drawCard(item),
+        transparent: true,
+        side: THREE.DoubleSide,
+      })
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), mat)
+      mesh.userData.index = i
+      holder.add(mesh)
+
+      let rim = null
+      if (item.unread) {
+        const rcv = document.createElement("canvas")
+        rcv.width = 256
+        rcv.height = 330
+        const rx = rcv.getContext("2d")
+        const rg = rx.createRadialGradient(128, 165, 60, 128, 165, 165)
+        rg.addColorStop(0, "rgba(255,92,138,.55)")
+        rg.addColorStop(1, "rgba(255,92,138,0)")
+        rx.fillStyle = rg
+        rx.fillRect(0, 0, 256, 330)
+        const rtex = new THREE.CanvasTexture(rcv)
+        rtex.colorSpace = THREE.SRGBColorSpace
+        rim = new THREE.Mesh(
+          new THREE.PlaneGeometry(CARD_W * 1.5, CARD_H * 1.4),
+          new THREE.MeshBasicMaterial({
+            map: rtex,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        )
+        rim.position.z = -0.02
+        holder.add(rim)
+      }
+
+      ring.add(holder)
+      return { holder, mesh, mat, rim }
+    })
+  }
+
+  function announce(text) {
+    liveRegion.textContent = text
+  }
+
+  function setIndex(i, tell) {
+    if (!data.length) return
+    index = ((i % data.length) + data.length) % data.length
+    const want = -index * step
+    const k = Math.round((rotation - want) / (Math.PI * 2))
+    target = want + k * Math.PI * 2
+    if (reduceMotion) rotation = target
+    const item = data[index]
+    readout.querySelector(".orbit-who").textContent = item.title
+    readout.querySelector(".orbit-msg").textContent = item.preview
+    if (tell) announce(`${item.title}. ${item.preview}. ${item.unread ? "Unread." : ""}`)
+  }
+
+  function layout() {
+    cards.forEach((c, i) => {
+      const a = i * step + rotation
+      c.holder.position.set(Math.sin(a) * RADIUS, 0, Math.cos(a) * RADIUS)
+      c.holder.rotation.y = a
+      const t = (Math.cos(a) + 1) / 2
+      c.holder.scale.setScalar(0.82 + t * 0.3)
+      c.mat.opacity = 0.28 + t * 0.72
+      if (c.rim) c.rim.material.opacity = 0.35 + t * 0.65
+    })
+  }
+
+  const raycaster = new THREE.Raycaster()
+  const ndc = new THREE.Vector2()
+
+  function pick(clientX, clientY) {
+    const rect = renderer.domElement.getBoundingClientRect()
+    ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1
+    ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1
+    raycaster.setFromCamera(ndc, camera)
+    const hits = raycaster.intersectObjects(cards.map((c) => c.mesh), false)
+    return hits.length ? hits[0].object.userData.index : null
+  }
+
+  const onPointerDown = (e) => {
+    dragging = true
+    moved = 0
+    lastX = e.clientX
+    stage.setPointerCapture(e.pointerId)
+  }
+  const onPointerMove = (e) => {
+    if (!dragging) return
+    const dx = e.clientX - lastX
+    lastX = e.clientX
+    moved += Math.abs(dx)
+    rotation += dx * 0.006
+  }
+  const onPointerUp = (e) => {
+    if (!dragging) return
+    dragging = false
+    if (moved < 6) {
+      const hit = pick(e.clientX, e.clientY)
+      if (hit !== null) {
+        if (hit === index) onOpen(data[index])
+        else setIndex(hit, true)
+        return
+      }
+    }
+    setIndex(Math.round(-rotation / step), true)
+  }
+  const onWheel = (e) => {
+    e.preventDefault()
+    wheelAcc += e.deltaY
+    if (Math.abs(wheelAcc) > 40) {
+      setIndex(index + (wheelAcc > 0 ? 1 : -1), true)
+      wheelAcc = 0
+    }
+  }
+  const onKeyDown = (e) => {
+    if (e.key === "ArrowRight") {
+      e.preventDefault()
+      setIndex(index + 1, true)
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault()
+      setIndex(index - 1, true)
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      onOpen(data[index])
+    }
+  }
+
+  stage.addEventListener("pointerdown", onPointerDown)
+  stage.addEventListener("pointermove", onPointerMove)
+  stage.addEventListener("pointerup", onPointerUp)
+  stage.addEventListener("pointercancel", onPointerUp)
+  stage.addEventListener("wheel", onWheel, { passive: false })
+  stage.addEventListener("keydown", onKeyDown)
+  prevBtn.addEventListener("click", () => setIndex(index - 1, true))
+  nextBtn.addEventListener("click", () => setIndex(index + 1, true))
+  openBtn.addEventListener("click", () => onOpen(data[index]))
+
+  function resize() {
+    const w = stage.clientWidth
+    const h = stage.clientHeight
+    if (!w || !h) return
+    renderer.setSize(w, h, false)
+    camera.aspect = w / h
+    camera.updateProjectionMatrix()
+  }
+  const onResize = () => resize()
+  window.addEventListener("resize", onResize)
+
+  let last = performance.now()
+  function frame(now) {
+    if (!running) return
+    const dt = Math.min((now - last) / 1000, 0.05)
+    last = now
+    if (!dragging) rotation += (target - rotation) * Math.min(1, dt * 7.5)
+    layout()
+    renderer.render(scene, camera)
+    requestAnimationFrame(frame)
+  }
+
+  function setItems(next) {
+    // Avatars are ordinary <img> elements already in the DOM; reuse them as
+    // textures when they have loaded, and fall back to initials otherwise.
+    data = next.map((item) => {
+      let image = null
+      if (item.avatarUrl) {
+        const img = new Image()
+        img.crossOrigin = "anonymous"
+        img.src = item.avatarUrl
+        if (img.complete && img.naturalWidth) image = img
+      }
+      return Object.assign({}, item, { image })
+    })
+    buildCards()
+    setIndex(Math.min(index, data.length - 1), false)
+    rotation = target
+  }
+
+  setItems(items)
+  resize()
+  requestAnimationFrame(frame)
+
+  return {
+    setItems,
+    dispose() {
+      running = false
+      window.removeEventListener("resize", onResize)
+      stage.removeEventListener("pointerdown", onPointerDown)
+      stage.removeEventListener("pointermove", onPointerMove)
+      stage.removeEventListener("pointerup", onPointerUp)
+      stage.removeEventListener("pointercancel", onPointerUp)
+      stage.removeEventListener("wheel", onWheel)
+      stage.removeEventListener("keydown", onKeyDown)
+      disposeCards()
+      renderer.dispose()
+      if (renderer.forceContextLoss) renderer.forceContextLoss()
+      container.innerHTML = ""
+    },
+  }
 }
 
 // Keeps a chat thread scrolled to the newest message at the bottom, the way
@@ -3218,6 +3767,7 @@ export default {
   InstallApp,
   ChatTheme,
   ContactsTheme,
+  ContactsOrbit,
   Composer,
   Decrypt,
   ConversationPreview,
