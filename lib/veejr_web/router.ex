@@ -188,6 +188,7 @@ defmodule VeejrWeb.Router do
     post "/users/update-password", UserSessionController, :update_password
     post "/blobs", BlobController, :create
     post "/account/avatar", AvatarController, :create
+    get "/avatar-textures/:id", AvatarController, :texture
     get "/blobs/:id", BlobController, :show
     get "/export", ExportController, :download
     post "/push/subscriptions", PushController, :create

@@ -156,6 +156,28 @@ they have no usable local credentials. Directory lookups synchronize public
 display names and avatar metadata; avatar images remain hosted by the user's
 home instance.
 
+### Federated avatar textures
+
+Ordinary HTML images may display a remote avatar directly, but the Orbit and
+Soiree Three.js themes upload avatars into a WebGL canvas. Browsers require
+cross-origin image responses to opt into that use, and older federated
+instances may not send the required CORS header.
+
+For those themes, the authenticated home instance exposes
+`GET /avatar-textures/:id`. The route accepts a local remote-user ID rather than
+an arbitrary URL. It serves an image only when that row represents an accepted
+federated friend of the signed-in user with current avatar metadata. The server
+then fetches the canonical, versioned `/avatars/:username` path from the
+friend's recorded home authority, rejects redirects, bounds the response size,
+and validates the response as an accepted JPEG before returning it. Failures
+and unauthorized lookups return `404` without distinguishing the cause.
+
+The proxy response is same-origin and privately, immutably cached by avatar
+version. Public `GET /avatars/:username` responses also include
+`Access-Control-Allow-Origin: *`, allowing upgraded peers to use an avatar
+directly as a canvas texture. The proxy remains the compatibility path for
+older peers.
+
 ### API
 
 | Method and path | Purpose |

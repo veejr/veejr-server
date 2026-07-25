@@ -172,6 +172,7 @@ defmodule VeejrWeb.ContactsLive do
                   user={conversation.avatar_user}
                   class="size-10 text-sm"
                   on_click="open_profile"
+                  data-avatar-texture-url={avatar_texture_url(conversation.avatar_user)}
                 />
                 <span
                   :if={!conversation.avatar_user}
@@ -935,6 +936,20 @@ defmodule VeejrWeb.ContactsLive do
 
   defp profile_editable?(_friends, nil), do: false
   defp profile_editable?(friends, profile), do: Enum.any?(friends, &(&1.id == profile.id))
+
+  defp avatar_texture_url(%{host: nil} = user), do: Accounts.avatar_url(user)
+
+  defp avatar_texture_url(%{
+         id: id,
+         host: host,
+         has_avatar: true,
+         avatar_version: version
+       })
+       when is_binary(host) and is_integer(version) and version > 0 do
+    ~p"/avatar-textures/#{id}?v=#{version}"
+  end
+
+  defp avatar_texture_url(_user), do: nil
 
   defp error_from(%Ecto.Changeset{errors: [{_field, {msg, _}} | _]}), do: msg
   defp error_from(_), do: "Something went wrong."

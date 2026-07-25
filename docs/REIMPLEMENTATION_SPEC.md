@@ -310,6 +310,16 @@ bytes or capture displayed content.
 - Avatar URLs are versioned so replacement invalidates caches.
 - Clicking a profile image anywhere in Contacts or Messages opens the same
   enlarged profile-and-notes dialog and MUST NOT navigate accidentally.
+- Canvas/WebGL themes MUST render accepted federated friends' avatars without
+  requiring the remote instance to support browser texture CORS. A compatible
+  implementation may use an authenticated same-origin proxy, but it MUST derive
+  the remote avatar URL from stored friend identity and version metadata rather
+  than accept an arbitrary caller-supplied URL.
+- A federated avatar proxy MUST authorize the requested user as an accepted
+  friend of the current account, reject redirects, enforce the normal avatar
+  size and image-format limits, and return a non-distinguishing not-found
+  response for unauthorized or invalid fetches. Its cache key MUST change with
+  the remote avatar version.
 
 ## 8. Messaging and consent
 

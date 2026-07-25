@@ -19,6 +19,39 @@ defmodule Veejr.Federation.Client do
     end
   end
 
+  def get_avatar(authority, username, version, max_bytes)
+      when is_binary(authority) and is_binary(username) and is_integer(version) and
+             is_integer(max_bytes) do
+    into = fn {:data, data}, {request, response} ->
+      body = if is_binary(response.body), do: response.body <> data, else: data
+      response = %{response | body: body}
+
+      if byte_size(body) <= max_bytes do
+        {:cont, {request, response}}
+      else
+        {:halt, {request, %{response | body: :too_large}}}
+      end
+    end
+
+    case Req.get(req(authority),
+           url: "/avatars/#{URI.encode(username)}",
+           params: [v: version],
+           headers: [{"accept", "image/jpeg"}],
+           redirect: false,
+           decode_body: false,
+           into: into
+         ) do
+      {:ok, %Req.Response{status: 200, body: body}} when is_binary(body) ->
+        {:ok, body}
+
+      {:ok, %Req.Response{status: status}} ->
+        {:error, {:http, status}}
+
+      {:error, exception} ->
+        {:error, {:unreachable, Exception.message(exception)}}
+    end
+  end
+
   @doc """
   Signed federation POST: the JSON body is encoded once, and the signature
   covers path, timestamp, and a hash of those exact bytes.

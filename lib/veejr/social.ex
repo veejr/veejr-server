@@ -12,7 +12,7 @@ defmodule Veejr.Social do
   import Ecto.Query, warn: false
 
   alias Veejr.Repo
-  alias Veejr.Accounts.User
+  alias Veejr.Accounts.{Scope, User}
   alias Veejr.Social.{ContactNote, Friendship, Group, GroupMember, GroupNote}
 
   ## Friendships
@@ -264,6 +264,20 @@ defmodule Veejr.Social do
       %Friendship{status: "accepted"} -> true
       _ -> false
     end
+  end
+
+  @doc "Returns an accepted federated friend visible to the authenticated scope."
+  def get_federated_friend(%Scope{user: %User{id: owner_id}}, friend_id) do
+    from(u in User,
+      join: f in Friendship,
+      on:
+        (f.requester_id == ^owner_id and f.addressee_id == u.id) or
+          (f.addressee_id == ^owner_id and f.requester_id == u.id),
+      where:
+        u.id == ^friend_id and f.status == "accepted" and not is_nil(u.host) and
+          u.has_avatar == true and u.avatar_version > 0
+    )
+    |> Repo.one()
   end
 
   @doc "All accepted friends of `user`, as `%User{}` structs sorted by name."

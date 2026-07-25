@@ -437,6 +437,27 @@ in Firebase and remove the old Docker secret.
 - Verify that the video permits embedding and is available in the viewer's
   region. Stop screen sharing before starting a 1:1 YouTube share.
 
+### Federated profile pictures are missing in Orbit or Soiree
+
+- First switch to a standard Contacts theme. If the image is also missing
+  there, verify the remote directory record reports `has_avatar: true` and a
+  positive `avatar_version`, and confirm the remote public
+  `/avatars/<username>?v=<version>` URL returns a JPEG.
+- While signed in, inspect the failed request to
+  `/avatar-textures/<remote-user-id>?v=<version>`. A `404` means the user is not
+  currently an accepted federated friend, its avatar metadata is absent, the
+  recorded home authority is unreachable, or the response failed the JPEG size
+  and format checks.
+- Check the local Phoenix logs and test server-to-server HTTPS connectivity to
+  the remote user's recorded authority. The browser does not fetch the remote
+  texture directly, so changing browser CORS settings is not a fix.
+- Confirm both instances advertise the expected authority and that DNS and TLS
+  for the remote authority are valid. The texture fetch does not follow
+  redirects.
+- After an avatar replacement, confirm federation directory data carries the
+  new version. The texture URL is intentionally cached immutably by version;
+  do not purge it when the version changed correctly.
+
 ### SQLite is locked or read-only
 
 - Keep exactly one application replica.

@@ -1,8 +1,9 @@
 defmodule VeejrWeb.AvatarController do
   use VeejrWeb, :controller
 
-  alias Veejr.Accounts
+  alias Veejr.{Accounts, Social}
   alias Veejr.Accounts.Avatar
+  alias Veejr.Federation.Client
 
   def show(conn, %{"username" => username}) do
     case Accounts.get_user_by_username(username) do
@@ -14,6 +15,7 @@ defmodule VeejrWeb.AvatarController do
             |> put_resp_header("cache-control", "public, max-age=31536000, immutable")
             |> put_resp_header("content-disposition", "inline")
             |> put_resp_header("x-content-type-options", "nosniff")
+            |> put_resp_header("access-control-allow-origin", "*")
             |> send_resp(:ok, image)
 
           _ ->
@@ -22,6 +24,23 @@ defmodule VeejrWeb.AvatarController do
 
       _ ->
         send_resp(conn, :not_found, "not found")
+    end
+  end
+
+  def texture(conn, %{"id" => id}) do
+    with {friend_id, ""} <- Integer.parse(id),
+         %{host: host, username: username, avatar_version: version} <-
+           Social.get_federated_friend(conn.assigns.current_scope, friend_id),
+         {:ok, image} <- Client.get_avatar(host, username, version, Avatar.max_bytes()),
+         :ok <- Avatar.validate(image) do
+      conn
+      |> put_resp_content_type("image/jpeg")
+      |> put_resp_header("cache-control", "private, max-age=31536000, immutable")
+      |> put_resp_header("content-disposition", "inline")
+      |> put_resp_header("x-content-type-options", "nosniff")
+      |> send_resp(:ok, image)
+    else
+      _ -> send_resp(conn, :not_found, "not found")
     end
   end
 

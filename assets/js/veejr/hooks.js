@@ -754,7 +754,8 @@ export const ContactsOrbit = {
         preview: previewText && previewText.length ? previewText : "Decrypting...",
         meta: meta ? meta.textContent.replace(/\s+/g, " ").trim() : "",
         unread: li.dataset.unread === "true",
-        avatarUrl: img ? img.getAttribute("src") : null,
+        avatarUrl:
+          profileButton?.dataset.avatarTextureUrl || (img ? img.getAttribute("src") : null),
         profileButton,
         initials: initialsEl ? initialsEl.textContent.trim().slice(0, 3) : "?",
       }
