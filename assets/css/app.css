@@ -811,78 +811,558 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Contacts appearance picker (Classic / Quiet), modeled on the chat theme
-   picker above. "Quiet" is a contacts-scoped look that strips the accordion
-   chrome for a flat, calm directory: hairline dividers instead of boxed
-   cards, quiet uppercase section labels instead of collapse bars. All rules
-   are token-based so they follow the active site theme (Classic light/dark
-   and Art Deco). The ContactsTheme hook opens the top-level <details> when
-   Quiet is active, so here we only restyle. */
-#contacts-workspace .contacts-theme-option[aria-pressed="true"] {
-  background: var(--color-base-100);
-  color: var(--color-base-content);
-  box-shadow: 0 1px 5px color-mix(in oklab, var(--color-base-content) 12%, transparent);
+   Contacts appearance themes, chosen from the dropdown in the page header and
+   modeled on the chat theme picker above. Classic keeps the accordion cards.
+   Every other theme is "flat": the ContactsTheme hook opens the top-level
+   <details>, and the shared base below strips the accordion chrome into a
+   calm, hairline-divided directory. Named themes then layer palette and
+   motion on top through the --c-* custom properties, so the flat structure is
+   written exactly once.
+
+     quiet     — neutral flat look; follows the site theme (light/dark/Art Deco)
+     bubblegum — candy light, springy hover, soft blobs
+     aurora    — deep night, drifting aurora, frosted glow
+     arcade    — CRT black, neon cyan/magenta, scanlines
+     blueprint — drafting navy, cyan grid, rules that draw themselves in
+     comic     — ink outlines, halftone, hard offset shadows
+     vapor     — retro sunset gradient, scrolling grid, chrome title
+
+   The six playful themes commit to their own palette, so unlike Quiet they do
+   not follow the site's light/dark toggle — that is the point of them. All
+   motion is disabled under prefers-reduced-motion at the end of this block. */
+
+/* ===== Shared flat base: every non-Classic theme ===== */
+#contacts-workspace:not([data-contacts-theme="classic"]) {
+  /* Themeable tokens. The defaults reproduce the neutral "Quiet" look; the
+     playful skins below override them. */
+  --c-hair: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  --c-label: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+  --c-row-radius: 0;
+  --c-row-pad: 0;
+  --c-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Flatten the three section shells: no card border, background, shadow, or
-   collapse arrow. */
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section {
+/* Flatten the section shells: no card border, background, shadow, or arrow. */
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section {
   border-color: transparent;
   background: transparent;
   border-radius: 0;
   box-shadow: none;
 }
 
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section > .collapse-title {
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section > .collapse-title {
   min-height: 0;
   padding: 0 0 0.35rem;
   cursor: default;
 }
 
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section > .collapse-title:after {
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section > .collapse-title:after {
   display: none;
 }
 
 /* Section heading becomes a quiet uppercase label; drop the sub-line. */
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section > .collapse-title h2 {
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section > .collapse-title h2 {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
-  opacity: 0.55;
+  color: var(--c-label);
 }
 
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section > .collapse-title p {
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section > .collapse-title p {
   display: none;
 }
 
 /* Count reads as a plain muted number, not an outlined badge. */
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section > .collapse-title .badge {
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section > .collapse-title .badge {
   border-color: transparent;
   background: transparent;
   color: inherit;
-  opacity: 0.55;
+  opacity: 0.6;
   padding: 0;
 }
 
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section > .collapse-content {
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section > .collapse-content {
   padding-inline: 0;
 }
 
-/* Boxed list items become flat, hairline-divided rows. Covers conversation,
-   friend, and incoming-request items, group cards, and the Add-Friend panel. */
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section .collapse-content li,
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section .collapse-content > div > section,
-#contacts-workspace[data-contacts-theme="quiet"] .space-y-4 > section {
+/* Boxed list items become flat rows. Covers conversation, friend, and
+   incoming-request items, group cards, and the Add-Friend panel. */
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section .collapse-content li,
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section .collapse-content > div > section,
+#contacts-workspace:not([data-contacts-theme="classic"]) .space-y-4 > section {
   border: 0;
-  border-top: 1.5px solid color-mix(in oklch, var(--color-base-content) 10%, transparent);
-  border-radius: 0;
-  padding-inline: 0;
+  border-top: 1.5px solid var(--c-hair);
+  border-radius: var(--c-row-radius);
+  padding-inline: var(--c-row-pad);
   background: transparent;
+  transition: background 0.18s ease, transform 0.2s var(--c-ease), box-shadow 0.2s ease;
 }
 
 /* Nested "Personal info & notes" panels lose their frame but stay collapsible. */
-#contacts-workspace[data-contacts-theme="quiet"] .contacts-section .collapse-content .collapse {
+#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section .collapse-content .collapse {
   border-color: transparent;
   background: transparent;
+}
+
+/* Entrance: a gentle staggered fade-up per section. LiveView patches section
+   contents in place rather than re-inserting the <details>, so this plays on
+   mount and theme change without replaying on every update. */
+#contacts-workspace:not([data-contacts-theme="classic"]) .space-y-4 > .contacts-section {
+  animation: contacts-enter 0.5s var(--c-ease) backwards;
+}
+
+#contacts-workspace:not([data-contacts-theme="classic"]) .space-y-4 > .contacts-section:nth-of-type(2) {
+  animation-delay: 0.07s;
+}
+
+#contacts-workspace:not([data-contacts-theme="classic"]) .space-y-4 > .contacts-section:nth-of-type(3) {
+  animation-delay: 0.14s;
+}
+
+@keyframes contacts-enter {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Shared shell for the themes that paint their own ground. The ::before layer
+   carries each theme's texture (blobs, aurora, scanlines, grid). */
+#contacts-workspace[data-contacts-theme="bubblegum"],
+#contacts-workspace[data-contacts-theme="aurora"],
+#contacts-workspace[data-contacts-theme="arcade"],
+#contacts-workspace[data-contacts-theme="blueprint"],
+#contacts-workspace[data-contacts-theme="comic"],
+#contacts-workspace[data-contacts-theme="vapor"] {
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem;
+}
+
+#contacts-workspace[data-contacts-theme="bubblegum"]::before,
+#contacts-workspace[data-contacts-theme="aurora"]::before,
+#contacts-workspace[data-contacts-theme="arcade"]::before,
+#contacts-workspace[data-contacts-theme="blueprint"]::before,
+#contacts-workspace[data-contacts-theme="comic"]::before,
+#contacts-workspace[data-contacts-theme="vapor"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+#contacts-workspace[data-contacts-theme="bubblegum"] > *,
+#contacts-workspace[data-contacts-theme="aurora"] > *,
+#contacts-workspace[data-contacts-theme="arcade"] > *,
+#contacts-workspace[data-contacts-theme="blueprint"] > *,
+#contacts-workspace[data-contacts-theme="comic"] > *,
+#contacts-workspace[data-contacts-theme="vapor"] > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ===================================================================
+   BUBBLEGUM — strawberry-milk light, springy and squishy
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="bubblegum"] {
+  --c-hair: transparent;
+  --c-label: #ff7aa8;
+  --c-row-radius: 12px;
+  --c-row-pad: 0.6rem;
+  border-radius: 24px;
+  background: #fff5f8;
+  color: #4a2540;
+  font-family: ui-rounded, "Segoe UI Variable Display", Nunito, system-ui, sans-serif;
+  box-shadow: 0 18px 50px rgba(255, 92, 138, 0.16);
+}
+
+#contacts-workspace[data-contacts-theme="bubblegum"]::before {
+  filter: blur(10px);
+  background:
+    radial-gradient(38% 38% at 12% 8%, rgba(255, 165, 180, 0.5), transparent 70%),
+    radial-gradient(42% 42% at 90% 20%, rgba(120, 220, 235, 0.4), transparent 70%),
+    radial-gradient(48% 48% at 72% 98%, rgba(199, 125, 255, 0.32), transparent 70%);
+}
+
+#contacts-workspace[data-contacts-theme="bubblegum"] .contacts-section .collapse-content li:hover {
+  background: #ffe6ef;
+  transform: translateX(4px);
+}
+
+#contacts-workspace[data-contacts-theme="bubblegum"] [class*="overflow-hidden"][class*="rounded-full"] {
+  box-shadow: 0 6px 14px rgba(255, 92, 138, 0.3);
+}
+
+#contacts-workspace[data-contacts-theme="bubblegum"] .btn-primary {
+  background: #ff5c8a;
+  border-color: #ff5c8a;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(255, 92, 138, 0.35);
+}
+
+#contacts-workspace[data-contacts-theme="bubblegum"] header p,
+#contacts-workspace[data-contacts-theme="bubblegum"] code {
+  color: #b06a8a;
+}
+
+/* ===================================================================
+   AURORA GLASS — deep night, drifting aurora, frosted rows
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="aurora"] {
+  --c-hair: rgba(150, 180, 255, 0.14);
+  --c-label: #8b98d6;
+  --c-row-radius: 12px;
+  --c-row-pad: 0.6rem;
+  border-radius: 22px;
+  background: #0b1020;
+  color: #e7ecff;
+  box-shadow: 0 24px 70px rgba(4, 8, 24, 0.55);
+}
+
+#contacts-workspace[data-contacts-theme="aurora"]::before {
+  inset: -20%;
+  filter: blur(34px) saturate(1.3);
+  background:
+    radial-gradient(50% 42% at 20% 4%, rgba(64, 224, 208, 0.32), transparent 62%),
+    radial-gradient(48% 40% at 85% 12%, rgba(139, 92, 246, 0.38), transparent 62%),
+    radial-gradient(52% 52% at 62% 108%, rgba(56, 189, 248, 0.28), transparent 62%);
+  animation: contacts-aurora 18s ease-in-out infinite alternate;
+}
+
+@keyframes contacts-aurora {
+  from { transform: translate(-3%, -2%) scale(1.05); }
+  to { transform: translate(4%, 3%) scale(1.14); }
+}
+
+#contacts-workspace[data-contacts-theme="aurora"] .contacts-section .collapse-content li:hover {
+  background: rgba(150, 180, 255, 0.08);
+  transform: translateY(-2px);
+}
+
+#contacts-workspace[data-contacts-theme="aurora"] [class*="overflow-hidden"][class*="rounded-full"] {
+  box-shadow: 0 0 16px rgba(110, 168, 255, 0.4);
+  animation: contacts-float 4s ease-in-out infinite;
+}
+
+@keyframes contacts-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+#contacts-workspace[data-contacts-theme="aurora"] .btn-primary {
+  background: linear-gradient(120deg, #40e0d0, #6ea8ff);
+  border-color: transparent;
+  color: #0b1020;
+}
+
+#contacts-workspace[data-contacts-theme="aurora"] .btn-outline {
+  border-color: rgba(150, 180, 255, 0.3);
+  color: #e7ecff;
+}
+
+#contacts-workspace[data-contacts-theme="aurora"] header p { color: #9aa6d4; }
+
+#contacts-workspace[data-contacts-theme="aurora"] code {
+  background: rgba(150, 180, 255, 0.12);
+  color: #cfe0ff;
+}
+
+/* ===================================================================
+   ARCADE NEON — CRT black, electric cyan and magenta, scanlines
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="arcade"] {
+  --c-hair: rgba(0, 240, 255, 0.16);
+  --c-label: #00f0ff;
+  --c-row-radius: 6px;
+  --c-row-pad: 0.6rem;
+  border-radius: 10px;
+  background: #07070d;
+  color: #eafcff;
+  font-family: ui-monospace, "Cascadia Code", "Space Mono", SFMono-Regular, monospace;
+  box-shadow: 0 0 0 1.5px rgba(0, 240, 255, 0.3), 0 24px 60px rgba(0, 0, 0, 0.65);
+}
+
+#contacts-workspace[data-contacts-theme="arcade"]::before {
+  opacity: 0.55;
+  background: repeating-linear-gradient(0deg, rgba(0, 240, 255, 0.05) 0 1px, transparent 1px 3px);
+  animation: contacts-scan 7s linear infinite;
+}
+
+@keyframes contacts-scan {
+  from { background-position: 0 0; }
+  to { background-position: 0 300px; }
+}
+
+#contacts-workspace[data-contacts-theme="arcade"] h1 {
+  text-shadow: 0 0 8px rgba(255, 46, 166, 0.6);
+}
+
+#contacts-workspace[data-contacts-theme="arcade"] .contacts-section > .collapse-title h2 {
+  text-shadow: 0 0 6px rgba(0, 240, 255, 0.55);
+}
+
+#contacts-workspace[data-contacts-theme="arcade"] .contacts-section .collapse-content li:hover {
+  background: rgba(0, 240, 255, 0.06);
+  transform: translateX(3px);
+}
+
+#contacts-workspace[data-contacts-theme="arcade"] [class*="overflow-hidden"][class*="rounded-full"] {
+  border-radius: 6px;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.45);
+  animation: contacts-neon 2.4s ease-in-out infinite;
+}
+
+@keyframes contacts-neon {
+  0%, 100% { box-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(255, 46, 166, 0.55); }
+}
+
+#contacts-workspace[data-contacts-theme="arcade"] .btn-primary {
+  background: #ff2ea6;
+  border-color: #ff2ea6;
+  color: #fff;
+  box-shadow: 0 0 16px rgba(255, 46, 166, 0.5);
+}
+
+#contacts-workspace[data-contacts-theme="arcade"] .btn-outline {
+  border-color: rgba(0, 240, 255, 0.4);
+  color: #eafcff;
+}
+
+#contacts-workspace[data-contacts-theme="arcade"] header p { color: #7fd7e8; }
+
+#contacts-workspace[data-contacts-theme="arcade"] code {
+  background: rgba(0, 240, 255, 0.1);
+  color: #eafcff;
+}
+
+/* ===================================================================
+   BLUEPRINT — drafting navy, cyan grid, rules that draw themselves in
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="blueprint"] {
+  --c-hair: rgba(127, 212, 255, 0.4);
+  --c-label: #7fd4ff;
+  --c-row-radius: 4px;
+  --c-row-pad: 0.6rem;
+  border-radius: 8px;
+  background: #0e2247;
+  color: #dbeaff;
+  font-family: ui-monospace, "Cascadia Code", "Space Mono", SFMono-Regular, monospace;
+  box-shadow: 0 0 0 1.5px rgba(127, 212, 255, 0.25), 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+#contacts-workspace[data-contacts-theme="blueprint"]::before {
+  background-image:
+    linear-gradient(rgba(127, 212, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(127, 212, 255, 0.1) 1px, transparent 1px);
+  background-size: 26px 26px;
+  animation: contacts-grid 22s linear infinite;
+}
+
+@keyframes contacts-grid {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 26px 26px, 26px 26px; }
+}
+
+/* Dashed rules, like a drafted sheet. */
+#contacts-workspace[data-contacts-theme="blueprint"] .contacts-section .collapse-content li,
+#contacts-workspace[data-contacts-theme="blueprint"] .contacts-section .collapse-content > div > section,
+#contacts-workspace[data-contacts-theme="blueprint"] .space-y-4 > section {
+  border-top-style: dashed;
+}
+
+#contacts-workspace[data-contacts-theme="blueprint"] .contacts-section .collapse-content li:hover {
+  background: rgba(127, 212, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(127, 212, 255, 0.35);
+}
+
+/* The section label underlines itself on entrance. */
+#contacts-workspace[data-contacts-theme="blueprint"] .contacts-section > .collapse-title h2 {
+  position: relative;
+  padding-bottom: 5px;
+}
+
+#contacts-workspace[data-contacts-theme="blueprint"] .contacts-section > .collapse-title h2::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  background: #7fd4ff;
+  transform-origin: left;
+  animation: contacts-draw 0.8s ease backwards;
+  animation-delay: 0.2s;
+}
+
+@keyframes contacts-draw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+#contacts-workspace[data-contacts-theme="blueprint"] [class*="overflow-hidden"][class*="rounded-full"] {
+  border-radius: 4px;
+  box-shadow: 0 0 0 1.5px #7fd4ff;
+}
+
+#contacts-workspace[data-contacts-theme="blueprint"] .btn-primary {
+  background: transparent;
+  border-color: #38bdf8;
+  color: #7fd4ff;
+}
+
+#contacts-workspace[data-contacts-theme="blueprint"] .btn-outline {
+  border-color: rgba(127, 212, 255, 0.45);
+  color: #dbeaff;
+}
+
+#contacts-workspace[data-contacts-theme="blueprint"] header p { color: #7fa8d8; }
+
+#contacts-workspace[data-contacts-theme="blueprint"] code {
+  background: rgba(127, 212, 255, 0.1);
+  color: #dbeaff;
+}
+
+/* ===================================================================
+   COMIC POP — ink outlines, halftone, hard offset shadows
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="comic"] {
+  --c-hair: #161616;
+  --c-label: #161616;
+  --c-row-radius: 8px;
+  --c-row-pad: 0.6rem;
+  border: 3px solid #161616;
+  border-radius: 18px;
+  background: #fff7e6;
+  color: #161616;
+  font-family: "Arial Black", "Helvetica Neue", system-ui, sans-serif;
+  box-shadow: 9px 9px 0 #161616;
+}
+
+#contacts-workspace[data-contacts-theme="comic"]::before {
+  opacity: 0.07;
+  background-image: radial-gradient(#161616 1.4px, transparent 1.6px);
+  background-size: 12px 12px;
+}
+
+#contacts-workspace[data-contacts-theme="comic"] h1 { text-transform: uppercase; }
+
+#contacts-workspace[data-contacts-theme="comic"] .contacts-section .collapse-content li,
+#contacts-workspace[data-contacts-theme="comic"] .contacts-section .collapse-content > div > section,
+#contacts-workspace[data-contacts-theme="comic"] .space-y-4 > section {
+  border-top-width: 2px;
+}
+
+#contacts-workspace[data-contacts-theme="comic"] .contacts-section .collapse-content li:hover {
+  background: #ffe14d;
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 #161616;
+}
+
+#contacts-workspace[data-contacts-theme="comic"] [class*="overflow-hidden"][class*="rounded-full"] {
+  box-shadow: 0 0 0 2.5px #161616, 3px 3px 0 #161616;
+}
+
+#contacts-workspace[data-contacts-theme="comic"] .btn-primary {
+  background: #ff3b3b;
+  border: 2px solid #161616;
+  color: #fff;
+  box-shadow: 3px 3px 0 #161616;
+}
+
+#contacts-workspace[data-contacts-theme="comic"] .btn-outline {
+  border: 2px solid #161616;
+  color: #161616;
+}
+
+#contacts-workspace[data-contacts-theme="comic"] header p { color: #7a6a48; }
+
+#contacts-workspace[data-contacts-theme="comic"] code {
+  background: #fff;
+  border: 1.5px solid #161616;
+  color: #161616;
+}
+
+/* Sections pop in with a bounce rather than the shared fade-up. */
+#contacts-workspace[data-contacts-theme="comic"] .space-y-4 > .contacts-section {
+  animation-name: contacts-pop;
+  animation-duration: 0.45s;
+}
+
+@keyframes contacts-pop {
+  0% { opacity: 0; transform: scale(0.8) rotate(-2deg); }
+  60% { transform: scale(1.04); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ===================================================================
+   VAPORWAVE SUNSET — retro sun, scrolling grid, chrome title
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="vapor"] {
+  --c-hair: rgba(94, 234, 255, 0.3);
+  --c-label: #5eeaff;
+  --c-row-radius: 10px;
+  --c-row-pad: 0.6rem;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #241056 0%, #6b2ff7 42%, #ff5c8a 100%);
+  color: #ffe9ff;
+  box-shadow: 0 24px 70px rgba(36, 16, 86, 0.6);
+}
+
+#contacts-workspace[data-contacts-theme="vapor"]::before {
+  background:
+    radial-gradient(circle at 50% 16%, #ffd36e 0 6%, #ff8a5c 6% 10%, #ff5cf0 10% 15%, transparent 30%),
+    repeating-linear-gradient(90deg, transparent 0 40px, rgba(94, 234, 255, 0.22) 40px 41px),
+    linear-gradient(transparent 64%, rgba(94, 234, 255, 0.18) 100%);
+  background-position: center, center bottom, center;
+  background-repeat: no-repeat, repeat-x, no-repeat;
+  animation: contacts-vapor 7s linear infinite;
+}
+
+@keyframes contacts-vapor {
+  from { background-position: center, 0 bottom, center; }
+  to { background-position: center, 40px bottom, center; }
+}
+
+#contacts-workspace[data-contacts-theme="vapor"] h1 {
+  background: linear-gradient(#ffffff, #7be6ff);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+#contacts-workspace[data-contacts-theme="vapor"] .contacts-section .collapse-content li:hover {
+  background: rgba(94, 234, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+#contacts-workspace[data-contacts-theme="vapor"] [class*="overflow-hidden"][class*="rounded-full"] {
+  box-shadow: 0 0 16px rgba(255, 92, 240, 0.5);
+  animation: contacts-float 4.5s ease-in-out infinite;
+}
+
+#contacts-workspace[data-contacts-theme="vapor"] .btn-primary {
+  background: linear-gradient(120deg, #ff5cf0, #5eeaff);
+  border-color: transparent;
+  color: #241056;
+}
+
+#contacts-workspace[data-contacts-theme="vapor"] .btn-outline {
+  border-color: rgba(94, 234, 255, 0.4);
+  color: #ffe9ff;
+}
+
+#contacts-workspace[data-contacts-theme="vapor"] header p { color: #d3a6ef; }
+
+#contacts-workspace[data-contacts-theme="vapor"] code {
+  background: rgba(94, 234, 255, 0.14);
+  color: #eaffff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #contacts-workspace[data-contacts-theme] *,
+  #contacts-workspace[data-contacts-theme]::before {
+    animation: none !important;
+    transition: none !important;
+  }
 }

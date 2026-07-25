@@ -28,31 +28,16 @@ defmodule VeejrWeb.ContactsLive do
           <code>{Social.Address.full(@current_scope.user)}</code>
         </:subtitle>
         <:actions>
-          <div
-            id="contacts-theme-picker"
-            class="contacts-theme-picker flex items-center gap-1 rounded-full border border-base-300 bg-base-200 p-1"
-            role="group"
+          <select
+            id="contacts-theme-select"
+            data-contacts-theme-select
             aria-label="Contacts appearance"
+            class="select select-sm w-auto"
           >
-            <button
-              id="contacts-theme-classic"
-              type="button"
-              data-contacts-theme-option="classic"
-              aria-pressed="true"
-              class="contacts-theme-option rounded-full px-3 py-1.5 text-xs font-medium transition"
-            >
-              Classic
-            </button>
-            <button
-              id="contacts-theme-quiet"
-              type="button"
-              data-contacts-theme-option="quiet"
-              aria-pressed="false"
-              class="contacts-theme-option rounded-full px-3 py-1.5 text-xs font-medium transition"
-            >
-              Quiet
-            </button>
-          </div>
+            <optgroup :for={{group, options} <- theme_options()} label={group}>
+              <option :for={{value, label} <- options} value={value}>{label}</option>
+            </optgroup>
+          </select>
           <.link navigate={~p"/invites/new"} class="btn btn-outline btn-sm">
             <.icon name="hero-qr-code" class="size-4" /> Invite person
           </.link>
@@ -850,6 +835,25 @@ defmodule VeejrWeb.ContactsLive do
       outgoing: Social.list_outgoing_requests(user),
       conversations: build_conversations(user, friends)
     )
+  end
+
+  # Appearance choices for the header dropdown. "Simple" themes follow the
+  # active site theme; the playful ones commit to their own palette. The
+  # values must stay in sync with ContactsTheme's allowed set in hooks.js and
+  # the [data-contacts-theme="..."] rules in app.css.
+  defp theme_options do
+    [
+      {"Simple", [{"classic", "Classic"}, {"quiet", "Quiet"}]},
+      {"Playful",
+       [
+         {"bubblegum", "Bubblegum"},
+         {"aurora", "Aurora Glass"},
+         {"arcade", "Arcade Neon"},
+         {"blueprint", "Blueprint"},
+         {"comic", "Comic Pop"},
+         {"vapor", "Vaporwave"}
+       ]}
+    ]
   end
 
   defp addable_friends(friends, group) do

@@ -566,25 +566,34 @@ export const ChatTheme = {
   },
 }
 
-// A Contacts-only appearance preference, modeled on ChatTheme. "Quiet" strips
-// the accordion chrome for a flat, calm directory; the CSS lives under
-// [data-contacts-theme="quiet"] in app.css. Because that look wants every
-// section visible at once, we also open the top-level <details> natively
+// A Contacts-only appearance preference, modeled on ChatTheme. Classic keeps
+// the accordion cards; every other theme is a flat directory look defined
+// under [data-contacts-theme="..."] in app.css. Because the flat looks want
+// every section visible at once, we open the top-level <details> natively
 // rather than fighting daisyUI's collapse styles from CSS.
 export const ContactsTheme = {
   mounted() {
     this.storageKey = "veejr:contacts-theme"
-    this.allowedThemes = new Set(["classic", "quiet"])
-    this.onThemeClick = (event) => {
-      const option = event.target.closest("[data-contacts-theme-option]")
-      if (!option || !this.el.contains(option)) return
-      this.applyTheme(option.dataset.contactsThemeOption, true)
+    this.allowedThemes = new Set([
+      "classic",
+      "quiet",
+      "bubblegum",
+      "aurora",
+      "arcade",
+      "blueprint",
+      "comic",
+      "vapor",
+    ])
+    this.onThemeChange = (event) => {
+      const select = event.target.closest("[data-contacts-theme-select]")
+      if (!select || !this.el.contains(select)) return
+      this.applyTheme(select.value, true)
     }
     this.onThemeStorage = (event) => {
       if (event.key === this.storageKey) this.applyTheme(event.newValue, false)
     }
 
-    this.el.addEventListener("click", this.onThemeClick)
+    this.el.addEventListener("change", this.onThemeChange)
     window.addEventListener("storage", this.onThemeStorage)
     this.applyTheme(localStorage.getItem(this.storageKey) || "classic", false)
   },
@@ -594,7 +603,7 @@ export const ContactsTheme = {
   },
 
   destroyed() {
-    this.el.removeEventListener("click", this.onThemeClick)
+    this.el.removeEventListener("change", this.onThemeChange)
     window.removeEventListener("storage", this.onThemeStorage)
   },
 
@@ -603,16 +612,12 @@ export const ContactsTheme = {
     this.currentTheme = selected
     this.el.dataset.contactsTheme = selected
 
-    this.el.querySelectorAll("[data-contacts-theme-option]").forEach((option) => {
-      option.setAttribute(
-        "aria-pressed",
-        String(option.dataset.contactsThemeOption === selected),
-      )
-    })
+    const select = this.el.querySelector("[data-contacts-theme-select]")
+    if (select && select.value !== selected) select.value = selected
 
-    // Quiet shows all sections flat; Classic keeps its default of only the
-    // first section open.
-    if (selected === "quiet") {
+    // The flat themes show all sections at once; Classic keeps its default of
+    // only the first section open.
+    if (selected !== "classic") {
       this.el.querySelectorAll(".contacts-section").forEach((s) => (s.open = true))
     }
 
