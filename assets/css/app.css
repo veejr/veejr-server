@@ -1423,6 +1423,185 @@
   color: #eaffff;
 }
 
+/* ===================================================================
+   ORBIT — the Conversations list becomes a WebGL carousel. Three.js is
+   fetched on demand by the ContactsOrbit hook (see hooks.js); everything
+   here is the surrounding chrome. The plain list is hidden ONLY once the
+   hook sets data-orbit-ready, so a missing WebGL context or a failed
+   library fetch simply leaves the ordinary list in place.
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="orbit"] {
+  --c-hair: rgba(140, 165, 255, 0.16);
+  --c-label: #8e9ac4;
+  --c-row-radius: 10px;
+  --c-row-pad: 0.6rem;
+  --c-chrome-bg: #141a30;
+  --c-chrome-fg: #e8ecff;
+  --c-chrome-hair: rgba(140, 165, 255, 0.32);
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem;
+  border-radius: 20px;
+  background: radial-gradient(120% 90% at 50% -10%, #1b2350 0%, #0a0c16 62%);
+  color: #e8ecff;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.5);
+}
+
+#contacts-workspace[data-contacts-theme="orbit"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1px 1px at 78% 16%, rgba(255, 255, 255, 0.4), transparent 60%),
+    radial-gradient(1.5px 1.5px at 32% 72%, rgba(190, 210, 255, 0.45), transparent 60%),
+    radial-gradient(1px 1px at 88% 66%, rgba(255, 255, 255, 0.35), transparent 60%),
+    radial-gradient(1px 1px at 55% 40%, rgba(255, 255, 255, 0.3), transparent 60%);
+}
+
+#contacts-workspace[data-contacts-theme="orbit"] > *:not(#profile-dialog) {
+  position: relative;
+  z-index: 1;
+}
+
+#contacts-workspace[data-contacts-theme="orbit"] header p { color: #8e9ac4; }
+
+#contacts-workspace[data-contacts-theme="orbit"] code {
+  background: rgba(140, 165, 255, 0.12);
+  color: #cfe0ff;
+}
+
+/* The carousel replaces the list only when it is actually running. */
+.contacts-orbit { display: none; }
+
+#contacts-workspace[data-contacts-theme="orbit"] .contacts-orbit {
+  display: block;
+}
+
+#contacts-workspace[data-contacts-theme="orbit"] .contacts-orbit[data-orbit-ready] ~ .contacts-conversation-list {
+  display: none;
+}
+
+/* ===================================================================
+   SOIREE — the same machinery as Orbit with a warm, candlelit room.
+   Each conversation is a guest wearing its profile picture, holding a
+   drink; some seated at the table, the rest mingling.
+   =================================================================== */
+#contacts-workspace[data-contacts-theme="soiree"] {
+  --c-hair: rgba(255, 205, 150, 0.18);
+  --c-label: #b39ba8;
+  --c-row-radius: 10px;
+  --c-row-pad: 0.6rem;
+  --c-chrome-bg: #241726;
+  --c-chrome-fg: #f6ecdf;
+  --c-chrome-hair: rgba(255, 205, 150, 0.34);
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem;
+  border-radius: 20px;
+  background: radial-gradient(120% 80% at 50% 0%, #241726 0%, #120d18 65%);
+  color: #f6ecdf;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.55);
+}
+
+#contacts-workspace[data-contacts-theme="soiree"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(2px 2px at 16% 12%, rgba(255, 200, 130, 0.5), transparent 62%),
+    radial-gradient(2px 2px at 40% 8%, rgba(255, 180, 92, 0.42), transparent 62%),
+    radial-gradient(2px 2px at 63% 13%, rgba(255, 210, 150, 0.45), transparent 62%),
+    radial-gradient(2px 2px at 85% 9%, rgba(255, 180, 92, 0.4), transparent 62%);
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] > *:not(#profile-dialog) {
+  position: relative;
+  z-index: 1;
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] header p { color: #b39ba8; }
+
+#contacts-workspace[data-contacts-theme="soiree"] code {
+  background: rgba(255, 205, 150, 0.14);
+  color: #ffe6c9;
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] .contacts-orbit { display: block; }
+
+#contacts-workspace[data-contacts-theme="soiree"] .contacts-orbit[data-orbit-ready] ~ .contacts-conversation-list {
+  display: none;
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] .orbit-stage {
+  height: 27rem;
+  background: radial-gradient(closest-side, rgba(255, 180, 92, 0.16), transparent 78%);
+}
+
+#contacts-workspace[data-contacts-theme="soiree"] .orbit-stage:focus-visible {
+  outline-color: #ffb45c;
+}
+
+.orbit-stage {
+  position: relative;
+  height: 24rem;
+  margin-top: 0.5rem;
+  border-radius: 16px;
+  touch-action: none;
+  cursor: grab;
+  background: radial-gradient(closest-side, rgba(124, 92, 255, 0.18), transparent 78%);
+}
+
+.orbit-stage:active { cursor: grabbing; }
+
+.orbit-stage:focus-visible {
+  outline: 2px solid #21d4c2;
+  outline-offset: 3px;
+}
+
+.orbit-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.orbit-readout {
+  margin-top: 0.35rem;
+  text-align: center;
+}
+
+.orbit-readout .orbit-who {
+  display: block;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.orbit-readout .orbit-msg {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.85rem;
+  color: #8e9ac4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orbit-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .orbit-stage { height: 18rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #contacts-workspace[data-contacts-theme] *,
   #contacts-workspace[data-contacts-theme]::before {

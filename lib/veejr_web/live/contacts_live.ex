@@ -143,7 +143,21 @@ defmodule VeejrWeb.ContactsLive do
               No conversations yet.
             </p>
 
-            <ul class="mt-4 divide-y divide-base-300">
+            <%!-- Mount point for the Orbit appearance. The hook reads the list
+                  below rather than taking its own copy of the data, so it keeps
+                  working with client-side decrypted previews. Empty and ignored
+                  server-side; the hook owns everything inside it. --%>
+            <div
+              :if={@conversations != []}
+              id="contacts-orbit"
+              phx-hook="ContactsOrbit"
+              phx-update="ignore"
+              data-three-src={~p"/vendor/three.min.js"}
+              class="contacts-orbit"
+            >
+            </div>
+
+            <ul class="contacts-conversation-list mt-4 divide-y divide-base-300">
               <li
                 :for={conversation <- @conversations}
                 data-unread={conversation.unread_count > 0}
@@ -852,7 +866,8 @@ defmodule VeejrWeb.ContactsLive do
          {"blueprint", "Blueprint"},
          {"comic", "Comic Pop"},
          {"vapor", "Vaporwave"}
-       ]}
+       ]},
+      {"Experimental", [{"orbit", "Orbit (3D)"}, {"soiree", "Soiree (3D party)"}]}
     ]
   end
 
