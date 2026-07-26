@@ -18,6 +18,16 @@ defmodule VeejrWeb.AdminLiveTest do
       |> live(~p"/admin")
 
     assert html =~ "Instance administration"
+    assert has_element?(view, "details#admin-overview[open]")
+    refute has_element?(view, "details#admin-settings[open]")
+    refute has_element?(view, "details#admin-accounts[open]")
+    refute has_element?(view, "details#admin-account-moves[open]")
+    refute has_element?(view, "details#admin-invitations[open]")
+    refute has_element?(view, "details#admin-audit[open]")
+    refute has_element?(view, "details#admin-peers[open]")
+    refute has_element?(view, "details#admin-operations[open]")
+    refute has_element?(view, "details#admin-system[open]")
+    refute has_element?(view, "details#admin-software-update[open]")
     assert has_element?(view, "#admin-health", "All monitored services operational")
     assert has_element?(view, "#metric-local-users", "1")
     assert has_element?(view, "#metric-storage")

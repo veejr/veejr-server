@@ -24,28 +24,32 @@ defmodule VeejrWeb.AdminLive do
         </:actions>
       </.header>
 
-      <section
-        id="admin-health"
-        class="flex flex-wrap items-center justify-between gap-3 border-y border-base-300 py-3"
+      <.admin_panel
+        id="admin-overview"
+        title="Overview"
+        subtitle="Health, membership, storage, and delivery at a glance"
+        open
       >
-        <div class="flex items-center gap-2">
-          <span class={[
-            "size-2.5 rounded-full",
-            if(healthy?(@snapshot.health), do: "bg-success", else: "bg-error")
-          ]} />
-          <span class="font-medium">
-            {if healthy?(@snapshot.health),
-              do: "All monitored services operational",
-              else: "Service attention required"}
+        <div
+          id="admin-health"
+          class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-200/45 px-4 py-3"
+        >
+          <div class="flex items-center gap-2">
+            <span class={[
+              "size-2.5 rounded-full",
+              if(healthy?(@snapshot.health), do: "bg-success", else: "bg-error")
+            ]} />
+            <span class="font-medium">
+              {if healthy?(@snapshot.health),
+                do: "All monitored services operational",
+                else: "Service attention required"}
+            </span>
+          </div>
+          <span class="text-xs opacity-60">
+            Updated {Calendar.strftime(@snapshot.captured_at, "%H:%M:%S")} UTC
           </span>
         </div>
-        <span class="text-xs opacity-60">
-          Updated {Calendar.strftime(@snapshot.captured_at, "%H:%M:%S")} UTC
-        </span>
-      </section>
 
-      <section aria-labelledby="admin-overview-heading">
-        <h2 id="admin-overview-heading" class="text-lg font-semibold">Overview</h2>
         <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <.metric id="metric-local-users" label="Local users" value={@snapshot.users.local} />
           <.metric
@@ -71,20 +75,19 @@ defmodule VeejrWeb.AdminLive do
             value={@snapshot.operations.federation_queue}
           />
         </div>
-      </section>
+      </.admin_panel>
 
-      <section id="admin-settings" aria-labelledby="admin-settings-heading">
-        <div>
-          <h2 id="admin-settings-heading" class="text-lg font-semibold">Instance settings</h2>
-          <p class="text-sm opacity-60">Registration, storage, retention, and mail defaults</p>
-        </div>
-
+      <.admin_panel
+        id="admin-settings"
+        title="Instance settings"
+        subtitle="Registration, storage, retention, and mail defaults"
+      >
         <.form
           for={@settings_form}
           id="instance-settings-form"
           phx-change="validate_settings"
           phx-submit="save_settings"
-          class="mt-3 space-y-4 border-y border-base-300 py-4"
+          class="space-y-4"
         >
           <div class="grid gap-4 md:grid-cols-2">
             <.input field={@settings_form[:name]} label="Instance name" />
@@ -164,15 +167,14 @@ defmodule VeejrWeb.AdminLive do
             </button>
           </div>
         </.form>
-      </section>
+      </.admin_panel>
 
-      <section id="admin-accounts" aria-labelledby="admin-accounts-heading">
-        <div>
-          <h2 id="admin-accounts-heading" class="text-lg font-semibold">Local accounts</h2>
-          <p class="text-sm opacity-60">Membership and active sign-in sessions</p>
-        </div>
-
-        <div class="mt-3 overflow-x-auto border-y border-base-300">
+      <.admin_panel
+        id="admin-accounts"
+        title="Local accounts"
+        subtitle="Membership and active sign-in sessions"
+      >
+        <div class="overflow-x-auto">
           <table class="table table-sm">
             <thead>
               <tr>
@@ -261,15 +263,14 @@ defmodule VeejrWeb.AdminLive do
             </tbody>
           </table>
         </div>
-      </section>
+      </.admin_panel>
 
-      <section id="admin-account-moves" aria-labelledby="admin-account-moves-heading">
-        <div>
-          <h2 id="admin-account-moves-heading" class="text-lg font-semibold">Account moves</h2>
-          <p class="text-sm opacity-60">Test and move a member into a separately managed instance</p>
-        </div>
-
-        <div :if={!@account_moves_enabled} class="alert alert-warning mt-3 text-sm">
+      <.admin_panel
+        id="admin-account-moves"
+        title="Account moves"
+        subtitle="Test and move a member into a separately managed instance"
+      >
+        <div :if={!@account_moves_enabled} class="alert alert-warning text-sm">
           <.icon name="hero-exclamation-triangle" class="size-5" />
           <span>Account moves are disabled until the host provisioner token is configured.</span>
         </div>
@@ -279,7 +280,7 @@ defmodule VeejrWeb.AdminLive do
           for={@move_form}
           id="account-move-form"
           phx-submit="create_account_move"
-          class="mt-3 grid gap-3 border-y border-base-300 py-4 md:grid-cols-2 lg:grid-cols-5"
+          class="grid gap-3 md:grid-cols-2 lg:grid-cols-5"
         >
           <.input
             field={@move_form[:user_id]}
@@ -314,11 +315,11 @@ defmodule VeejrWeb.AdminLive do
           </div>
         </.form>
 
-        <p :if={@account_moves == []} class="mt-3 border-y border-base-300 py-5 text-sm opacity-60">
+        <p :if={@account_moves == []} class="py-3 text-sm opacity-60">
           No account moves have been started.
         </p>
 
-        <div :if={@account_moves != []} class="mt-3 overflow-x-auto border-y border-base-300">
+        <div :if={@account_moves != []} class="overflow-x-auto">
           <table class="table table-sm">
             <thead>
               <tr>
@@ -394,24 +395,25 @@ defmodule VeejrWeb.AdminLive do
             </tbody>
           </table>
         </div>
-      </section>
+      </.admin_panel>
 
-      <section id="admin-invitations" aria-labelledby="admin-invitations-heading">
+      <.admin_panel
+        id="admin-invitations"
+        title="Invitations"
+        subtitle="Most recent tracked invitations"
+      >
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 id="admin-invitations-heading" class="text-lg font-semibold">Invitations</h2>
-            <p class="text-sm opacity-60">Most recent tracked invitations</p>
-          </div>
+          <p class="text-sm opacity-60">Create a new invitation or manage an existing one.</p>
           <.link navigate={~p"/invites/new"} class="btn btn-primary btn-sm">
             <.icon name="hero-qr-code" class="size-4" /> New invitation
           </.link>
         </div>
 
-        <p :if={@invitations == []} class="mt-3 border-y border-base-300 py-5 text-sm opacity-60">
+        <p :if={@invitations == []} class="mt-3 py-3 text-sm opacity-60">
           No tracked invitations yet.
         </p>
 
-        <div :if={@invitations != []} class="mt-3 overflow-x-auto border-y border-base-300">
+        <div :if={@invitations != []} class="mt-3 overflow-x-auto">
           <table class="table table-sm">
             <thead>
               <tr>
@@ -465,19 +467,18 @@ defmodule VeejrWeb.AdminLive do
             </tbody>
           </table>
         </div>
-      </section>
+      </.admin_panel>
 
-      <section id="admin-audit" aria-labelledby="admin-audit-heading">
-        <div>
-          <h2 id="admin-audit-heading" class="text-lg font-semibold">Recent admin activity</h2>
-          <p class="text-sm opacity-60">Append-only security and access actions</p>
-        </div>
-
-        <p :if={@audit_events == []} class="mt-3 border-y border-base-300 py-5 text-sm opacity-60">
+      <.admin_panel
+        id="admin-audit"
+        title="Recent admin activity"
+        subtitle="Append-only security and access actions"
+      >
+        <p :if={@audit_events == []} class="py-3 text-sm opacity-60">
           No administrator actions recorded yet.
         </p>
 
-        <div :if={@audit_events != []} class="mt-3 overflow-x-auto border-y border-base-300">
+        <div :if={@audit_events != []} class="overflow-x-auto">
           <table class="table table-sm">
             <thead>
               <tr>
@@ -499,14 +500,15 @@ defmodule VeejrWeb.AdminLive do
             </tbody>
           </table>
         </div>
-      </section>
+      </.admin_panel>
 
-      <section id="admin-peers" aria-labelledby="admin-peers-heading">
+      <.admin_panel
+        id="admin-peers"
+        title="Federation peers"
+        subtitle="Pinned remote instances and traffic controls"
+      >
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 id="admin-peers-heading" class="text-lg font-semibold">Federation peers</h2>
-            <p class="text-sm opacity-60">Pinned remote instances and traffic controls</p>
-          </div>
+          <p class="text-sm opacity-60">Review remote trust and retry queued deliveries.</p>
           <button
             :if={@snapshot.operations.federation_queue > 0}
             phx-click="retry_federation"
@@ -516,11 +518,11 @@ defmodule VeejrWeb.AdminLive do
           </button>
         </div>
 
-        <p :if={@peers == []} class="mt-3 border-y border-base-300 py-5 text-sm opacity-60">
+        <p :if={@peers == []} class="mt-3 py-3 text-sm opacity-60">
           No remote instances have been pinned yet.
         </p>
 
-        <div :if={@peers != []} class="mt-3 overflow-x-auto border-y border-base-300">
+        <div :if={@peers != []} class="mt-3 overflow-x-auto">
           <table class="table table-sm">
             <thead>
               <tr>
@@ -574,7 +576,10 @@ defmodule VeejrWeb.AdminLive do
           </table>
         </div>
 
-        <div :if={@pending_key_changes != []} class="mt-4 border-y border-warning/40 py-3">
+        <div
+          :if={@pending_key_changes != []}
+          class="mt-4 rounded-xl border border-warning/40 p-3"
+        >
           <h3 class="text-sm font-semibold">Pending remote key changes</h3>
           <p class="mt-1 text-xs opacity-60">
             Each affected contact must approve their new pinned key.
@@ -585,12 +590,15 @@ defmodule VeejrWeb.AdminLive do
             </li>
           </ul>
         </div>
-      </section>
+      </.admin_panel>
 
       <div class="grid gap-6 lg:grid-cols-2">
-        <section aria-labelledby="admin-operations-heading">
-          <h2 id="admin-operations-heading" class="text-lg font-semibold">Operations</h2>
-          <dl class="mt-3 divide-y divide-base-300 border-y border-base-300">
+        <.admin_panel
+          id="admin-operations"
+          title="Operations"
+          subtitle="Queues, invitations, and remote activity"
+        >
+          <dl class="divide-y divide-base-300">
             <.row
               label="Encrypted items awaiting recipient approval"
               value={@snapshot.data.pending_notifications}
@@ -602,11 +610,14 @@ defmodule VeejrWeb.AdminLive do
             <.row label="Pinned peer instances" value={@snapshot.operations.pinned_peers} />
             <.row label="Remote contacts" value={@snapshot.users.remote} />
           </dl>
-        </section>
+        </.admin_panel>
 
-        <section aria-labelledby="admin-system-heading">
-          <h2 id="admin-system-heading" class="text-lg font-semibold">System</h2>
-          <dl class="mt-3 divide-y divide-base-300 border-y border-base-300">
+        <.admin_panel
+          id="admin-system"
+          title="System"
+          subtitle="Runtime and monitored service status"
+        >
+          <dl class="divide-y divide-base-300">
             <.status_row label="Database" status={@snapshot.health.database} />
             <.status_row label="Web endpoint" status={@snapshot.health.endpoint} />
             <.status_row label="Federation worker" status={@snapshot.health.federation_outbox} />
@@ -617,12 +628,15 @@ defmodule VeejrWeb.AdminLive do
             />
             <.row label="Database engine" value={@snapshot.software.database} />
           </dl>
-        </section>
+        </.admin_panel>
       </div>
 
-      <section id="admin-software-update" aria-labelledby="admin-software-update-heading">
-        <h2 id="admin-software-update-heading" class="text-lg font-semibold">Software update</h2>
-        <div class="mt-3 space-y-3 rounded-lg border border-base-300 bg-base-100 p-4">
+      <.admin_panel
+        id="admin-software-update"
+        title="Software update"
+        subtitle={"Running v#{@software_update.version}"}
+      >
+        <div class="space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <p class="text-sm">
               Running <span class="font-mono font-semibold">v{@software_update.version}</span>
@@ -694,15 +708,15 @@ defmodule VeejrWeb.AdminLive do
             Updates are checked only when you ask — nothing phones home on its own.
           </p>
         </div>
-      </section>
+      </.admin_panel>
 
-      <section
+      <.admin_panel
         :if={@operational_failures != []}
         id="admin-failures"
-        aria-labelledby="admin-failures-heading"
+        title="Recent delivery failures"
+        subtitle="Content-free transport and delivery diagnostics"
       >
-        <h2 id="admin-failures-heading" class="text-lg font-semibold">Recent delivery failures</h2>
-        <div class="mt-3 overflow-x-auto border-y border-base-300">
+        <div class="overflow-x-auto">
           <table class="table table-sm">
             <thead>
               <tr>
@@ -719,7 +733,18 @@ defmodule VeejrWeb.AdminLive do
             </tbody>
           </table>
         </div>
-      </section>
+      </.admin_panel>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".AdminPanel">
+        export default {
+          beforeUpdate() {
+            this.wasOpen = this.el.open
+          },
+          updated() {
+            if (typeof this.wasOpen === "boolean") this.el.open = this.wasOpen
+          }
+        }
+      </script>
     </Layouts.app>
     """
   end
@@ -1029,6 +1054,41 @@ defmodule VeejrWeb.AdminLive do
       end
 
     {:noreply, load_dashboard(socket)}
+  end
+
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :subtitle, :string, default: nil
+  attr :open, :boolean, default: false
+  slot :inner_block, required: true
+
+  defp admin_panel(assigns) do
+    ~H"""
+    <details
+      id={@id}
+      open={@open}
+      phx-hook=".AdminPanel"
+      class="group overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm transition-shadow open:shadow-md"
+    >
+      <summary
+        id={"#{@id}-heading"}
+        class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 transition-colors select-none hover:bg-base-200/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
+      >
+        <span class="min-w-0">
+          <span class="block text-base font-semibold">{@title}</span>
+          <span :if={@subtitle} class="mt-0.5 block text-sm font-normal opacity-60">
+            {@subtitle}
+          </span>
+        </span>
+        <span class="grid size-9 shrink-0 place-items-center rounded-full bg-base-200 text-base-content/70 transition-all group-open:rotate-180 group-open:bg-primary/10 group-open:text-primary">
+          <.icon name="hero-chevron-down" class="size-4" />
+        </span>
+      </summary>
+      <div class="border-t border-base-300 px-5 py-5">
+        {render_slot(@inner_block)}
+      </div>
+    </details>
+    """
   end
 
   attr :id, :string, required: true
