@@ -1943,9 +1943,9 @@ export const CallSession = {
 
 const ringNotifications = new Map()
 
-// Incoming-call banner: rings in every open veejr tab via the LiveNotify
-// push event. Accept and Decline are plain navigations, so this works from
-// any page without a dedicated reply channel.
+// Incoming-call consent: rings in every open veejr tab via the LiveNotify
+// push event. The actions are plain navigations, so this works from any page
+// without a dedicated reply channel.
 export function installRingBanner() {
   window.addEventListener("phx:veejr:ring", ({detail}) => {
     const id = `veejr-ring-${detail.call_id}`
@@ -1953,24 +1953,51 @@ export function installRingBanner() {
 
     const banner = document.createElement("div")
     banner.id = id
+    banner.setAttribute("role", "dialog")
+    banner.setAttribute("aria-modal", "true")
+    banner.setAttribute("aria-labelledby", `${id}-title`)
     banner.className =
-      "fixed inset-x-0 top-4 z-[1200] mx-auto flex w-fit max-w-[92vw] items-center gap-4 rounded-full border border-base-300 bg-base-100 py-2 pl-5 pr-2 shadow-2xl"
+      "fixed inset-0 z-[1200] flex items-center justify-center bg-base-content/45 p-4 backdrop-blur-sm"
 
-    const label = document.createElement("span")
-    label.className = "text-sm font-medium"
-    label.textContent = `📞 ${detail.from} is calling…`
+    const card = document.createElement("div")
+    card.className =
+      "w-full max-w-md rounded-[32px] border border-primary/25 bg-base-100 p-6 text-center text-base-content shadow-2xl sm:p-8"
+
+    const icon = document.createElement("div")
+    icon.className =
+      "mx-auto flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl text-primary-content shadow-lg shadow-primary/25"
+    icon.textContent = "📹"
+
+    const title = document.createElement("h2")
+    title.id = `${id}-title`
+    title.className = "mt-4 text-2xl font-semibold tracking-tight"
+    title.textContent = "Incoming video call"
+
+    const label = document.createElement("p")
+    label.className = "mt-2 text-sm opacity-70"
+    label.textContent = `${detail.from} would like to talk.`
+
+    const actions = document.createElement("div")
+    actions.className = "mt-6 grid gap-2"
 
     const accept = document.createElement("a")
     accept.href = `/call/${detail.call_id}`
-    accept.className = "btn btn-primary btn-sm rounded-full"
+    accept.className = "btn btn-primary btn-lg"
     accept.textContent = "Accept"
+
+    const busy = document.createElement("a")
+    busy.href = `/call/${detail.call_id}?busy=1`
+    busy.className = "btn btn-outline"
+    busy.textContent = "Busy now, laters"
 
     const decline = document.createElement("a")
     decline.href = `/call/${detail.call_id}?reject=1`
-    decline.className = "btn btn-ghost btn-sm rounded-full"
-    decline.textContent = "Decline"
+    decline.className = "btn btn-ghost"
+    decline.textContent = "Reject"
 
-    banner.append(label, accept, decline)
+    actions.append(accept, busy, decline)
+    card.append(icon, title, label, actions)
+    banner.appendChild(card)
     document.body.appendChild(banner)
     setTimeout(() => banner.remove(), 60_000)
 

@@ -192,7 +192,7 @@ older peers.
 | `POST /api/federation/notify` | Announce an available envelope without sending its ciphertext. |
 | `POST /api/federation/key_update` | Announce a rotated user key for manual confirmation. |
 | `POST /api/federation/call_invite` | Mirror a current, consent-gated call invitation. |
-| `POST /api/federation/call_update` | Relay joined/declined/cancelled/ended/disconnected lifecycle state. |
+| `POST /api/federation/call_update` | Relay joined/declined/busy/cancelled/ended/disconnected lifecycle state. |
 | `POST /api/federation/call_signal` | Relay one sealed SDP/ICE payload synchronously. |
 | `POST /api/federation/call_schedule` | Durably mirror scheduled-call creation and state. |
 | `GET /api/envelopes/:public_id` | Fetch envelope ciphertext by capability. |
@@ -342,7 +342,7 @@ message plaintext. Push services still observe endpoint and timing metadata.
 | `notifications` | Per-envelope consent state. |
 | `conversation_windows` | Rolling user/peer auto-accept expiry. |
 | `calls` | 1:1 call consent/lifecycle state (ringing/accepted/…); signaling itself is relayed, never stored. |
-| `scheduled_calls` | Persistent organizer/invitee plans, UTC time, reminder lead time, note, lifecycle state, and reminder stamp. |
+| `scheduled_calls` | Persistent organizer/invitee plans, UTC time, device and two-minute email reminder checkpoints, shared notes, and lifecycle state. |
 | `blobs` | Opaque encrypted file location, owner, size, and public capability ID. |
 | `instance_credentials` | Server-side Ed25519 federation and P-256 VAPID keypairs. |
 | `peers` | TOFU-pinned remote instance signing keys. |

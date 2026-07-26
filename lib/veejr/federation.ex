@@ -156,7 +156,7 @@ defmodule Veejr.Federation do
     })
   end
 
-  @doc "Relays a joined/declined/ended/disconnected call state change to the peer instance."
+  @doc "Relays a joined/declined/busy/ended/disconnected call state change to the peer instance."
   def deliver_call_update(authority, call, event) when is_binary(authority) do
     post(authority, "/api/federation/call_update", %{
       call_id: call.public_id,
@@ -180,7 +180,7 @@ defmodule Veejr.Federation do
         %User{host: authority} = invitee,
         event
       )
-      when is_binary(authority) and event in ["scheduled", "cancelled", "started"] do
+      when is_binary(authority) and event in ["scheduled", "updated", "cancelled", "started"] do
     payload = %{
       from: %{username: organizer.username, authority: Veejr.instance_authority()},
       to: invitee.username,
@@ -189,14 +189,19 @@ defmodule Veejr.Federation do
     }
 
     payload =
-      if event == "scheduled" do
-        Map.merge(payload, %{
-          scheduled_for: DateTime.to_iso8601(schedule.scheduled_for),
-          reminder_minutes: schedule.reminder_minutes,
-          note: schedule.note
-        })
-      else
-        payload
+      case event do
+        "scheduled" ->
+          Map.merge(payload, %{
+            scheduled_for: DateTime.to_iso8601(schedule.scheduled_for),
+            reminder_minutes: schedule.reminder_minutes,
+            note: schedule.note
+          })
+
+        "updated" ->
+          Map.put(payload, :note, schedule.note)
+
+        _ ->
+          payload
       end
 
     queue_delivery(authority, "/api/federation/call_schedule", payload)
@@ -262,6 +267,16 @@ defmodule Veejr.Federation do
         "note" => params["note"]
       })
     end
+  end
+
+  def handle_call_schedule(
+        %{"schedule_id" => schedule_id, "event" => "updated"} = params,
+        verified_authority
+      )
+      when is_binary(schedule_id) do
+    Veejr.Calls.receive_remote_schedule_note_update(schedule_id, verified_authority, %{
+      "note" => params["note"]
+    })
   end
 
   def handle_call_schedule(

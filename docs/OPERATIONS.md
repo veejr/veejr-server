@@ -19,6 +19,13 @@ curl.exe https://veejr.example.com/api/v1/capabilities
 Healthy output has one running replica (`1/1`), a recent task without an error,
 Phoenix listening on port 4000, and HTTP status 200 from the public URL.
 
+Scheduled-call invitation and two-minute reminder emails use the configured
+`Veejr.Mailer`. Failed deliveries are recorded under the `email` channel in
+**Recent delivery failures**. Separate persisted organizer and invitee email
+checkpoints prevent duplicate two-minute reminders while allowing one failed
+address to retry independently; they are separate from the configurable
+device-notification `reminded_at` checkpoint.
+
 Check the supporting containers separately:
 
 ```powershell

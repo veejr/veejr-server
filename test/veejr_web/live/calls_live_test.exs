@@ -8,7 +8,7 @@ defmodule VeejrWeb.CallsLiveTest do
 
   setup %{conn: conn} do
     user = keyed_user()
-    friend = user_fixture()
+    friend = keyed_user()
     {:ok, request} = Social.send_friend_request(user, friend.username)
     {:ok, _friendship} = Social.accept_friend_request(friend, request.id)
 
@@ -42,8 +42,32 @@ defmodule VeejrWeb.CallsLiveTest do
     [schedule] = Calls.list_scheduled_calls(user)
     assert has_element?(view, "#scheduled-call-#{schedule.id}", "Project catch-up")
     assert has_element?(view, "#scheduled-call-time-#{schedule.id}[phx-hook='LocalTime']")
+    assert has_element?(view, "#scheduled-call-note-form-#{schedule.id}")
+
+    assert has_element?(
+             view,
+             "#scheduled-call-note-form-#{schedule.id} textarea",
+             "Project catch-up"
+           )
+
+    assert has_element?(view, "#save-scheduled-call-note-#{schedule.id}")
     assert has_element?(view, "#start-scheduled-call-#{schedule.id}")
     assert has_element?(view, "#cancel-scheduled-call-#{schedule.id}")
+
+    view
+    |> form("#scheduled-call-note-form-#{schedule.id}",
+      schedule_note: %{note: "Updated agenda"}
+    )
+    |> render_submit()
+
+    assert {:ok, updated} = Calls.get_scheduled_call(user, schedule.id)
+    assert updated.note == "Updated agenda"
+
+    assert has_element?(
+             view,
+             "#scheduled-call-note-form-#{schedule.id} textarea",
+             "Updated agenda"
+           )
   end
 
   test "the organizer cancels a scheduled call from the Calls page", %{
@@ -66,6 +90,29 @@ defmodule VeejrWeb.CallsLiveTest do
 
     assert has_element?(view, "#scheduled-call-#{schedule.id}", "Cancelled")
     refute has_element?(view, "#start-scheduled-call-#{schedule.id}")
+  end
+
+  test "the invitee sees call notes on every schedule but cannot change them", %{
+    user: user,
+    friend: friend
+  } do
+    {:ok, schedule} =
+      Calls.schedule_call(user, friend.id, %{
+        "scheduled_for" =>
+          DateTime.utc_now(:second) |> DateTime.add(1, :hour) |> DateTime.to_iso8601(),
+        "reminder_minutes" => "15",
+        "note" => ""
+      })
+
+    invitee_conn = build_conn() |> log_in_user(friend)
+    {:ok, view, _html} = live(invitee_conn, "/calls")
+
+    assert has_element?(
+             view,
+             "#scheduled-call-note-form-#{schedule.id} textarea[disabled]"
+           )
+
+    refute has_element?(view, "#save-scheduled-call-note-#{schedule.id}")
   end
 
   defp keyed_user do

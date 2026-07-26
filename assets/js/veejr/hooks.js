@@ -105,6 +105,67 @@ const LocalTime = {
   },
 }
 
+const MessageConsent = {
+  mounted() {
+    this.onClick = (event) => {
+      const button = event.target.closest("[data-role=busy-later]")
+      if (!button || !this.el.contains(button)) return
+
+      event.preventDefault()
+      this.sendBusyLater(button)
+    }
+
+    this.el.addEventListener("click", this.onClick)
+  },
+
+  destroyed() {
+    if (this.onClick) this.el.removeEventListener("click", this.onClick)
+  },
+
+  async sendBusyLater(button) {
+    if (button.disabled) return
+
+    const {userId, myKey} = this.el.dataset
+    const {notificationId, senderId, senderKey, senderHandle} = button.dataset
+    const mySecret = getSecretKey(userId)
+
+    if (!mySecret) {
+      window.location.assign(`/keys?return_to=${encodeURIComponent(currentLocationPath())}`)
+      return
+    }
+
+    const error = button.closest("li")?.querySelector("[data-role=busy-error]")
+    const original = button.textContent
+    button.disabled = true
+    button.textContent = "Sending..."
+    if (error) error.classList.add("hidden")
+
+    try {
+      const payload = {
+        v: 1,
+        kind: "message",
+        text: "Busy now, laters",
+        attachments: [],
+        to: [senderHandle],
+        sent_at: new Date().toISOString(),
+      }
+      const envelopes = [
+        {recipient_id: senderId, ...sealFor(senderKey, payload, mySecret)},
+        {recipient_id: userId, ...sealFor(myKey, payload, mySecret)},
+      ]
+
+      await pushWithReply(this, "busy_later", {id: notificationId, envelopes})
+    } catch (reason) {
+      button.disabled = false
+      button.textContent = original
+      if (error) {
+        error.textContent = reason.message || "The quick reply could not be sent."
+        error.classList.remove("hidden")
+      }
+    }
+  },
+}
+
 // Encrypts one file with a fresh symmetric key and uploads the ciphertext.
 // Returns the attachment descriptor that rides inside the envelope payload.
 async function encryptAndUpload(file, metadata = {}) {
@@ -4481,6 +4542,7 @@ export default {
   ScrollBottom,
   GuestConferenceLobby,
   LocalTime,
+  MessageConsent,
   ScheduleTime,
   VeejrMap,
 }

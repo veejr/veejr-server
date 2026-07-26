@@ -350,6 +350,10 @@ pending --accept--> accepted --fetch/display--> accepted
   ciphertext, plaintext, blob capability, or attachment key in push payloads.
 - A recipient cannot fetch ciphertext until acceptance.
 - Decline makes that copy unavailable and must not fetch federated ciphertext.
+- Pending consent MUST be displayed as a front-and-center dialog with explicit
+  accept and reject actions. A **Busy now, laters** quick action rejects the
+  pending copy and sends a normal browser-sealed message back to the sender;
+  the plaintext MUST NOT pass through the LiveView or server.
 - Acceptance opens or extends a rolling five-minute conversation window for
   that user/peer pair.
 - Sends and accepted receives extend the window. Matching incoming messages
@@ -410,8 +414,10 @@ pending --accept--> accepted --fetch/display--> accepted
 
 ### 8.6 Calls, ephemeral data, and shared YouTube
 
-- Only accepted friends may start a 1:1 call. The callee explicitly accepts or
-  declines; unanswered rings expire after 60 seconds.
+- Only accepted friends may start a 1:1 call. The callee receives a
+  front-and-center consent dialog and explicitly accepts, rejects, or chooses
+  **Busy now, laters**; unanswered rings expire after 60 seconds. The busy
+  outcome is distinct to the caller but persists the call itself as declined.
 - A caller MUST be able to cancel a still-ringing invitation. Cancellation is
   distinct from a missed call, removes the callee's pending ring UI, and is
   relayed to a federated participant.
@@ -436,17 +442,25 @@ pending --accept--> accepted --fetch/display--> accepted
 - A still-ringing invitation SHOULD be replayed when an offline local callee
   returns to an authenticated page. Reconnect MUST NOT silently accept a call.
 - An authenticated user may schedule a future call with an accepted friend,
-  choose a reminder lead time, add an optional note, start the call early, and
-  cancel it. The schedule is visible to both participants; starting it creates
-  an ordinary consent-gated realtime ring.
+  choose a reminder lead time, add shared call notes, start the call early, and
+  cancel it. Every schedule display includes the notes field; only the
+  organizer edits it and federated updates mirror it to the invitee. The
+  schedule is visible to both participants; starting it creates an ordinary
+  consent-gated realtime ring.
 - Schedules and reminder delivery state MUST persist across application
   restarts. A background worker dispatches each due reminder at most once to
   foreground tabs and registered push devices. Push payloads MUST remain
   content-free and MUST NOT include the optional note.
+- The invitee's home instance MUST email an initial schedule invitation. At
+  two minutes before start, each participant's home instance MUST email its
+  local participant and persist an at-most-once checkpoint independent of the
+  configurable device reminder. Email shows UTC explicitly and links to the
+  Calls page for device-local rendering. Instances MUST NOT use a federated
+  user's placeholder email address.
 - Federated schedules use a signed, durable, retryable mirror operation. Each
   home instance reminds only its local participant. The schedule timestamp,
-  reminder lead time, participant identities, lifecycle state, and optional
-  note are server-readable metadata.
+  reminder lead time, participant identities, lifecycle state, shared notes,
+  and reminder checkpoints are server-readable metadata.
 - A 1:1 YouTube share is controlled only by the participant who starts it and
   is transported over the WebRTC data channel. It is mutually exclusive with
   screen sharing.
@@ -497,7 +511,7 @@ They MUST NOT appear in push payloads or routine logs.
 | `POST /api/federation/key_update` | Announce a changed user encryption key. |
 | `POST /api/federation/account_move` | Announce a verified new home authority. |
 | `POST /api/federation/call_invite` | Mirror a current call invitation and ring the local callee. |
-| `POST /api/federation/call_update` | Relay joined, declined, cancelled, ended, or disconnected state. |
+| `POST /api/federation/call_update` | Relay joined, declined, busy, cancelled, ended, or disconnected state. |
 | `POST /api/federation/call_signal` | Relay one sealed SDP/ICE payload synchronously. |
 | `POST /api/federation/call_schedule` | Durably mirror scheduled, cancelled, or started call-plan state. |
 

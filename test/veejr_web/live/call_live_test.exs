@@ -55,6 +55,21 @@ defmodule VeejrWeb.CallLiveTest do
     assert has_element?(view, "#hang-up[data-call-exit]", "End call")
   end
 
+  test "the callee can reject with the busy quick response", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, call} = Calls.start_call(friend, user.id)
+    key = Messaging.conversation_key([Social.Address.handle(friend)])
+    expected_path = "/messages?conversation=#{key}"
+
+    assert {:error, {:live_redirect, %{to: ^expected_path}}} =
+             live(conn, "/call/#{call.public_id}?busy=1")
+
+    assert {:ok, %{state: "declined"}} = Calls.get_call(user, call.public_id)
+  end
+
   test "renders local call quality feedback", %{conn: conn, user: user, friend: friend} do
     {:ok, call} = Calls.start_call(user, friend.id)
 

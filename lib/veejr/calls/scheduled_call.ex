@@ -12,6 +12,8 @@ defmodule Veejr.Calls.ScheduledCall do
     field :note, :string
     field :status, :string, default: "scheduled"
     field :reminded_at, :utc_datetime
+    field :organizer_email_reminded_at, :utc_datetime
+    field :invitee_email_reminded_at, :utc_datetime
 
     belongs_to :organizer, Veejr.Accounts.User
     belongs_to :invitee, Veejr.Accounts.User
@@ -29,6 +31,12 @@ defmodule Veejr.Calls.ScheduledCall do
     |> validate_inclusion(:reminder_minutes, @reminder_minutes)
     |> validate_length(:note, max: 500)
     |> validate_future()
+  end
+
+  def note_changeset(schedule, attrs) do
+    schedule
+    |> cast(attrs, [:note])
+    |> validate_length(:note, max: 500)
   end
 
   defp validate_future(changeset) do

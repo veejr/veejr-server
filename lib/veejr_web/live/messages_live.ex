@@ -83,50 +83,94 @@ defmodule VeejrWeb.MessagesLive do
           </div>
         </div>
 
-        <section :if={@pending != []} class="border-b border-primary/20 bg-primary/10 px-4 py-3">
-          <div class="mb-2 flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-base-content">
-              Waiting for you
-              <span class="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-content">
-                {length(@pending)}
-              </span>
-            </h2>
-            <p class="hidden text-xs opacity-70 sm:block">
-              Nothing is downloaded until you request it.
-            </p>
+        <section
+          :if={@pending != []}
+          id="message-consent-dialog"
+          phx-hook="MessageConsent"
+          data-user-id={@current_scope.user.id}
+          data-my-key={@current_scope.user.public_key}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="message-consent-title"
+          class="fixed inset-0 z-[1100] flex items-center justify-center bg-base-content/45 p-4 backdrop-blur-sm"
+        >
+          <div class="w-full max-w-2xl overflow-hidden rounded-[32px] border border-primary/25 bg-base-100 text-base-content shadow-2xl">
+            <div class="border-b border-base-300 bg-primary/10 px-6 py-5 text-center">
+              <div class="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-content shadow-lg shadow-primary/20">
+                <.icon name="hero-envelope" class="size-6" />
+              </div>
+              <h2 id="message-consent-title" class="mt-3 text-2xl font-semibold tracking-tight">
+                A message is waiting
+              </h2>
+              <p class="mt-1 text-sm opacity-70">
+                Choose what happens before any encrypted content is downloaded.
+              </p>
+            </div>
+            <ul class="max-h-[60vh] space-y-3 overflow-y-auto p-4 sm:p-6">
+              <li
+                :for={notif <- @pending}
+                id={"message-consent-#{notif.id}"}
+                class="rounded-3xl border border-base-300 bg-base-200/70 p-4"
+              >
+                <div class="flex items-center gap-3">
+                  <.user_avatar
+                    user={notif.envelope.sender}
+                    class="size-11 text-sm"
+                    ring={false}
+                  />
+                  <span class="min-w-0">
+                    <span class="block truncate font-semibold">
+                      {Veejr.Social.Address.handle(notif.envelope.sender)}
+                    </span>
+                    <span class="text-sm opacity-65">
+                      Encrypted {notif.envelope.kind} · {Calendar.strftime(
+                        notif.inserted_at,
+                        "%b %d, %H:%M"
+                      )} UTC
+                    </span>
+                  </span>
+                </div>
+                <div class="mt-4 grid gap-2 sm:grid-cols-3">
+                  <button
+                    id={"accept-message-#{notif.id}"}
+                    phx-click="request"
+                    phx-value-id={notif.id}
+                    class="btn btn-primary"
+                  >
+                    <.icon name="hero-check" class="size-4" /> Accept
+                  </button>
+                  <button
+                    id={"busy-later-message-#{notif.id}"}
+                    type="button"
+                    data-role="busy-later"
+                    data-notification-id={notif.id}
+                    data-sender-id={notif.envelope.sender.id}
+                    data-sender-key={notif.envelope.sender.public_key}
+                    data-sender-handle={Veejr.Social.Address.handle(notif.envelope.sender)}
+                    disabled={is_nil(notif.envelope.sender.public_key)}
+                    class="btn btn-outline"
+                    title={
+                      if(is_nil(notif.envelope.sender.public_key),
+                        do: "This sender has no encryption key yet",
+                        else: "Reject and send an encrypted quick reply"
+                      )
+                    }
+                  >
+                    Busy now, laters
+                  </button>
+                  <button
+                    id={"reject-message-#{notif.id}"}
+                    phx-click="decline"
+                    phx-value-id={notif.id}
+                    class="btn btn-ghost"
+                  >
+                    <.icon name="hero-x-mark" class="size-4" /> Reject
+                  </button>
+                </div>
+                <p data-role="busy-error" class="mt-2 hidden text-sm text-error"></p>
+              </li>
+            </ul>
           </div>
-          <ul class="grid gap-2 lg:grid-cols-2">
-            <li
-              :for={notif <- @pending}
-              class="flex items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-base-100 px-3 py-2"
-            >
-              <span class="min-w-0 text-sm text-base-content">
-                <span class="font-medium">
-                  {Veejr.Social.Address.handle(notif.envelope.sender)}
-                </span>
-                sent an encrypted {notif.envelope.kind}
-                <span class="text-xs opacity-70">
-                  · {Calendar.strftime(notif.inserted_at, "%b %d, %H:%M")} UTC
-                </span>
-              </span>
-              <span class="flex shrink-0 gap-2">
-                <button
-                  phx-click="request"
-                  phx-value-id={notif.id}
-                  class="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-content hover:bg-primary/90"
-                >
-                  Request
-                </button>
-                <button
-                  phx-click="decline"
-                  phx-value-id={notif.id}
-                  class="rounded-full px-3 py-1.5 text-xs font-medium opacity-70 hover:bg-base-200 hover:opacity-100"
-                >
-                  Decline
-                </button>
-              </span>
-            </li>
-          </ul>
         </section>
 
         <section class="messages-layout min-h-[42rem] overflow-hidden rounded-b-[31px] lg:h-[calc(100svh-12rem)] lg:min-h-0">
@@ -758,6 +802,29 @@ defmodule VeejrWeb.MessagesLive do
     {:noreply, refresh(socket)}
   end
 
+  def handle_event(
+        "busy_later",
+        %{"id" => id, "envelopes" => envelopes},
+        socket
+      )
+      when is_list(envelopes) do
+    user = socket.assigns.current_scope.user
+
+    with notification when not is_nil(notification) <-
+           Enum.find(socket.assigns.pending, &(to_string(&1.id) == to_string(id))),
+         :ok <- validate_busy_later_envelopes(envelopes, user.id, notification.envelope.sender_id),
+         {:ok, _batch_id, _queued} <- Messaging.send_batch(user, "message", envelopes),
+         {:ok, _notification} <- Messaging.decline_notification(user, notification.id) do
+      {:reply, %{ok: true},
+       socket
+       |> put_flash(:info, "Encrypted quick reply sent.")
+       |> refresh()}
+    else
+      nil -> {:reply, %{error: "That request is no longer waiting."}, refresh(socket)}
+      _ -> {:reply, %{error: "The quick reply could not be sent."}, refresh(socket)}
+    end
+  end
+
   def handle_event("start_conversation", params, socket) do
     case ConversationLauncher.destination(socket.assigns, params) do
       {:ok, destination} ->
@@ -1299,6 +1366,25 @@ defmodule VeejrWeb.MessagesLive do
         include_self: include_self
       }
     )
+  end
+
+  defp validate_busy_later_envelopes(envelopes, user_id, sender_id) do
+    recipient_ids =
+      Enum.map(envelopes, fn
+        attrs when is_map(attrs) ->
+          attrs
+          |> Map.get("recipient_id", Map.get(attrs, :recipient_id))
+          |> to_string()
+
+        _ ->
+          ""
+      end)
+
+    expected = [to_string(user_id), to_string(sender_id)] |> Enum.sort()
+
+    if length(recipient_ids) == 2 and Enum.sort(recipient_ids) == expected,
+      do: :ok,
+      else: {:error, :invalid_recipients}
   end
 
   defp parse_id_list(nil), do: []

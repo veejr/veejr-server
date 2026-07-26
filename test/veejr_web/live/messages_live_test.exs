@@ -43,6 +43,63 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#chat-theme-salon[data-chat-theme-option='salon']")
   end
 
+  test "puts pending message consent front and center with a busy quick reply", %{
+    conn: conn,
+    user: user
+  } do
+    friend = user_fixture()
+
+    {:ok, friend} =
+      Accounts.setup_user_keys(friend, %{
+        "public_key" => Base.encode64(String.pad_trailing("friend-public-key", 32, "x")),
+        "enc_secret_key" => Base.encode64(String.pad_trailing("friend-wrapped-key", 48, "x")),
+        "key_salt" => Base.encode64(String.pad_trailing("friend-salt", 16, "x")),
+        "key_nonce" => Base.encode64(String.pad_trailing("friend-nonce", 24, "x"))
+      })
+
+    {:ok, request} = Social.send_friend_request(friend, user.username)
+    {:ok, _friendship} = Social.accept_friend_request(user, request.id)
+
+    {:ok, _batch_id, []} =
+      Messaging.send_batch(friend, "message", [
+        %{"recipient_id" => user.id, "ciphertext" => "for-user", "nonce" => "user-nonce"},
+        %{"recipient_id" => friend.id, "ciphertext" => "self-copy", "nonce" => "self-nonce"}
+      ])
+
+    [notification] = Messaging.list_pending_notifications(user)
+    {:ok, view, _html} = live(conn, "/messages")
+
+    assert has_element?(view, "#message-consent-dialog[role='dialog'][aria-modal='true']")
+    assert has_element?(view, "#accept-message-#{notification.id}", "Accept")
+    assert has_element?(view, "#reject-message-#{notification.id}", "Reject")
+
+    assert has_element?(
+             view,
+             "#busy-later-message-#{notification.id}[data-role='busy-later']",
+             "Busy now, laters"
+           )
+
+    render_hook(view, "busy_later", %{
+      "id" => notification.id,
+      "envelopes" => [
+        %{"recipient_id" => friend.id, "ciphertext" => "reply", "nonce" => "reply-nonce"},
+        %{"recipient_id" => user.id, "ciphertext" => "reply-self", "nonce" => "self-nonce"}
+      ]
+    })
+
+    assert Messaging.list_pending_notifications(user) == []
+    refute has_element?(view, "#message-consent-dialog")
+
+    sent =
+      Repo.all(
+        from(e in Veejr.Messaging.Envelope,
+          where: e.sender_id == ^user.id and e.kind == "message"
+        )
+      )
+
+    assert Enum.sort(Enum.map(sent, & &1.recipient_id)) == Enum.sort([user.id, friend.id])
+  end
+
   test "defaults the unselected composer to a self note", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 

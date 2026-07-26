@@ -21,7 +21,7 @@ defmodule Veejr.Calls do
   require Logger
 
   alias Veejr.Accounts.User
-  alias Veejr.Calls.{Call, ScheduledCall}
+  alias Veejr.Calls.{Call, Notifier, ScheduledCall}
   alias Veejr.GuestConferences
   alias Veejr.GuestConferences.GuestCall
   alias Veejr.GuestConferences.GuestConference
@@ -243,6 +243,32 @@ defmodule Veejr.Calls do
     end
   end
 
+  @doc "Updates the shared call notes. The organizer remains authoritative."
+  def update_scheduled_call_note(%User{id: user_id} = user, id, attrs) do
+    with {:ok, %ScheduledCall{organizer_id: ^user_id} = schedule} <-
+           get_scheduled_call(user, id),
+         {:ok, schedule} <-
+           schedule
+           |> ScheduledCall.note_changeset(attrs)
+           |> Repo.update() do
+      schedule = preload_schedule(schedule)
+      notify_schedule(schedule, :updated)
+
+      _delivery =
+        Veejr.Federation.deliver_call_schedule(
+          schedule,
+          schedule.organizer,
+          schedule.invitee,
+          "updated"
+        )
+
+      {:ok, schedule}
+    else
+      {:ok, %ScheduledCall{}} -> {:error, :not_organizer}
+      error -> error
+    end
+  end
+
   @doc "Cancels a scheduled call. Only its organizer may cancel it."
   def cancel_scheduled_call(%User{id: user_id} = user, id) do
     with {:ok, %ScheduledCall{organizer_id: ^user_id, status: "scheduled"} = schedule} <-
@@ -367,10 +393,30 @@ defmodule Veejr.Calls do
   def receive_remote_schedule_update(_public_id, _verified_authority, _event),
     do: {:error, :bad_request}
 
-  @doc "Dispatches persisted reminders whose configured lead time has elapsed."
+  @doc "Applies organizer-owned shared notes from a verified federated peer."
+  def receive_remote_schedule_note_update(public_id, verified_authority, attrs) do
+    with %ScheduledCall{} = schedule <-
+           Repo.get_by(ScheduledCall, public_id: public_id) || {:error, :not_found},
+         schedule <- preload_schedule(schedule),
+         true <- schedule.organizer.host == verified_authority || {:error, :origin_mismatch},
+         {:ok, schedule} <-
+           schedule
+           |> ScheduledCall.note_changeset(attrs)
+           |> Repo.update() do
+      schedule = preload_schedule(schedule)
+      notify_schedule(schedule, :updated)
+      {:ok, :applied}
+    else
+      {:error, %Ecto.Changeset{}} -> {:error, :bad_request}
+      error -> error
+    end
+  end
+
+  @doc "Dispatches configured notifications and fixed two-minute email reminders."
   def dispatch_due_reminders(now \\ DateTime.utc_now(:second)) do
     cutoff = DateTime.add(now, -1, :hour)
     horizon = DateTime.add(now, 1, :day)
+    email_horizon = DateTime.add(now, 2, :minute)
 
     schedules =
       from(schedule in ScheduledCall,
@@ -393,7 +439,38 @@ defmodule Veejr.Calls do
       |> notify_schedule(:reminder)
     end)
 
-    %{reminded: length(schedules)}
+    email_schedules =
+      from(schedule in ScheduledCall,
+        join: organizer in assoc(schedule, :organizer),
+        join: invitee in assoc(schedule, :invitee),
+        where:
+          schedule.status == "scheduled" and
+            schedule.scheduled_for >= ^cutoff and
+            schedule.scheduled_for <= ^email_horizon and
+            ((is_nil(organizer.host) and is_nil(schedule.organizer_email_reminded_at)) or
+               (is_nil(invitee.host) and is_nil(schedule.invitee_email_reminded_at))),
+        preload: [:organizer, :invitee]
+      )
+      |> Repo.all()
+
+    emailed =
+      Enum.reduce(email_schedules, 0, fn schedule, delivered ->
+        Enum.reduce(due_email_recipients(schedule), delivered, fn {recipient, field}, count ->
+          case Notifier.deliver_two_minute_reminder(schedule, recipient) do
+            {:ok, _email} ->
+              schedule
+              |> Ecto.Changeset.change([{field, now}])
+              |> Repo.update!()
+
+              count + 1
+
+            {:error, _reason} ->
+              count
+          end
+        end)
+      end)
+
+    %{reminded: length(schedules), emailed: emailed}
   end
 
   @doc """
@@ -430,13 +507,18 @@ defmodule Veejr.Calls do
   end
 
   @doc "Declines a ringing call (callee side)."
-  def decline_call(%User{id: user_id} = user, public_id) do
+  def decline_call(%User{} = user, public_id), do: decline_call(user, public_id, "declined")
+
+  @doc "Declines a ringing call and optionally sends the caller the non-content busy outcome."
+  def decline_call(%User{id: user_id} = user, public_id, reason)
+      when reason in ["declined", "busy"] do
     with {:ok, %Call{callee_id: ^user_id, state: "ringing"} = call} <- get_call(user, public_id) do
       call = set_state(call, "declined")
-      broadcast(call, {:call_ended, call.public_id, "declined"})
+      broadcast(call, {:call_ended, call.public_id, reason})
+      notify_ring_cancelled(call)
 
       relay_to_remote_peer(call, user, fn authority ->
-        Veejr.Federation.deliver_call_update(authority, call, "declined")
+        Veejr.Federation.deliver_call_update(authority, call, reason)
       end)
 
       {:ok, call}
@@ -612,9 +694,9 @@ defmodule Veejr.Calls do
     end
   end
 
-  @doc "Applies a joined/declined/ended/disconnected update relayed by the remote instance."
+  @doc "Applies a joined/declined/busy/ended/disconnected update relayed by the remote instance."
   def receive_remote_update(public_id, verified_authority, event)
-      when event in ["joined", "declined", "cancelled", "ended", "disconnected"] do
+      when event in ["joined", "declined", "busy", "cancelled", "ended", "disconnected"] do
     with {:ok, call} <- remote_party_call(public_id, verified_authority) do
       case event do
         "joined" when call.state == "ringing" ->
@@ -624,6 +706,10 @@ defmodule Veejr.Calls do
         "declined" when call.state == "ringing" ->
           call = set_state(call, "declined")
           broadcast(call, {:call_ended, call.public_id, "declined"})
+
+        "busy" when call.state == "ringing" ->
+          call = set_state(call, "declined")
+          broadcast(call, {:call_ended, call.public_id, "busy"})
 
         "cancelled" when call.state == "ringing" ->
           call = set_state(call, "cancelled")
@@ -808,8 +894,11 @@ defmodule Veejr.Calls do
 
   defp notify_ring_cancelled(%Call{}), do: :ok
 
-  defp notify_schedule_created(%ScheduledCall{invitee: %User{host: nil}} = schedule),
-    do: notify_schedule_user(schedule, schedule.invitee, :scheduled)
+  defp notify_schedule_created(%ScheduledCall{invitee: %User{host: nil}} = schedule) do
+    notify_schedule_user(schedule, schedule.invitee, :scheduled)
+    _delivery = Notifier.deliver_invitation(schedule)
+    schedule
+  end
 
   defp notify_schedule_created(%ScheduledCall{}), do: :ok
 
@@ -858,6 +947,17 @@ defmodule Veejr.Calls do
   defp local_schedule_users(schedule) do
     [schedule.organizer, schedule.invitee]
     |> Enum.filter(&is_nil(&1.host))
+  end
+
+  defp due_email_recipients(schedule) do
+    [
+      {schedule.organizer, :organizer_email_reminded_at, schedule.organizer_email_reminded_at},
+      {schedule.invitee, :invitee_email_reminded_at, schedule.invitee_email_reminded_at}
+    ]
+    |> Enum.filter(fn {user, _field, reminded_at} ->
+      is_nil(user.host) and is_nil(reminded_at)
+    end)
+    |> Enum.map(fn {user, field, _reminded_at} -> {user, field} end)
   end
 
   defp preload_schedule(schedule), do: Repo.preload(schedule, [:organizer, :invitee], force: true)

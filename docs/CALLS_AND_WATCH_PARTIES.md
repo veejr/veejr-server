@@ -24,12 +24,14 @@ that affect connectivity. For the lower-level trust model, see
 
 ### Start and answer
 
-Start a call from an accepted contact or conversation. The callee sees an
-incoming-call banner with accept and decline actions. Unanswered rings have a
-60-second stale threshold; the periodic janitor marks them missed, so the row
-may remain visibly ringing until its next sweep. If the callee was temporarily
-offline, the newest invitation still marked ringing is replayed when an
-authenticated Veejr page reconnects.
+Start a call from an accepted contact or conversation. The callee sees a
+centered incoming-call consent dialog with **Accept**, **Busy now, laters**,
+and **Reject** actions. The busy action declines the ring while relaying that
+distinct outcome to the caller; it does not expose call media or message
+content. Unanswered rings have a 60-second stale threshold; the periodic
+janitor marks them missed, so the row may remain visibly ringing until its
+next sweep. If the callee was temporarily offline, the newest invitation still
+marked ringing is replayed when an authenticated Veejr page reconnects.
 
 Opening the call page first presents a private device check. Choose the
 microphone, camera, and (where supported) speaker, review the local preview,
@@ -46,10 +48,12 @@ callee. After the callee accepts, the same control becomes **End call**.
 
 Open **Calls** from the global navigation, or choose **Schedule** beside the
 Call button in a one-to-one conversation. Select an accepted friend, local date
-and time, reminder lead time, and an optional note. The Calls page lists
-upcoming plans for both participants; the organizer can start early or cancel.
-Starting creates a normal realtime call invitation, so the callee still
-explicitly accepts before media connects.
+and time, reminder lead time, and optional shared call notes. Every scheduled
+call card keeps a call-notes field visible; the organizer can update it and the
+invitee sees the synchronized value. The Calls page lists upcoming plans for
+both participants; the organizer can start early or cancel. Starting creates a
+normal realtime call invitation, so the callee still explicitly accepts before
+media connects.
 
 Schedules are persistent. A reminder worker checks them every 30 seconds and
 dispatches each reminder once. Connected tabs show an in-app banner and browser
@@ -58,10 +62,18 @@ content-free push. If the instance was down at the reminder instant, a
 schedule up to one hour overdue is delivered on the next sweep. Notification
 permission and operating-system background restrictions still apply.
 
+The invitee also receives an email when the schedule is first created. Two
+minutes before the scheduled start, both organizer and invitee receive an email
+from their respective home instances. Email timestamps are explicitly UTC
+because Veejr does not persist a named browser time zone; the linked Calls page
+renders the same instant in the device's current local time. Email delivery
+failures appear in the operations failure log and do not cancel the schedule.
+
 Federated schedules are mirrored through the durable federation outbox, unlike
 realtime rings and signaling. Each participant's home instance reminds its own
 local user. The scheduled time, reminder lead time, participants, lifecycle
-state, and optional note are server-readable metadata on both home instances;
+state, shared call notes, and reminder checkpoints are server-readable metadata
+on both home instances;
 call media and signaling retain the privacy boundaries described below.
 
 ### In-call controls
@@ -121,8 +133,9 @@ lost, returning to Messages no longer produces the active-call warning.
 - Call rows store participant IDs, a random public ID, lifecycle state, and
   timestamps. Instances can observe who called whom and when.
 - Scheduled-call rows additionally store the organizer, invitee, UTC time,
-  reminder lead time, lifecycle state, reminder delivery time, and optional
-  note. These are metadata, not encrypted message content.
+  reminder lead time, lifecycle state, device and per-participant email
+  reminder checkpoints, and shared call notes. These are metadata, not
+  encrypted message content.
 - Call chat and file transfer use the authenticated WebRTC data channel. They
   disappear when the call ends and are not included in History or account
   exports. A recipient can still save a transferred file, copy text, record

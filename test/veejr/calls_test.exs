@@ -1,6 +1,8 @@
 defmodule Veejr.CallsTest do
   use Veejr.DataCase, async: false
 
+  import Swoosh.TestAssertions
+
   alias Veejr.{Calls, Social}
   alias Veejr.Calls.{Call, ScheduledCall}
   import Veejr.AccountsFixtures
@@ -96,6 +98,23 @@ defmodule Veejr.CallsTest do
       assert {:ok, %Call{state: "missed"}} = Calls.get_call(bob, third.public_id)
     end
 
+    test "busy declines the call and sends a distinct outcome to the caller" do
+      alice = user_fixture()
+      bob = user_fixture()
+      befriend(alice, bob)
+      subscribe_user(bob)
+
+      {:ok, call} = Calls.start_call(alice, bob.id)
+      Calls.subscribe(call)
+
+      assert {:ok, %Call{state: "declined"}} =
+               Calls.decline_call(bob, call.public_id, "busy")
+
+      assert_receive {:call_ended, public_id, "busy"}
+      assert public_id == call.public_id
+      assert_receive {:veejr_call_cancelled, ^public_id}
+    end
+
     test "the caller explicitly cancels an unanswered invitation" do
       alice = user_fixture()
       bob = user_fixture()
@@ -134,6 +153,8 @@ defmodule Veejr.CallsTest do
       alice = user_fixture()
       bob = user_fixture()
       befriend(alice, bob)
+      assert_email_sent()
+      assert_email_sent()
 
       scheduled_for = DateTime.add(DateTime.utc_now(:second), 2, :hour)
       browser_time = scheduled_for |> DateTime.to_iso8601() |> String.replace("Z", ".000Z")
@@ -148,6 +169,11 @@ defmodule Veejr.CallsTest do
       assert schedule.status == "scheduled"
       assert schedule.note == "Plan the weekend"
       assert [%ScheduledCall{id: id}] = Calls.list_scheduled_calls(bob)
+
+      assert_email_sent(
+        to: bob.email,
+        subject: "#{alice.display_name || "@#{alice.username}"} scheduled a call with you"
+      )
 
       subscribe_user(bob)
 
@@ -178,6 +204,66 @@ defmodule Veejr.CallsTest do
       assert_receive {:veejr_call_schedule, :reminder, %ScheduledCall{id: ^id}, _peer}
       assert %{reminded: 0} = Calls.dispatch_due_reminders(now)
       assert Repo.get!(ScheduledCall, schedule.id).reminded_at
+    end
+
+    test "both local participants receive the persisted two-minute email reminder once" do
+      alice = user_fixture(%{display_name: "Alice"})
+      bob = user_fixture(%{display_name: "Bob"})
+      befriend(alice, bob)
+      assert_email_sent()
+      assert_email_sent()
+      now = DateTime.utc_now(:second)
+
+      {:ok, schedule} =
+        Calls.schedule_call(alice, bob.id, %{
+          "scheduled_for" => DateTime.to_iso8601(DateTime.add(now, 90, :second)),
+          "reminder_minutes" => "5"
+        })
+
+      assert_email_sent(
+        to: bob.email,
+        subject: "Alice scheduled a call with you"
+      )
+
+      assert %{emailed: 2} = Calls.dispatch_due_reminders(now)
+
+      assert_email_sent(
+        to: alice.email,
+        subject: "Your call with Bob starts in two minutes"
+      )
+
+      assert_email_sent(
+        to: bob.email,
+        subject: "Your call with Alice starts in two minutes"
+      )
+
+      assert %{emailed: 0} = Calls.dispatch_due_reminders(now)
+      persisted = Repo.get!(ScheduledCall, schedule.id)
+      assert persisted.organizer_email_reminded_at
+      assert persisted.invitee_email_reminded_at
+    end
+
+    test "only the organizer can update shared call notes" do
+      alice = user_fixture()
+      bob = user_fixture()
+      befriend(alice, bob)
+
+      {:ok, schedule} =
+        Calls.schedule_call(alice, bob.id, %{
+          "scheduled_for" =>
+            DateTime.utc_now(:second) |> DateTime.add(1, :hour) |> DateTime.to_iso8601(),
+          "reminder_minutes" => "15"
+        })
+
+      assert {:error, :not_organizer} =
+               Calls.update_scheduled_call_note(bob, schedule.id, %{"note" => "Nope"})
+
+      assert {:ok, %ScheduledCall{note: "Agenda and links"}} =
+               Calls.update_scheduled_call_note(alice, schedule.id, %{
+                 "note" => "Agenda and links"
+               })
+
+      assert Repo.get!(ScheduledCall, schedule.id).note == "Agenda and links"
     end
 
     test "the organizer starts a scheduled call" do
@@ -300,6 +386,27 @@ defmodule Veejr.CallsTest do
       assert {:ok, %Call{state: "ended"}} = Calls.get_call(alice, "remote-call-2")
     end
 
+    test "a federated busy response remains distinct for the caller", %{alice: alice} do
+      {:ok, :created} =
+        Veejr.Federation.handle_call_invite(
+          %{
+            "from" => %{"username" => "carol", "authority" => @remote_host},
+            "to" => "alice",
+            "call_id" => "remote-busy"
+          },
+          @remote_host
+        )
+
+      {:ok, call} = Calls.get_call(alice, "remote-busy")
+      Calls.subscribe(call)
+
+      assert {:ok, :applied} =
+               Calls.receive_remote_update(call.public_id, @remote_host, "busy")
+
+      assert_receive {:call_ended, "remote-busy", "busy"}
+      assert {:ok, %Call{state: "declined"}} = Calls.get_call(alice, call.public_id)
+    end
+
     test "a remote participant disconnect identifies who left", %{alice: alice} do
       {:ok, :created} =
         Veejr.Federation.handle_call_invite(
@@ -332,6 +439,8 @@ defmodule Veejr.CallsTest do
       alice: alice,
       carol: carol
     } do
+      assert_email_sent()
+
       scheduled_for =
         DateTime.utc_now(:second) |> DateTime.add(2, :hour) |> DateTime.to_iso8601()
 
@@ -351,6 +460,23 @@ defmodule Veejr.CallsTest do
 
       assert schedule.organizer_id == carol.id
       assert schedule.invitee_id == alice.id
+
+      assert_email_sent(
+        to: alice.email,
+        subject: "@carol scheduled a call with you"
+      )
+
+      assert {:ok, :applied} =
+               Veejr.Federation.handle_call_schedule(
+                 %{
+                   "schedule_id" => schedule.public_id,
+                   "event" => "updated",
+                   "note" => "Updated shared agenda"
+                 },
+                 @remote_host
+               )
+
+      assert Repo.get!(ScheduledCall, schedule.id).note == "Updated shared agenda"
 
       assert {:ok, :applied} =
                Veejr.Federation.handle_call_schedule(

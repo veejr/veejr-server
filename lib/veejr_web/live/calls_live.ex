@@ -21,8 +21,8 @@ defmodule VeejrWeb.CallsLive do
             </p>
             <h1 class="mt-2 text-3xl font-semibold tracking-tight">Plan time together</h1>
             <p class="mt-3 max-w-md text-sm leading-relaxed opacity-70">
-              Schedule a private one-to-one call. Both people see the plan, and reminders use
-              your browser or registered device notifications.
+              Schedule a private one-to-one call. Both people see the plan and shared notes,
+              with device notifications and email reminders before it starts.
             </p>
             <div class="mt-6 rounded-3xl border border-base-300/80 bg-base-100/75 p-4 backdrop-blur">
               <div class="flex items-start gap-3">
@@ -75,7 +75,7 @@ defmodule VeejrWeb.CallsLive do
               <.input
                 field={@schedule_form[:note]}
                 type="textarea"
-                label="Note (optional)"
+                label="Call notes (optional)"
                 maxlength="500"
                 rows="3"
                 placeholder="What would you like to talk about?"
@@ -145,9 +145,6 @@ defmodule VeejrWeb.CallsLive do
                     · organized by {Social.Address.handle(schedule.organizer)}
                   </span>
                 </p>
-                <p :if={present?(schedule.note)} class="mt-2 max-w-2xl text-sm opacity-75">
-                  {schedule.note}
-                </p>
               </div>
             </div>
 
@@ -179,6 +176,41 @@ defmodule VeejrWeb.CallsLive do
               </span>
             </div>
           </div>
+
+          <.form
+            for={@note_forms[schedule.id]}
+            id={"scheduled-call-note-form-#{schedule.id}"}
+            phx-submit="save_note"
+            class="mt-4 rounded-2xl border border-base-300 bg-base-200/60 p-4"
+          >
+            <input type="hidden" name="_id" value={schedule.id} />
+            <.input
+              field={@note_forms[schedule.id][:note]}
+              type="textarea"
+              label="Call notes"
+              maxlength="500"
+              rows="3"
+              disabled={schedule.organizer_id != @current_scope.user.id}
+              placeholder="Topics, links, or anything to remember for this call"
+            />
+            <div class="mt-2 flex items-center justify-between gap-3">
+              <p class="text-xs opacity-60">
+                <%= if schedule.organizer_id == @current_scope.user.id do %>
+                  Shared with the invitee.
+                <% else %>
+                  Shared by {Social.Address.handle(schedule.organizer)}.
+                <% end %>
+              </p>
+              <button
+                :if={schedule.organizer_id == @current_scope.user.id}
+                id={"save-scheduled-call-note-#{schedule.id}"}
+                type="submit"
+                class="btn btn-outline btn-sm rounded-xl"
+              >
+                Save notes
+              </button>
+            </div>
+          </.form>
         </article>
       </section>
     </Layouts.app>
@@ -196,9 +228,9 @@ defmodule VeejrWeb.CallsLive do
      |> assign(
        page_title: "Calls",
        friends: friends,
-       schedule_form: schedule_form(selected_friend_id),
-       schedules: Calls.list_scheduled_calls(user)
-     )}
+       schedule_form: schedule_form(selected_friend_id)
+     )
+     |> assign_schedules(user)}
   end
 
   @impl true
@@ -210,10 +242,8 @@ defmodule VeejrWeb.CallsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Call scheduled. Both people will receive a reminder.")
-         |> assign(
-           schedule_form: schedule_form(params["friend_id"]),
-           schedules: Calls.list_scheduled_calls(user)
-         )}
+         |> assign(schedule_form: schedule_form(params["friend_id"]))
+         |> assign_schedules(user)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply,
@@ -237,7 +267,7 @@ defmodule VeejrWeb.CallsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Scheduled call cancelled.")
-         |> assign(schedules: Calls.list_scheduled_calls(user))}
+         |> assign_schedules(user)}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "The scheduled call could not be cancelled.")}
@@ -262,10 +292,27 @@ defmodule VeejrWeb.CallsLive do
     end
   end
 
+  def handle_event("save_note", %{"_id" => id, "schedule_note" => params}, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Calls.update_scheduled_call_note(user, parse_id(id), params) do
+      {:ok, _schedule} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Call notes saved.")
+         |> assign_schedules(user)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, put_flash(socket, :error, changeset_error(changeset))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Only the organizer can change call notes.")}
+    end
+  end
+
   @impl true
   def handle_info({:veejr_call_schedule, _event, _schedule, _peer}, socket) do
-    {:noreply,
-     assign(socket, :schedules, Calls.list_scheduled_calls(socket.assigns.current_scope.user))}
+    {:noreply, assign_schedules(socket, socket.assigns.current_scope.user)}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -281,6 +328,17 @@ defmodule VeejrWeb.CallsLive do
       },
       as: :schedule
     )
+  end
+
+  defp assign_schedules(socket, user) do
+    schedules = Calls.list_scheduled_calls(user)
+
+    note_forms =
+      Map.new(schedules, fn schedule ->
+        {schedule.id, to_form(%{"note" => schedule.note || ""}, as: :schedule_note)}
+      end)
+
+    assign(socket, schedules: schedules, note_forms: note_forms)
   end
 
   defp selected_friend_id(nil, _friends), do: nil
@@ -318,8 +376,6 @@ defmodule VeejrWeb.CallsLive do
   defp status_class("scheduled"), do: "badge badge-primary badge-sm"
   defp status_class("cancelled"), do: "badge badge-ghost badge-sm opacity-60"
   defp status_class("started"), do: "badge badge-success badge-sm"
-
-  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 
   defp changeset_error(changeset) do
     case changeset.errors do

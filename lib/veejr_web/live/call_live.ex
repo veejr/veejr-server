@@ -610,6 +610,14 @@ defmodule VeejrWeb.CallLive do
 
       {:ok, call} ->
         cond do
+          params["busy"] == "1" and call.callee_id == user.id ->
+            Calls.decline_call(user, public_id, "busy")
+
+            {:ok,
+             socket
+             |> put_flash(:info, "Sent “Busy now, laters”.")
+             |> push_navigate(to: return_to(params, call, user), replace: true)}
+
           params["reject"] == "1" and call.callee_id == user.id ->
             Calls.decline_call(user, public_id)
 
@@ -739,6 +747,7 @@ defmodule VeejrWeb.CallLive do
     message =
       case reason do
         "declined" -> "Call declined."
+        "busy" -> "Busy now, laters."
         "cancelled" -> "Call invitation cancelled."
         "missed" -> "Call ended before it was answered."
         _ -> "Call ended."
