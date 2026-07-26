@@ -3,6 +3,7 @@ defmodule VeejrWeb.WatchLive do
 
   use VeejrWeb, :live_view
 
+  alias Veejr.Accounts.UserNotifier
   alias Veejr.WatchParties
 
   @impl true
@@ -26,6 +27,7 @@ defmodule VeejrWeb.WatchLive do
       |> assign(:party, party)
       |> assign(:host?, party && party.host_id == socket.assigns.current_scope.user.id)
       |> assign(:watch_form, to_form(%{"url" => ""}, as: :watch))
+      |> assign(:outsider_invites_form, to_form(%{"emails" => ""}, as: :outsider_invites))
       |> assign(:voice_participant, voice_participant)
       |> assign(:voice_peers, Jason.encode!(voice_peers))
       |> assign(:ice_servers, Jason.encode!(Veejr.Calls.IceConfig.servers()))
@@ -75,6 +77,50 @@ defmodule VeejrWeb.WatchLive do
     end
 
     {:noreply, push_navigate(socket, to: ~p"/watch")}
+  end
+
+  def handle_event(
+        "invite_outsiders",
+        %{"outsider_invites" => %{"emails" => emails}},
+        socket
+      ) do
+    if socket.assigns.host? do
+      host = socket.assigns.current_scope.user
+      party = socket.assigns.party
+
+      case WatchParties.create_guest_invites(party.public_id, host.id, emails) do
+        {:ok, invitations} ->
+          {sent, failed} =
+            Enum.reduce(invitations, {0, 0}, fn invitation, {sent, failed} ->
+              invite_url = url(~p"/watch/guest/#{invitation.token}")
+
+              case UserNotifier.deliver_guest_watch_party_invitation(
+                     host,
+                     invitation.email,
+                     invite_url
+                   ) do
+                {:ok, _email} ->
+                  {sent + 1, failed}
+
+                {:error, _reason} ->
+                  WatchParties.revoke_guest_invite(
+                    party.public_id,
+                    host.id,
+                    invitation.token
+                  )
+
+                  {sent, failed + 1}
+              end
+            end)
+
+          {:noreply, guest_invitation_result(socket, sent, failed)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, guest_invitation_error(reason))}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Only the watch-party host can invite guests.")}
+    end
   end
 
   def handle_event(
@@ -144,6 +190,8 @@ defmodule VeejrWeb.WatchLive do
       {:noreply, socket}
     end
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
@@ -219,6 +267,56 @@ defmodule VeejrWeb.WatchLive do
               <.icon name="hero-arrows-pointing-out" class="size-4" /> Full screen
             </button>
           </div>
+
+          <section
+            :if={@host?}
+            id="watch-outsider-invites"
+            class="overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+          >
+            <div class="border-b border-base-300 bg-primary/5 px-5 py-4">
+              <div class="flex items-start gap-3">
+                <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <.icon name="hero-envelope" class="size-5" />
+                </span>
+                <div>
+                  <h2 class="font-semibold">Invite outsiders</h2>
+                  <p class="mt-1 text-sm leading-6 opacity-65">
+                    Email private guest links to people who do not have Veejr accounts.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <.form
+              for={@outsider_invites_form}
+              id="watch-outsider-invite-form"
+              phx-submit="invite_outsiders"
+              class="space-y-4 p-5"
+            >
+              <.input
+                field={@outsider_invites_form[:emails]}
+                type="textarea"
+                label="Email addresses"
+                placeholder="alex@example.com, sam@example.org"
+                rows="3"
+                spellcheck="false"
+                required
+              />
+              <p class="text-xs leading-5 opacity-60">
+                Separate up to 25 addresses with commas. Each person gets a different
+                capability link that expires when this party ends. Guest links include
+                synchronized playback, but encrypted party voice requires a Veejr identity.
+              </p>
+              <button
+                id="send-watch-outsider-invites"
+                type="submit"
+                phx-disable-with="Sending invitations…"
+                class="btn btn-primary btn-sm rounded-xl"
+              >
+                <.icon name="hero-paper-airplane" class="size-4" /> Send invitations
+              </button>
+            </.form>
+          </section>
 
           <div
             id="watch-voice"
@@ -325,4 +423,37 @@ defmodule VeejrWeb.WatchLive do
 
     "https://www.youtube-nocookie.com/embed/#{video_id}?#{query}"
   end
+
+  defp guest_invitation_result(socket, sent, 0) do
+    socket
+    |> assign(:outsider_invites_form, to_form(%{"emails" => ""}, as: :outsider_invites))
+    |> put_flash(
+      :info,
+      "#{sent} outsider invitation#{if sent == 1, do: "", else: "s"} sent."
+    )
+  end
+
+  defp guest_invitation_result(socket, sent, failed) do
+    put_flash(
+      socket,
+      :error,
+      "#{sent} invitation#{if sent == 1, do: "", else: "s"} sent; " <>
+        "#{failed} could not be delivered."
+    )
+  end
+
+  defp guest_invitation_error(:no_guest_emails),
+    do: "Enter at least one email address."
+
+  defp guest_invitation_error(:too_many_guest_emails),
+    do: "Invite no more than 25 outsiders at a time."
+
+  defp guest_invitation_error({:invalid_guest_email, email}),
+    do: "#{email} is not a valid email address."
+
+  defp guest_invitation_error(:not_host),
+    do: "Only the watch-party host can invite guests."
+
+  defp guest_invitation_error(_reason),
+    do: "The outsider invitations could not be created."
 end

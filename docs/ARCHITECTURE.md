@@ -296,6 +296,14 @@ on the same instance receive a join hint. Control refreshes a 90-second timer,
 so an abandoned host causes the party to expire. State is neither durable nor
 federated and disappears on application restart.
 
+Hosts may create up to 25 outsider invitations from normalized,
+comma-separated email addresses. A distinct 256-bit capability is emailed to
+each recipient; only its SHA-256 hash and email remain in the in-memory party
+state. The public `/watch/guest/:token` LiveView is in the ordinary `:browser`
+pipeline with no authentication mount because the unguessable token is its
+sole authorization boundary. It exposes synchronized playback only. Ending
+the party, host expiry, or process restart clears every invitation.
+
 Optional voice uses a peer-to-peer WebRTC mesh. Every page joins receive-only;
 a participant explicitly grants microphone access to start transmitting and
 may stop their track independently. SDP/ICE signaling is sealed pairwise with

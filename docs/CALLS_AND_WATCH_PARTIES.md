@@ -159,6 +159,14 @@ URL (or a video ID), and start the party. Only one party may be active per
 instance. Every signed-in user receives a join banner and can also open the
 active party from the Watch page.
 
+The host may use **Invite outsiders** to send up to 25 comma-separated email
+addresses private guest links. Every recipient gets a distinct random
+capability and can open synchronized playback without creating an account.
+Only a hash of each capability is retained. Guest links stop working when the
+party ends or the application restarts, expose no account data, and do not
+include encrypted party voice because outsiders have no pinned Veejr identity
+key.
+
 The initiator is the host and is the only participant allowed to control or
 end playback. Host play/pause/position updates synchronize viewers, with a
 10-second heartbeat to correct drift. Browser autoplay rules may require a
@@ -175,8 +183,10 @@ uploads one audio stream per connected peer.
 
 Watch-party state exists only in the running application process. It is not
 federated, persisted, added to history, or restored after an application
-restart. The server can observe participant identity, the YouTube video ID,
-playback state, and timing, but not voice content.
+restart. Ephemeral outsider email addresses and capability hashes live in that
+same process only. The server can observe participant identity, invited email
+addresses, the YouTube video ID, playback state, and timing, but not voice
+content.
 
 ## Troubleshooting
 

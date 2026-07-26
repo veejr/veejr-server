@@ -15,6 +15,8 @@ defmodule Veejr.WatchParties do
   @global_topic "watch_parties"
   @host_timeout_ms 90_000
   @video_id_re ~r/^[A-Za-z0-9_-]{11}$/
+  @email_re ~r/^[^@\s,;]+@[^@\s,;]+$/
+  @max_guest_invites 25
 
   def start_link(opts) do
     name = Keyword.get(opts, :name, __MODULE__)
@@ -63,6 +65,53 @@ defmodule Veejr.WatchParties do
     )
   end
 
+  @doc "Creates one private guest capability per comma-separated email."
+  def create_guest_invites(public_id, host_id, input, server \\ __MODULE__) do
+    with {:ok, emails} <- parse_guest_emails(input) do
+      GenServer.call(server, {:create_guest_invites, public_id, host_id, emails})
+    end
+  end
+
+  @doc "Returns the active party authorized by a guest capability."
+  def guest_party(token, server \\ __MODULE__)
+
+  def guest_party(token, server) when is_binary(token) and byte_size(token) > 0 do
+    GenServer.call(server, {:guest_party, token_hash(token)})
+  end
+
+  def guest_party(_token, _server), do: nil
+
+  @doc "Revokes one guest capability after an invitation email fails."
+  def revoke_guest_invite(public_id, host_id, token, server \\ __MODULE__)
+      when is_binary(token) do
+    GenServer.call(server, {:revoke_guest_invite, public_id, host_id, token_hash(token)})
+  end
+
+  def parse_guest_emails(input) when is_binary(input) do
+    emails =
+      input
+      |> String.split(~r/[,\r\n]+/, trim: true)
+      |> Enum.map(&(String.trim(&1) |> String.downcase()))
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+
+    cond do
+      emails == [] ->
+        {:error, :no_guest_emails}
+
+      length(emails) > @max_guest_invites ->
+        {:error, :too_many_guest_emails}
+
+      invalid = Enum.find(emails, &(byte_size(&1) > 160 or not Regex.match?(@email_re, &1))) ->
+        {:error, {:invalid_guest_email, invalid}}
+
+      true ->
+        {:ok, emails}
+    end
+  end
+
+  def parse_guest_emails(_input), do: {:error, :no_guest_emails}
+
   def extract_video_id(input) when is_binary(input) do
     input = String.trim(input)
 
@@ -75,7 +124,8 @@ defmodule Veejr.WatchParties do
   def extract_video_id(_input), do: {:error, :invalid_youtube_url}
 
   @impl true
-  def init(_state), do: {:ok, %{party: nil, expiry_ref: nil, participants: %{}}}
+  def init(_state),
+    do: {:ok, %{party: nil, expiry_ref: nil, participants: %{}, guest_invites: %{}}}
 
   @impl true
   def handle_call(:active_party, _from, state), do: {:reply, state.party, state}
@@ -125,6 +175,48 @@ defmodule Veejr.WatchParties do
       %{public_id: ^public_id} -> {:reply, {:error, :not_host}, state}
       _ -> {:reply, {:error, :invalid_control}, state}
     end
+  end
+
+  def handle_call(
+        {:create_guest_invites, public_id, host_id, emails},
+        _from,
+        %{party: %{public_id: public_id, host_id: host_id}} = state
+      ) do
+    existing =
+      Map.reject(state.guest_invites, fn {_hash, invitation} ->
+        invitation.email in emails
+      end)
+
+    {invitations, guest_invites} =
+      Enum.map_reduce(emails, existing, fn email, invites ->
+        token = random_token()
+        hash = token_hash(token)
+        invitation = %{email: email, token_hash: hash}
+        {%{email: email, token: token}, Map.put(invites, hash, invitation)}
+      end)
+
+    {:reply, {:ok, invitations}, %{state | guest_invites: guest_invites}}
+  end
+
+  def handle_call({:create_guest_invites, _public_id, _host_id, _emails}, _from, state) do
+    {:reply, {:error, :not_host}, state}
+  end
+
+  def handle_call({:guest_party, token_hash}, _from, state) do
+    party = if state.party && Map.has_key?(state.guest_invites, token_hash), do: state.party
+    {:reply, party, state}
+  end
+
+  def handle_call(
+        {:revoke_guest_invite, public_id, host_id, token_hash},
+        _from,
+        %{party: %{public_id: public_id, host_id: host_id}} = state
+      ) do
+    {:reply, :ok, %{state | guest_invites: Map.delete(state.guest_invites, token_hash)}}
+  end
+
+  def handle_call({:revoke_guest_invite, _public_id, _host_id, _token_hash}, _from, state) do
+    {:reply, {:error, :not_host}, state}
   end
 
   def handle_call(
@@ -285,7 +377,7 @@ defmodule Veejr.WatchParties do
       Process.demonitor(participant.monitor_ref, [:flush])
     end)
 
-    %{state | party: nil, expiry_ref: nil, participants: %{}}
+    %{state | party: nil, expiry_ref: nil, participants: %{}, guest_invites: %{}}
   end
 
   defp broadcast_ended(party) do
@@ -299,4 +391,7 @@ defmodule Veejr.WatchParties do
   defp public_participant(participant) do
     Map.take(participant, [:id, :user_id, :name, :public_key])
   end
+
+  defp random_token, do: :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+  defp token_hash(token), do: :crypto.hash(:sha256, token) |> Base.url_encode64(padding: false)
 end

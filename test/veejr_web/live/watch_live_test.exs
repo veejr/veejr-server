@@ -59,4 +59,58 @@ defmodule VeejrWeb.WatchLiveTest do
     assert is_nil(WatchParties.active_party())
     assert user.id == party.host_id
   end
+
+  test "the host emails distinct outsider invitations", %{conn: conn, user: user} do
+    assert {:ok, party} = WatchParties.start_party(user, "dQw4w9WgXcQ")
+    {:ok, view, _html} = live(conn, "/watch/#{party.public_id}")
+
+    assert has_element?(view, "#watch-outsider-invites")
+    assert has_element?(view, "#watch-outsider-invite-form")
+
+    view
+    |> form("#watch-outsider-invite-form",
+      outsider_invites: %{emails: "first@example.com, second@example.org"}
+    )
+    |> render_submit()
+
+    assert render(view) =~ "2 outsider invitations sent."
+  end
+
+  test "an outsider joins synchronized playback without an account", %{
+    user: user
+  } do
+    assert {:ok, party} = WatchParties.start_party(user, "dQw4w9WgXcQ")
+
+    assert {:ok, [%{token: token}]} =
+             WatchParties.create_guest_invites(
+               party.public_id,
+               user.id,
+               "guest@example.com"
+             )
+
+    guest_conn = build_conn()
+    {:ok, guest_view, _html} = live(guest_conn, "/watch/guest/#{token}")
+
+    assert has_element?(guest_view, "#guest-watch-party")
+    assert has_element?(guest_view, "#guest-youtube-watch-player[data-host='false']")
+    refute has_element?(guest_view, "#watch-voice")
+
+    assert :ok = WatchParties.control(party.public_id, user.id, "playing", 42.0)
+
+    assert_push_event guest_view, "watch:control", %{
+      playback: "playing",
+      position: 42.0
+    }
+
+    assert :ok = WatchParties.end_party(party.public_id, user.id)
+    assert has_element?(guest_view, "#guest-watch-unavailable")
+  end
+
+  test "an invalid outsider capability exposes no party", %{user: user} do
+    assert {:ok, _party} = WatchParties.start_party(user, "dQw4w9WgXcQ")
+    {:ok, view, _html} = live(build_conn(), "/watch/guest/not-a-real-token")
+
+    assert has_element?(view, "#guest-watch-unavailable")
+    refute has_element?(view, "#guest-youtube-watch-player")
+  end
 end

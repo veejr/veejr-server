@@ -205,6 +205,10 @@ defmodule VeejrWeb.Router do
       live "/guest/:token/call", GuestConferenceLive.Call, :show
     end
 
+    live_session :guest_watch_party do
+      live "/watch/guest/:token", GuestWatchLive, :show
+    end
+
     live_session :current_user,
       on_mount: [{VeejrWeb.UserAuth, :mount_current_scope}] do
       live "/users/register", UserLive.Registration, :new

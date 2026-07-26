@@ -74,6 +74,45 @@ defmodule Veejr.WatchPartiesTest do
              )
   end
 
+  test "guest email capabilities are private, normalized, and expire with the party" do
+    server = start_supervised!({WatchParties, name: unique_server_name()})
+    host = %{id: 10, username: "host_user", display_name: "Host"}
+
+    assert {:ok, party} = WatchParties.start_party(host, "dQw4w9WgXcQ", server)
+
+    assert {:ok, invitations} =
+             WatchParties.create_guest_invites(
+               party.public_id,
+               host.id,
+               " FIRST@example.com, second@example.org, first@example.com ",
+               server
+             )
+
+    assert Enum.map(invitations, & &1.email) == ["first@example.com", "second@example.org"]
+    assert Enum.all?(invitations, &(WatchParties.guest_party(&1.token, server) == party))
+    assert is_nil(WatchParties.guest_party("not-a-capability", server))
+
+    [first | _rest] = invitations
+    assert :ok = WatchParties.revoke_guest_invite(party.public_id, host.id, first.token, server)
+    assert is_nil(WatchParties.guest_party(first.token, server))
+
+    assert :ok = WatchParties.end_party(party.public_id, host.id, server)
+    assert Enum.all?(invitations, &is_nil(WatchParties.guest_party(&1.token, server)))
+  end
+
+  test "guest email parsing rejects invalid and excessive lists" do
+    assert {:error, :no_guest_emails} = WatchParties.parse_guest_emails("  ")
+
+    assert {:error, {:invalid_guest_email, "not-an-email"}} =
+             WatchParties.parse_guest_emails("valid@example.com, not-an-email")
+
+    too_many =
+      1..26
+      |> Enum.map_join(",", &"guest#{&1}@example.com")
+
+    assert {:error, :too_many_guest_emails} = WatchParties.parse_guest_emails(too_many)
+  end
+
   defp unique_server_name do
     String.to_atom("watch_parties_test_#{System.unique_integer([:positive])}")
   end

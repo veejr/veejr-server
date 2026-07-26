@@ -103,6 +103,34 @@ defmodule Veejr.Accounts.UserNotifier do
     )
   end
 
+  @doc "Emails a private capability link for one active YouTube watch party."
+  def deliver_guest_watch_party_invitation(host, recipient, url) do
+    host_name = host.display_name || "@#{host.username}"
+
+    deliver(
+      recipient,
+      "guest_watch_party_invitation",
+      "#{host_name} invited you to a YouTube watch party",
+      """
+
+      ==============================
+
+      #{host_name} invited you to watch YouTube together on #{Veejr.instance_name()}.
+
+      You do not need a Veejr account. Open this private link while the party
+      is active:
+
+      #{url}
+
+      The link grants access only to this watch party and stops working when
+      the host ends it. If you were not expecting it, you can safely ignore
+      this email.
+
+      ==============================
+      """
+    )
+  end
+
   defp deliver_magic_link_instructions(user, url) do
     deliver(user.email, "login_link", "Log in instructions", """
 

@@ -41,7 +41,7 @@ friendship, and consent rules.
   flow peer-to-peer; signaling is sealed between pinned participant keys.
 - Instance-local, host-controlled YouTube watch parties. Signed-in users can
   join synchronized playback and independently enable or disable peer-to-peer
-  voice.
+  voice; hosts can email ephemeral playback-only guest links to outsiders.
 - A native Jetpack Compose Android client with portable-key unlock, consent,
   conversation messaging, filtered history, contact/group policy controls, and
   private notes. See [veejr-android](https://github.com/veejr/veejr-android).
@@ -153,7 +153,10 @@ would close an active call.
 
 The global **Watch** page hosts one instance-local YouTube watch party at a
 time. The initiator controls playback; every other signed-in user on that
-instance may join and may independently turn their microphone on or off.
+instance may join and may independently turn their microphone on or off. The
+host can also paste up to 25 comma-separated email addresses into **Invite
+outsiders**. Each recipient receives a different private, no-account guest
+link for synchronized playback; encrypted party voice remains member-only.
 
 Call chat/files and watch-party state are deliberately ephemeral: they are not
 message history, export data, or durable server records. Browser autoplay,
