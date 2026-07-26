@@ -30,6 +30,21 @@ defmodule Veejr.CallsTest do
       assert %Call{public_id: ^public_id} = Calls.pending_ring(bob)
     end
 
+    test "repeated starts reuse the active call and ring only once" do
+      alice = user_fixture()
+      bob = user_fixture()
+      befriend(alice, bob)
+      subscribe_user(bob)
+
+      assert {:ok, first} = Calls.start_call(alice, bob.id)
+      assert_receive {:veejr_call_ring, %Call{public_id: public_id}}
+      assert public_id == first.public_id
+
+      assert {:ok, second} = Calls.start_call(alice, bob.id)
+      assert second.public_id == first.public_id
+      refute_receive {:veejr_call_ring, _call}
+    end
+
     test "only accepted friends can ring" do
       alice = user_fixture()
       stranger = user_fixture()
@@ -72,6 +87,20 @@ defmodule Veejr.CallsTest do
 
       # the caller cannot join as callee
       assert {:error, _} = Calls.join_call(alice, call.public_id)
+    end
+
+    test "an accepted callee can re-announce after reconnecting" do
+      alice = user_fixture()
+      bob = user_fixture()
+      befriend(alice, bob)
+
+      {:ok, call} = Calls.start_call(alice, bob.id)
+      {:ok, _joined} = Calls.join_call(bob, call.public_id)
+      Calls.subscribe(call)
+
+      assert {:ok, %Call{state: "accepted"}} = Calls.rejoin_call(bob, call.public_id)
+      assert_receive {:call_peer_joined, public_id}
+      assert public_id == call.public_id
     end
 
     test "decline and hang-up settle the call state" do
@@ -376,6 +405,12 @@ defmodule Veejr.CallsTest do
       Calls.subscribe(call)
 
       {:ok, _} = Calls.join_call(alice, "remote-call-2")
+
+      # A callee reconnect re-announces "joined" so negotiation can restart.
+      assert {:ok, :applied} =
+               Calls.receive_remote_update("remote-call-2", @remote_host, "joined")
+
+      assert_receive {:call_peer_joined, "remote-call-2"}
 
       assert {:ok, :relayed} =
                Calls.receive_remote_signal("remote-call-2", @remote_host, "sealed", "nonce")

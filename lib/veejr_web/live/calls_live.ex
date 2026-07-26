@@ -154,6 +154,7 @@ defmodule VeejrWeb.CallsLive do
                 id={"start-scheduled-call-#{schedule.id}"}
                 phx-click="start"
                 phx-value-id={schedule.id}
+                phx-disable-with="Starting…"
                 class="btn btn-primary btn-sm rounded-xl"
               >
                 <.icon name="hero-phone" class="size-4" /> Start now

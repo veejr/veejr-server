@@ -163,6 +163,9 @@ defmodule VeejrWeb.CallLiveTest do
 
     {:ok, view, _html} = live(conn, "/call/#{call.public_id}")
 
+    refute_push_event view, "veejr:ring", %{call_id: _, from: _}
+    assert {:ok, %{state: "accepted"}} = Calls.get_call(user, call.public_id)
+
     send(view.pid, {:call_ended, call.public_id, "ended"})
 
     assert_redirect(view, "/messages?conversation=#{key}")

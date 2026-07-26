@@ -14,7 +14,7 @@ defmodule VeejrWeb.LiveNotify do
 
   alias Veejr.{Calls, Messaging, WatchParties}
 
-  def on_mount(:default, _params, _session, socket) do
+  def on_mount(:default, params, _session, socket) do
     user = socket.assigns.current_scope.user
 
     if connected?(socket) do
@@ -31,7 +31,7 @@ defmodule VeejrWeb.LiveNotify do
       if connected?(socket) do
         socket
         |> maybe_push_watch_invite()
-        |> maybe_push_call_ring(user)
+        |> maybe_push_call_ring(user, params)
       else
         socket
       end
@@ -118,10 +118,15 @@ defmodule VeejrWeb.LiveNotify do
     end
   end
 
-  defp maybe_push_call_ring(socket, user) do
+  defp maybe_push_call_ring(socket, user, params) do
     case Calls.pending_ring(user) do
-      nil -> socket
-      call -> push_call_ring(socket, call)
+      nil ->
+        socket
+
+      call ->
+        if socket.view == VeejrWeb.CallLive and params["public_id"] == call.public_id,
+          do: socket,
+          else: push_call_ring(socket, call)
     end
   end
 

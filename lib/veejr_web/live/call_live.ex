@@ -660,6 +660,11 @@ defmodule VeejrWeb.CallLive do
           # our dead and connected mounts. Replay it so negotiation starts.
           send(self(), {:call_peer_joined, call.public_id})
 
+        role == "callee" and call.state == "accepted" ->
+          # A full reload can lose the caller's first offer. Re-announce this
+          # accepted callee so the caller can restart negotiation.
+          Calls.rejoin_call(user, call.public_id)
+
         true ->
           :ok
       end

@@ -32,6 +32,8 @@ content. Unanswered rings have a 60-second stale threshold; the periodic
 janitor marks them missed, so the row may remain visibly ringing until its
 next sweep. If the callee was temporarily offline, the newest invitation still
 marked ringing is replayed when an authenticated Veejr page reconnects.
+The pending dialog is not replayed over its own call page. Repeated start
+events reuse the active call instead of creating another invitation.
 
 Opening the call page first presents a private device check. Choose the
 microphone, camera, and (where supported) speaker, review the local preview,
@@ -101,7 +103,9 @@ Screen sharing uses a separate screen-oriented profile.
 Veejr attempts up to two WebRTC ICE restarts after an interrupted peer
 connection. A participant's LiveView disappearance also has a 25-second grace
 period, so a short mobile backgrounding, network switch, or socket reconnect
-does not immediately end the call.
+does not immediately end the call. When an accepted callee reloads their call
+page, their instance re-announces the join so the original caller restarts
+negotiation rather than leaving the reloaded callee waiting on a lost offer.
 
 If the callee remains disconnected after recovery:
 

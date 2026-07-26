@@ -621,6 +621,7 @@ defmodule VeejrWeb.MessagesLive do
                     id="start-call"
                     phx-click="start_call"
                     phx-value-id={call_peer_id(@selected_conversation)}
+                    phx-disable-with="Calling…"
                     title="Start an encrypted audio/video call"
                     class="rounded-full px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
                   >

@@ -239,7 +239,10 @@ export const CallSession = {
       const hangupLabel = this.el.querySelector("[data-role=hangup-label]")
       if (hangupLabel) hangupLabel.textContent = "End call"
       this.setLifecycle("connecting", "Connecting…")
-      if (this.secureSessionStarted && this.role === "caller") this.startAsCaller()
+      if (this.secureSessionStarted && this.role === "caller") {
+        if (this.pc) this.restartConnection()
+        else this.startAsCaller()
+      }
     })
 
     this.handleEvent("call:signal", ({ciphertext, nonce}) => {
@@ -1994,6 +1997,15 @@ export function installRingBanner() {
     decline.href = `/call/${detail.call_id}?reject=1`
     decline.className = "btn btn-ghost"
     decline.textContent = "Reject"
+
+    const dismissRing = () => {
+      banner.remove()
+      ringNotifications.get(detail.call_id)?.close()
+      ringNotifications.delete(detail.call_id)
+    }
+    accept.addEventListener("click", dismissRing)
+    busy.addEventListener("click", dismissRing)
+    decline.addEventListener("click", dismissRing)
 
     actions.append(accept, busy, decline)
     card.append(icon, title, label, actions)

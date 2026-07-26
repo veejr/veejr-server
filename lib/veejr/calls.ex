@@ -66,34 +66,56 @@ defmodule Veejr.Calls do
         {:error, :not_a_friend}
 
       true ->
-        call =
-          Repo.insert!(%Call{
-            public_id: random_id(),
-            caller_id: caller.id,
-            callee_id: callee.id,
-            state: "ringing"
-          })
+        case active_call_between(caller.id, callee.id) do
+          %Call{} = call ->
+            {:ok, preload_call(call)}
 
-        call = %{call | caller: caller, callee: callee}
-
-        if is_nil(callee.host) do
-          ring_local(call, callee)
-          {:ok, call}
-        else
-          case Veejr.Federation.deliver_call_invite(call, caller, callee) do
-            :ok ->
-              {:ok, call}
-
-            {:error, reason} ->
-              Logger.warning(
-                "calls: invite to #{callee.username}@#{callee.host} failed: #{inspect(reason)}"
-              )
-
-              set_state(call, "failed")
-              {:error, :callee_unreachable}
-          end
+          nil ->
+            create_and_deliver_call(caller, callee)
         end
     end
+  end
+
+  defp create_and_deliver_call(caller, callee) do
+    call =
+      Repo.insert!(%Call{
+        public_id: random_id(),
+        caller_id: caller.id,
+        callee_id: callee.id,
+        state: "ringing"
+      })
+
+    call = %{call | caller: caller, callee: callee}
+
+    if is_nil(callee.host) do
+      ring_local(call, callee)
+      {:ok, call}
+    else
+      case Veejr.Federation.deliver_call_invite(call, caller, callee) do
+        :ok ->
+          {:ok, call}
+
+        {:error, reason} ->
+          Logger.warning(
+            "calls: invite to #{callee.username}@#{callee.host} failed: #{inspect(reason)}"
+          )
+
+          set_state(call, "failed")
+          {:error, :callee_unreachable}
+      end
+    end
+  end
+
+  defp active_call_between(first_id, second_id) do
+    from(call in Call,
+      where:
+        call.state in ["ringing", "accepted"] and
+          ((call.caller_id == ^first_id and call.callee_id == ^second_id) or
+             (call.caller_id == ^second_id and call.callee_id == ^first_id)),
+      order_by: [desc: call.inserted_at],
+      limit: 1
+    )
+    |> Repo.one()
   end
 
   @doc "Creates a ringing call after a host admits one waiting email guest."
@@ -494,6 +516,28 @@ defmodule Veejr.Calls do
     end
   end
 
+  @doc """
+  Re-announces an accepted callee after their call page reconnects.
+
+  This lets the caller restart negotiation when an offer was lost during a
+  mobile reconnect or full-page reload.
+  """
+  def rejoin_call(%User{id: user_id} = user, public_id) do
+    with {:ok, %Call{callee_id: ^user_id, state: "accepted"} = call} <-
+           get_call(user, public_id) do
+      broadcast(call, {:call_peer_joined, call.public_id})
+
+      relay_to_remote_peer(call, user, fn authority ->
+        Veejr.Federation.deliver_call_update(authority, call, "joined")
+      end)
+
+      {:ok, call}
+    else
+      {:ok, %Call{} = call} -> {:error, {:bad_state, call.state}}
+      error -> error
+    end
+  end
+
   @doc "Joins a ringing call from its admitted temporary guest side."
   def join_guest_call(%GuestConference{} = conference) do
     with {:ok, %GuestCall{state: "ringing"} = call} <- get_guest_call(conference) do
@@ -701,6 +745,9 @@ defmodule Veejr.Calls do
       case event do
         "joined" when call.state == "ringing" ->
           call = set_state(call, "accepted")
+          broadcast(call, {:call_peer_joined, call.public_id})
+
+        "joined" when call.state == "accepted" ->
           broadcast(call, {:call_peer_joined, call.public_id})
 
         "declined" when call.state == "ringing" ->
