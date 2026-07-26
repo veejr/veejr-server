@@ -482,6 +482,27 @@
   box-shadow: 0 1px 5px color-mix(in oklab, var(--color-base-content) 12%, transparent);
 }
 
+/* Composer actions must read as available controls before hover. The file
+   picker is a label rather than a button, so keep all controls on one explicit
+   color contract instead of relying on inherited button-only theme rules. */
+#messages-workspace #message-composer .messages-composer-action {
+  background: color-mix(in oklab, var(--color-primary) 14%, var(--color-base-200));
+  color: var(--color-primary);
+  opacity: 1;
+}
+
+#messages-workspace #message-composer .messages-composer-action:hover,
+#messages-workspace #message-composer .messages-composer-action:focus-within,
+#messages-workspace #message-composer .messages-composer-action:focus-visible {
+  background: color-mix(in oklab, var(--color-primary) 24%, var(--color-base-200));
+  color: var(--color-primary);
+}
+
+#messages-workspace #message-composer .messages-composer-action[aria-pressed="true"] {
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+}
+
 /* "Salon" — a chat-scoped editorial theme inspired by intimate round-table
    conversation: midnight ink, aged paper, amber labels, and portrait rings. */
 #messages-workspace[data-chat-theme="salon"] {
@@ -989,6 +1010,23 @@
   color: var(--party-ink);
 }
 
+#messages-workspace[data-chat-theme="party"] #message-composer .messages-composer-action {
+  background: rgba(124, 77, 255, 0.14);
+  color: var(--party-purple);
+}
+
+#messages-workspace[data-chat-theme="party"] #message-composer .messages-composer-action:hover,
+#messages-workspace[data-chat-theme="party"] #message-composer .messages-composer-action:focus-within,
+#messages-workspace[data-chat-theme="party"] #message-composer .messages-composer-action:focus-visible {
+  background: rgba(255, 79, 163, 0.22);
+  color: #5c2bd1;
+}
+
+#messages-workspace[data-chat-theme="party"] #message-composer .messages-composer-action[aria-pressed="true"] {
+  background: linear-gradient(135deg, var(--party-pink), var(--party-purple));
+  color: white;
+}
+
 #messages-workspace[data-chat-theme="party"] .message-arrival {
   animation: message-arrival-party 980ms cubic-bezier(0.16, 0.9, 0.25, 1.25) both;
 }
@@ -1269,6 +1307,26 @@
 
 #messages-workspace[data-chat-theme="comic"] #message-composer button {
   font-weight: 900;
+}
+
+#messages-workspace[data-chat-theme="comic"] #message-composer .messages-composer-action {
+  border: 2px solid var(--comic-ink);
+  background: var(--comic-white);
+  color: var(--comic-ink);
+  box-shadow: 2px 2px 0 var(--comic-ink);
+}
+
+#messages-workspace[data-chat-theme="comic"] #message-composer .messages-composer-action:hover,
+#messages-workspace[data-chat-theme="comic"] #message-composer .messages-composer-action:focus-within,
+#messages-workspace[data-chat-theme="comic"] #message-composer .messages-composer-action:focus-visible {
+  background: var(--comic-yellow);
+  color: var(--comic-ink);
+}
+
+#messages-workspace[data-chat-theme="comic"] #message-composer .messages-composer-action[aria-pressed="true"] {
+  background: var(--comic-blue);
+  color: white;
+  box-shadow: none;
 }
 
 #messages-workspace[data-chat-theme="comic"] .message-arrival {

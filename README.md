@@ -37,8 +37,13 @@ friendship, and consent rules.
 - 1:1 browser audio/video calls, including across federated instances, with
   device preview, adaptive video, screen sharing, full-screen/Picture-in-
   Picture/pop-out views, ephemeral direct chat and files, synchronized YouTube
-  sharing, interruption recovery, and caller re-invites. WebRTC media and data
-  flow peer-to-peer; signaling is sealed between pinned participant keys.
+  sharing, interruption recovery, caller re-invites, and persistent scheduled
+  calls with reminders, shared notes, participant cancellation, and
+  cancellation email. WebRTC media and data flow peer-to-peer; signaling is
+  sealed between pinned participant keys.
+- Email-capability guest calls let a member invite one person without a Veejr
+  account into a host-admitted, encrypted 1:1 video call. The guest uses a
+  temporary browser identity and can optionally join Veejr after the call.
 - Instance-local, host-controlled YouTube watch parties. Signed-in users can
   join synchronized playback and independently enable or disable peer-to-peer
   voice; hosts can email ephemeral playback-only guest links to outsiders.
@@ -128,6 +133,12 @@ are center-cropped and resized in the browser before upload, then shown on the
 Contacts and Messages pages. Click a contact's image to open a larger profile
 view and edit the private notes you keep about that person.
 
+Contacts has persistent Classic, Quiet, six playful, and two experimental 3D
+appearances. Orbit and Soiree render conversations in WebGL while preserving
+the same profile-image and conversation actions; accepted federated avatars
+are served through an authorization-scoped, same-origin texture proxy when
+the remote instance cannot be used directly as a canvas texture.
+
 To archive a conversation, open it in `/messages` and choose **Archive** in
 the conversation header. Archiving hides the thread from Messages and
 Contacts without deleting its messages. Restore it from Account → Archived
@@ -135,6 +146,11 @@ conversations by choosing **Unarchive**.
 
 In Messages, the composer stays pinned to the bottom of the conversation.
 Press **Enter** to send; press **Shift+Enter** to insert a newline.
+The conversation rail shows client-decrypted previews and unread counts;
+opening a thread marks its accepted incoming messages read. Choose Classic,
+Salon, Party, or Comic for a browser-local Messages appearance. New-message
+animation and control colors follow that choice, while every message retains
+an explicit UTC date and time.
 
 The Message options menu can set an availability time and a display count.
 Those limits are applied to every encrypted copy, including the sender's
@@ -150,6 +166,18 @@ ephemeral direct chat/files, or share a synchronized YouTube video. If a brief
 network or page interruption cannot recover automatically, the original
 caller can send a fresh invitation. Veejr warns before in-app navigation that
 would close an active call.
+
+Use **Calls** to schedule a persistent one-to-one call. Calendar entries start
+as compact person-and-time rows and expand to show reminders, shared notes,
+start controls, and cancellation. Either participant can cancel with an
+optional reason; the other participant receives an email, including across
+federated instances through their own home server.
+
+From **Invite someone**, choose **Guest call** to email a two-hour capability
+link to a person without an account. The guest checks devices and supplies a
+display name, then waits for the host to admit them. The host can cancel before
+admission. Guest chat, files, and the temporary browser identity disappear
+when the conference ends; joining Veejr afterward remains optional.
 
 The global **Watch** page hosts one instance-local YouTube watch party at a
 time. The initiator controls playback; every other signed-in user on that
@@ -220,6 +248,10 @@ That assignment cannot be changed or deleted. The administrator can open
 - Review an append-only audit trail of administrator actions. Audit and
   operational-failure records contain no decrypted messages, attachments,
   notes, locations, passwords, secret keys, or recipient email addresses.
+
+Admin sections are individually collapsible. **Overview** starts open; the
+remaining operational sections start closed so sensitive and advanced
+controls do not overwhelm the page.
 
 `PHX_HOST`, TLS, DNS, SMTP credentials, and `VEEJR_MODE` remain deployment
 settings. The Admin page displays the effective mode and public federation

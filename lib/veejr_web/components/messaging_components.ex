@@ -383,7 +383,7 @@ defmodule VeejrWeb.MessagingComponents do
           data-role="toggle-options"
           title="Message options"
           aria-label="Message options"
-          class="order-1 flex size-11 shrink-0 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100 sm:order-none"
+          class="messages-composer-action order-1 flex size-11 shrink-0 items-center justify-center rounded-full transition sm:order-none"
         >
           <.icon name="hero-adjustments-horizontal" class="size-5" />
         </button>
@@ -468,8 +468,10 @@ defmodule VeejrWeb.MessagingComponents do
 
         <label
           :if={@show_files && @surface == "messages"}
+          data-role="file-toggle"
           title="Attach files"
-          class="order-1 flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100 sm:order-none"
+          aria-label="Attach files"
+          class="messages-composer-action order-1 flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition sm:order-none"
         >
           <.icon name="hero-paper-clip" class="size-5" />
           <span class="sr-only">Attach files</span>
@@ -483,7 +485,7 @@ defmodule VeejrWeb.MessagingComponents do
           title="Record voice message"
           aria-label="Record voice message"
           aria-pressed="false"
-          class="order-1 flex size-11 shrink-0 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100 sm:order-none"
+          class="messages-composer-action order-1 flex size-11 shrink-0 items-center justify-center rounded-full transition sm:order-none"
         >
           <.icon name="hero-microphone" class="size-5" />
         </button>
@@ -495,7 +497,7 @@ defmodule VeejrWeb.MessagingComponents do
           title="Record video message"
           aria-label="Record video message"
           aria-pressed="false"
-          class="order-1 flex size-11 shrink-0 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100 sm:order-none"
+          class="messages-composer-action order-1 flex size-11 shrink-0 items-center justify-center rounded-full transition sm:order-none"
         >
           <.icon name="hero-video-camera" class="size-5" />
         </button>
@@ -506,7 +508,7 @@ defmodule VeejrWeb.MessagingComponents do
           data-role="video-facing-toggle"
           title="Switch camera for next recording"
           aria-label="Switch camera for next recording"
-          class="order-1 flex size-11 shrink-0 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100 sm:order-none"
+          class="messages-composer-action order-1 flex size-11 shrink-0 items-center justify-center rounded-full transition sm:order-none"
         >
           <.icon name="hero-arrow-path-rounded-square" class="size-5" />
         </button>

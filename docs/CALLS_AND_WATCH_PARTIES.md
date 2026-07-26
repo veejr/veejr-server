@@ -1,8 +1,9 @@
 # Calls and YouTube watch parties
 
-This guide describes the browser conferencing features in Veejr v0.3.16. It
-covers user behavior, recovery, privacy boundaries, and the operator settings
-that affect connectivity. For the lower-level trust model, see
+This guide describes the current browser conferencing features in Veejr. It
+covers member, scheduled, and no-account guest calls; recovery and privacy
+boundaries; watch parties; and the operator settings that affect connectivity.
+For the lower-level trust model, see
 [ARCHITECTURE.md](ARCHITECTURE.md); for TURN deployment, see
 [OPERATIONS.md](OPERATIONS.md#calls-stun-and-turn).
 
@@ -53,12 +54,13 @@ Call button in a one-to-one conversation. Select an accepted friend, local date
 and time, reminder lead time, and optional shared call notes. Every scheduled
 call card keeps a call-notes field visible; the organizer can update it and the
 invitee sees the synchronized value. The Calls page lists upcoming plans for
-both participants. The organizer can start early, and either participant can
-cancel with an optional reason. Cancellation records who canceled, mirrors the
-state and reason to the other home instance when federated, and emails the
-other participant from their own home instance. Starting creates a normal
-realtime call invitation, so the callee still explicitly accepts before media
-connects.
+both participants. Each entry is initially a compact one-line person-and-time
+row; open it to see status, reminders, notes, start, and cancellation controls.
+The organizer can start early, and either participant can cancel with an
+optional reason. Cancellation records who canceled, mirrors the state and
+reason to the other home instance when federated, and emails the other
+participant from their own home instance. Starting creates a normal realtime
+call invitation, so the callee still explicitly accepts before media connects.
 
 Schedules are persistent. A reminder worker checks them every 30 seconds and
 dispatches each reminder once. Connected tabs show an in-app banner and browser
@@ -82,6 +84,27 @@ local user. The scheduled time, reminder lead time, participants, lifecycle
 state, shared call notes, cancellation actor and reason, and reminder
 checkpoints are server-readable metadata on both home instances;
 call media and signaling retain the privacy boundaries described below.
+
+### Invite a person without a Veejr account
+
+Open **Invite someone** and choose **Guest call**. Enter one email address;
+Veejr sends a distinct private link that expires after two hours. The guest
+does not receive an account and cannot see contacts, messages, history, or any
+other authenticated page.
+
+The guest opens the link, enters a display name, checks camera/microphone
+devices, and enters a waiting room. The host sees that name and must choose
+**Admit** before the call starts. Before admission, the host can **Decline** a
+waiting guest or **Cancel invitation** while the invitation is merely sent or
+waiting. A cancelled, declined, or expired capability cannot open the lobby.
+
+The guest's browser creates a temporary X25519 identity for sealed signaling.
+It stays in that tab and is discarded after the conference; the server stores
+the temporary public key only while the conference is active and clears it
+when the call ends. Media, direct chat, and files use WebRTC and remain
+ephemeral as in a member call. Re-invite is not available for a guest call.
+After an ended call, the guest may optionally choose **Join Veejr**; normal
+instance invitation policy still applies and no account is created silently.
 
 ### In-call controls
 
@@ -143,8 +166,13 @@ lost, returning to Messages no longer produces the active-call warning.
   timestamps. Instances can observe who called whom and when.
 - Scheduled-call rows additionally store the organizer, invitee, UTC time,
   reminder lead time, lifecycle state, device and per-participant email
-  reminder checkpoints, and shared call notes. These are metadata, not
-  encrypted message content.
+  reminder checkpoints, shared call notes, cancellation actor, and optional
+  cancellation reason. These are metadata, not encrypted message content.
+- Guest-conference rows store the host, normalized invited email, SHA-256 hash
+  of the capability, expiry and lifecycle times, guest display name, and the
+  temporary public key while active. Guest-call rows store host/conference
+  linkage and lifecycle state. The raw email capability, signaling plaintext,
+  media, chat, and files are not stored.
 - Call chat and file transfer use the authenticated WebRTC data channel. They
   disappear when the call ends and are not included in History or account
   exports. A recipient can still save a transferred file, copy text, record
@@ -226,6 +254,25 @@ content.
   when an operating system suppresses a notification.
 - Check that `Veejr.Calls.Reminders` is running and the database is writable.
   A reminder already stamped `reminded_at` is not dispatched twice.
+- For a missing cancellation email, confirm the other participant is local to
+  the instance attempting delivery and inspect the `email` operational failure
+  for `scheduled_call_cancellation`. Federated peers email only their own
+  local participant.
+
+### Guest invitation or waiting room fails
+
+- Confirm SMTP delivery succeeded for operation
+  `guest_conference_invitation`; if email fails, Veejr revokes the newly
+  created invitation instead of leaving an unreachable live capability.
+- Guest links expire after two hours and become unavailable immediately after
+  host cancellation or decline.
+- The guest must provide a display name and allow a temporary browser identity
+  to be generated before the host sees **Admit**.
+- Only the member who created the invitation can view its host waiting room,
+  admit, decline, cancel, signal, or end that guest call.
+- Guest pages still require HTTPS for camera/microphone and can be affected by
+  the same browser autoplay, device, STUN, and TURN restrictions as member
+  calls.
 
 ### Call connects on some networks but not others
 
@@ -255,6 +302,8 @@ screen stream only; closing it does not end screen sharing or the call.
 - Serve Veejr over its canonical HTTPS hostname with websocket support.
 - Configure at least STUN; configure TURN/turns for reliable production calls.
 - Preserve one application replica when using SQLite.
+- Verify SMTP for schedule invitations/reminders/cancellations and immediate
+  guest-call invitations; review sanitized `email` operational failures.
 - Test calls between different networks, including a cellular connection and
   a restrictive VPN, after changing proxy, firewall, DNS, or TURN settings.
 - Treat call metadata, watch participation, TURN logs, and YouTube access as

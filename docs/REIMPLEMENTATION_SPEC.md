@@ -1,8 +1,8 @@
 # Veejr reimplementation specification
 
 Status: normative baseline for a compatible reimplementation  
-Baseline: veejr-server v0.3.16 (commit `7731232`) and client protocol v1
-Date: 2026-07-22
+Baseline: veejr-server v0.3.54 (release tag `v0.3.54`) and client protocol v1
+Date: 2026-07-26
 
 ## 1. Purpose
 
@@ -27,7 +27,8 @@ Veejr is a small, self-hosted, federated social messaging service. Users keep
 contacts and private notes, organize contacts into local groups, exchange
 end-to-end encrypted messages and media, share encrypted locations and map
 notes, make consent-gated peer-to-peer calls, watch synchronized YouTube with
-other users, and may move between independently operated Veejr instances.
+other users, invite a no-account email guest into a host-admitted private
+video call, and may move between independently operated Veejr instances.
 
 The home server authenticates users, enforces social and delivery policy,
 stores opaque ciphertext and encrypted files, and coordinates federation. It
@@ -64,6 +65,10 @@ coordinates, or the user's encryption passphrase.
 - Call chat/files and watch-party state are ephemeral. They are not message
   history, survive neither disconnect nor restart, and cannot be recovered or
   exported by the server.
+- Guest-call capabilities expire after two hours and grant only one lobby/call.
+  The guest's temporary identity, chat, and files do not become an account or
+  durable message history. The server still stores invited email and
+  conference lifecycle metadata.
 
 ## 3. Actors and identities
 
@@ -77,6 +82,7 @@ coordinates, or the user's encryption passphrase.
 | Instance administrator | Permanent first local account with instance-management powers. |
 | Browser client | Server-delivered application using cookie sessions and client-side cryptography. |
 | Native client | Independently distributed application using API device sessions. |
+| Email guest | Unauthenticated holder of one expiring guest-conference capability; not a Veejr account. |
 | Peer instance | Another Veejr authority communicating through signed federation requests. |
 | Provisioner | Host-side trusted process that creates and verifies isolated Veejr instances. |
 
@@ -109,6 +115,7 @@ one process or many, but their trust and transaction boundaries must remain.
 | Blob store | Opaque encrypted attachment bytes addressed by random capabilities. |
 | Realtime event bus | Foreground notification and message refresh hints. |
 | Peer-session coordinator | Consent/lifecycle and sealed signaling relay for calls and ephemeral watch-party voice. |
+| Guest-conference service | Expiring hashed email capabilities, temporary guest identity, host admission, and guest-call lifecycle. |
 | Federation worker | Signed peer requests and durable retry processing. |
 | Push adapters | Browser Web Push and optional Android FCM metadata-only notifications. |
 | Mail adapter | Transactional confirmation, login, invitation, and administrative mail through a configured SMTP provider. |
@@ -336,6 +343,15 @@ bytes or capture displayed content.
   self-copy. When sending to self, only one copy exists.
 - Pressing Enter sends; Shift+Enter inserts a newline on desktop.
 - On phone widths, the text-entry box appears below the action icons.
+- Conversation lists show an unread count and a browser-decrypted preview of
+  the latest envelope. Opening a thread marks its accepted incoming copies
+  read; the server may store `read_at` but MUST NOT receive preview plaintext.
+- Every rendered message shows a semantic UTC calendar date and time, not a
+  time-only value.
+- The Messages workspace provides browser-local Classic, Salon, Party, and
+  Comic appearances. Theme-specific hover, pressed, focus, selected, and
+  disabled states MUST keep text and icons legible; appearance choice does not
+  change message storage.
 
 ### 8.2 Consent state machine
 
@@ -449,6 +465,8 @@ pending --accept--> accepted --fetch/display--> accepted
   cancellation MUST persist its actor and reason, and the other participant's
   home instance MUST email its own local user. The schedule is visible to both
   participants; starting it creates an ordinary consent-gated realtime ring.
+- Calendar entries initially render as a compact target-and-local-time row and
+  expand to reveal status, reminder, note, start, and cancellation controls.
 - Schedules and reminder delivery state MUST persist across application
   restarts. A background worker dispatches each due reminder at most once to
   foreground tabs and registered push devices. Push payloads MUST remain
@@ -464,6 +482,20 @@ pending --accept--> accepted --fetch/display--> accepted
   reminder lead time, participant identities, lifecycle state, shared notes,
   cancellation actor and reason, and reminder checkpoints are server-readable
   metadata.
+- A key-configured local member MAY email one no-account guest an unguessable
+  256-bit conference capability. Store only its SHA-256 hash, normalized
+  invited email, host, two-hour expiry, lifecycle timestamps, and temporary
+  guest display name/public key. The capability MUST authorize only its guest
+  lobby and call routes.
+- The guest browser creates a temporary X25519 identity, checks devices, and
+  waits. The host MUST explicitly admit the displayed guest; before admission
+  the host MAY decline or revoke the invitation. Another member MUST NOT view
+  or operate that host's guest conference.
+- Guest signaling is sealed between the host identity and temporary guest
+  identity. Media/chat/files remain peer-to-peer and ephemeral. Ending the
+  conference clears the stored guest public key. No account is created
+  automatically; after an ended call, an optional normal membership invitation
+  MAY be issued only when instance invitation policy permits.
 - A 1:1 YouTube share is controlled only by the participant who starts it and
   is transported over the WebRTC data channel. It is mutually exclusive with
   screen sharing.
@@ -578,6 +610,8 @@ Only the administrator may:
 Audit events record actor, action, target type/id, safe structured details, and
 time. They MUST NOT contain message or attachment content, notes, coordinates,
 passwords, keys, recipient email addresses, tokens, or capability URLs.
+The Admin surface groups each operational area in an independently collapsible
+section; Overview starts open and every other section starts closed.
 
 ### 11.3 Export/import format
 
@@ -696,7 +730,7 @@ represent these entities and constraints.
 | Group member | Group and user; pair unique. |
 | Contact note | Owner, contact, body; owner/contact unique. |
 | Group note | Owner, group, body; owner/group unique. |
-| Envelope | Public ID, batch ID, kind, ciphertext, nonce, sender, recipient, sender-key snapshot, delivered/edited/expiry times, max/display count, resealed flag, thread key and participant-handle list, timestamps. Public ID unique; batch/recipient unique; recipient/thread-key indexed. |
+| Envelope | Public ID, batch ID, kind, ciphertext, nonce, sender, recipient, sender-key snapshot, delivered/read/edited/expiry times, max/display count, resealed flag, thread key and participant-handle list, timestamps. Public ID unique; batch/recipient unique; recipient/thread-key indexed. |
 | Notification | Envelope, recipient user, pending/accepted/declined state; one per relevant envelope/user. |
 | Conversation window | User, peer, active-until; pair unique. |
 | Delivery policy | User, subject type/id, acceptance and notification behavior; subject tuple unique. |
@@ -704,6 +738,9 @@ represent these entities and constraints.
 | Blob | Random public ID, owner, exact byte size, storage key/path, reference-tracking flag, timestamps. Public ID unique. |
 | Blob reference | Blob and batch ID; pair unique. |
 | Call | Random public ID, caller, callee, ringing/accepted/terminal state, and timestamps. Public ID unique; signaling is not stored. |
+| Scheduled call | Public ID, organizer, invitee, UTC scheduled time, reminder lead/checkpoints, shared note, lifecycle state, cancellation actor/reason, and timestamps. Public ID unique. |
+| Guest conference | Public ID, capability hash, invited email, host, temporary display name/public key, sent/waiting/admitted/terminal state, two-hour expiry and lifecycle timestamps. Public ID and capability hash unique. |
+| Guest call | Public ID, host, guest conference, lifecycle state, and timestamps. Public ID and conference unique; signaling is not stored. |
 
 ### 13.3 Federation and push
 
@@ -774,13 +811,19 @@ The exact visual design may change, but a compatible first-party UI provides:
 
 - Contacts as the post-login landing page, with separately collapsible
   Conversations, Groups, and Friends sections and Add Friend at the bottom.
-- A sticky responsive header. On smaller widths, Messages, Calls, Map, Friends,
-  Groups, and History live in a hamburger menu.
+- A sticky responsive header with the existing Veejr brand behavior and a
+  far-left hamburger containing Contacts, Messages, Calls, Map, History, and
+  Watch at every width.
 - Accessible light and dark modes across all pages, including Messages.
 - Full-row contact activation, consistent avatar dialogs, visible pending
   notifications, and keyboard-accessible controls.
 - Messages with a clear Back to Contacts affordance, profile image, history,
-  emoji picker, media controls, pinned composer, and responsive mobile layout.
+  unread counts, decrypted conversation previews, emoji picker, media
+  controls, pinned composer, full message date/time, four selectable
+  appearances, and responsive mobile layout.
+- Contacts appearance selection with Classic, Quiet, six playful themes, and
+  Orbit/Soiree 3D views. All views preserve conversation/profile activation,
+  readable controls, keyboard access, and federated avatar display.
 - In-app image, PDF, audio, and video viewing with dialogs that fit phone and
   desktop viewports and do not overlap controls.
 - Map recipient dropdowns for friends and groups.
@@ -791,12 +834,17 @@ The exact visual design may change, but a compatible first-party UI provides:
 - A caller-only re-invite action after unrecovered callee disconnect, and an
   incoming ring replay when a still-pending local callee reconnects.
 - A Calls page for creating, reviewing, starting, and cancelling persistent
-  one-to-one schedules with local-time display and configurable reminders.
+  one-to-one schedules with compact rows, expandable details, local-time
+  display, configurable reminders, shared notes, and participant-authored
+  cancellation reasons.
+- An email-capability guest-call flow with device lobby, host waiting-room
+  admission/cancellation, private call, and optional post-call membership.
 - An instance-local Watch page where the host controls synchronized YouTube
   and every participant independently opts into or out of microphone audio.
 - Account pages for settings, key management, avatar, export, and archives.
 - Admin pages for health, settings, invitations, users, moves, peers, retries,
-  failures, and audit history.
+  failures, and audit history, grouped in collapsible sections with Overview
+  open by default.
 - QR invitation presentation that remains scannable on phone and desktop.
 
 All actions require visible loading, empty, success, and error states. Icon
@@ -990,6 +1038,12 @@ A reimplementation is conforming only when automated tests cover the following.
 - Temporary page/network interruption recovers within the ICE/presence grace.
   Exhausted callee recovery offers the original caller a fresh re-invite;
   hangup/decline does not. A pending ring reappears after local callee reconnect.
+- Either scheduled-call participant cancels locally and across federation;
+  actor/reason persist, only the other participant is emailed by their home
+  instance, and duplicate federation delivery is idempotent.
+- A no-account guest capability expires, can be revoked before admission,
+  exposes no authenticated surface, and creates a call only after the owning
+  host admits a waiting guest. Another member cannot operate it.
 - 1:1 YouTube playback follows only the initiating participant and remains
   mutually exclusive with screen sharing.
 - A general watch party permits only its host to control/end playback, expires

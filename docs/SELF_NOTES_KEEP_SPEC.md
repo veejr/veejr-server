@@ -1,6 +1,6 @@
 # Notes to yourself — Keep-style board specification
 
-**Status:** implemented web baseline plus forward-looking requirements (v0.3.16)
+**Status:** implemented web baseline plus forward-looking requirements (v0.3.54)
 **Audience:** Phoenix/LiveView, web client, Android, API, QA, and security reviewers  
 **Primary surface:** the existing **Notes to yourself** self-conversation in `/messages`
 
@@ -9,8 +9,10 @@
 Veejr currently implements encrypted payload-v2 `self_note` cards, creation
 and edit, text/checklists, labels, colors, pin/archive/trash/restore/delete,
 bulk actions, local text/label/date filtering, encrypted attachments, voice and
-video capture, and incremental **Load more**. Successful edits refresh the
-visible card without requiring a page reload.
+video capture, and incremental **Load more** plus **Load all notes**. Entering
+a search automatically requests all remaining encrypted note envelopes before
+client-side filtering. Successful edits refresh the visible card without
+requiring a page reload.
 
 Google Keep Takeout import is also implemented in the browser. It imports note
 JSON plus available attachments, uses keyed opaque deduplication identifiers,
@@ -19,10 +21,11 @@ creating a duplicate.
 
 This document still records the intended complete behavior. Requirements not
 yet matching the web implementation remain roadmap items, notably the richer
-three-way conflict comparison, unbounded cursor-backed **Search all notes**,
-legacy self-message conversion, and native-client parity. Current loading is
-50 at a time up to a 500-card browser session; search covers loaded cards.
-Scheduled reminders remain explicitly unimplemented.
+three-way conflict comparison, cursor/progress/cancellation UX for very large
+searches, legacy self-message conversion, and native-client parity. Current
+loading starts at 50 and can add 50 or remove the limit with **Load all
+notes**. Search requests that load-all path automatically. Scheduled reminders
+remain explicitly unimplemented.
 
 ## 1. Outcome
 
@@ -76,7 +79,7 @@ This keeps the note portable with encrypted history, compatible with key rotatio
 
 - In the Messages conversation rail, the self thread remains titled **Notes to yourself** and gets a note/card icon instead of a message-count emphasis.
 - Selecting that thread shows the notes board instead of the message-bubble thread.
-- The existing empty self-recipient state opens the notes board and focuses the quick-capture editor.
+- The existing empty self-recipient state opens the notes board and focuses the quick-create editor.
 - No new route is required for v1. The implemented board uses
   `GET /messages?self_notes=true`, so browser back/forward and direct links work
   without exposing note content or search terms in the URL.
@@ -100,15 +103,21 @@ Notes to yourself                         Search notes       Grid/List
 
 Mobile uses one column, sticky search/filter controls, and a bottom-aligned create button. Desktop uses 2–4 columns according to container width; cards must not be visually reordered across a keyboard tab sequence.
 
-Each card contains a title (optional), body/checklist preview, attachment count/preview, labels, `Edited <relative time>`, and actions revealed on focus/hover: pin, remind (disabled/coming soon), archive, color, labels, more. Do not rely on hover alone.
+Each card contains a title (optional), body/checklist preview, attachment
+count/preview, labels, `Edited <relative time>`, and actions for selection,
+pin, archive, trash/restore, and permanent delete where applicable. Text bodies
+are initially clamped to ten lines. Clicking a clamped body expands it;
+clicking the expanded body opens a tall inline editor, while Control-click
+collapses it again. Do not rely on hover alone.
 
 ## 6. User flows and acceptance criteria
 
 ### 6.1 Create
 
-1. User selects **Take a note** or presses `c` while focus is not in a field.
-2. An inline card editor opens and focuses the title; body is optional.
-3. The editor saves on explicit Close, `Ctrl/Cmd+Enter`, or blur after a 500 ms debounce; Escape abandons an untouched new draft and closes the editor.
+1. User selects **New note** or presses `c` while focus is not in a field.
+2. An inline editor opens; title is optional and the body accepts long,
+   resizable text.
+3. **Save note** explicitly saves; **Cancel** or Escape closes without saving.
 4. Before saving, the browser encrypts the complete document and sends exactly one `self_note` envelope addressed to the signed-in user.
 5. A successfully saved note immediately renders in the appropriate pinned/unpinned section.
 
@@ -116,10 +125,14 @@ Acceptance: blank notes are never saved; a failed save keeps the editor open wit
 
 ### 6.2 Edit
 
-- Selecting a card opens the same inline editor. It must load the decrypted document before enabling edits.
+- Selecting a card opens the same inline editor after decryption. A clamped
+  long body uses the expand-then-edit interaction described in §5.2.
 - Save replaces the ciphertext for that envelope through the existing sender-side batch-edit mechanism; it must update `edited_at` in the encrypted document.
 - Editing must preserve attachments and every non-edited note property.
-- If another device changed the note after this device loaded it, show a conflict screen with **Keep mine**, **Use latest**, and a read-only comparison. Do not silently overwrite.
+- If another device changed the note after this device loaded it, the current
+  web client asks whether to keep the local version or reload the latest
+  version. A richer read-only three-way comparison remains roadmap work; stale
+  content must never overwrite without an explicit choice.
 
 Acceptance: repeated saves never create duplicate cards; reload shows the last confirmed encrypted version.
 
@@ -134,7 +147,13 @@ Acceptance: repeated saves never create duplicate cards; reload shows the last c
 
 - Pinning changes only encrypted `pinned`; board sort is pinned first, then `updated_at` descending, then `note_id` descending as a stable tie-breaker.
 - Labels are normalized client-side: trim, collapse internal whitespace, Unicode case-fold for duplicate detection, retain original display casing, maximum 50 labels/account and 10/note.
-- Search is case-insensitive Unicode substring matching after decrypting loaded notes. It never sends the query to LiveView, logs, URL query string, telemetry, or the server.
+- Search is case- and diacritic-insensitive Unicode substring matching after
+  decryption. It indexes title, body, labels, checklist text/state, attachment
+  metadata, color, pin/archive/trash state, created/updated timestamps, and
+  opaque note/legacy IDs. Quoted terms are one required phrase; unquoted terms
+  are separate required clauses, and a missing closing quote safely treats the
+  remainder as a phrase. Search plaintext never appears in a LiveView event,
+  logs, URL query string, telemetry, database column, or server-side index.
 - Selecting two or more cards enters bulk mode and displays an accessible action toolbar. All selected-note mutations are independently encrypted and submitted; partial failure identifies the notes that failed and leaves their selection intact.
 
 ### 6.5 Archive, trash, and permanent deletion
@@ -220,9 +239,15 @@ Validation after decryption:
 
 ## 9. Pagination, performance, and consistency
 
-- The server paginates encrypted self-note envelopes by `updated_at, id` with a cursor; page size defaults to 50 and caps at 100.
-- The browser decrypts the fetched page and retains decrypted state in memory for the active tab only. It loads more when scrolling near the board end or when search needs additional pages.
-- Search results may be incomplete until all pages are loaded. The UI must state `Searching loaded notes` and offer **Search all notes** to fetch/decrypt remaining pages with progress and cancellation.
+- The server orders encrypted self-note envelopes by edited/inserted time and
+  ID. The board loads 50 initially, **Load more** adds 50, and **Load all
+  notes** removes the query limit.
+- The browser decrypts fetched cards and retains the searchable index in memory
+  for the active tab only.
+- Entering any non-empty search automatically invokes the same load-all action
+  once when more notes exist, then reapplies the local filter after LiveView
+  updates. Future very-large-account work may replace this with cursor-backed
+  progress and cancellation without exposing the query.
 - Do not create a server-side full-text index, deterministic encrypted search index, or browser localStorage cache in v1.
 - Every note edit carries its last decrypted `updated_at`. Before replacing ciphertext, the server atomically verifies that the envelope's stored `updated_at` matches; otherwise return `:stale_note` with fresh ciphertext metadata. This is the conflict trigger.
 
@@ -252,13 +277,16 @@ Validation after decryption:
 - Only the owner can list, edit, or delete a self-note envelope.
 - Self-note sends reject non-self, duplicate, expired, or display-limited envelopes.
 - Self-note sends create one envelope, no notification, no federation outbox item, and the self-thread participant sentinel.
-- Cursor ordering is stable; owner-scoped list never returns message/location/map-note envelopes.
+- Edited/inserted ordering is stable; the owner-scoped list never returns message, location, or map-note envelopes.
 - Edit rejects stale `updated_at`; delete removes all note copies and releases blob references only when no other reference exists.
 
 ### LiveView tests
 
 - Authenticated `/messages` inside `:app` renders the self-note board for the self thread and ordinary UI for any other thread.
-- Assert key IDs such as `#self-notes-board`, `#self-notes-quick-capture`, `#self-notes-search`, and `#self-notes-selection-toolbar`; do not assert raw HTML text.
+- Assert key IDs such as `#self-notes-board`, `#self-notes-command-center`,
+  `#self-notes-quick-create`, `#self-notes-search`,
+  `#self-notes-load-all`, and `#self-notes-selection-toolbar`; do not assert
+  raw HTML text.
 - Pagination renders stream entries and the loading/empty/error states correctly.
 
 ### Browser-hook tests
@@ -286,10 +314,11 @@ Validation after decryption:
 3. **Organization — shipped:** checklists, labels, colors,
    pin/archive/trash/restore, filters, date search, and bulk actions.
 4. **Hardening — in progress:** encrypted attachments and media capture,
-   idempotent Google Keep import/update, stale-write detection, and regression
-   coverage are present. Rich conflict comparison, unlimited cursor search,
-   legacy conversion, deeper accessibility validation, and Android parity
-   remain.
+   idempotent Google Keep import/update, stale-write detection, automatic
+   load-all local search, phrase parsing, long-body expand/edit behavior, and
+   regression coverage are present. Rich conflict comparison, cursor/progress
+   search UX for very large accounts, legacy conversion, deeper accessibility
+   validation, and Android parity remain.
 
 The board is no longer feature-flagged. Existing self-message history must
 remain visible; future changes must not silently reinterpret or discard it.

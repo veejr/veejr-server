@@ -42,6 +42,7 @@ The main domain contexts are:
 | `Veejr.Social` | Friendships, remote contacts, groups, and personal contact/group notes. |
 | `Veejr.Messaging` | Envelopes, consent notifications, conversation windows, edits, expiry/display limits, and blobs. |
 | `Veejr.Calls` | 1:1 call consent/lifecycle, schedules and reminders, sealed signaling relay, presence grace, and federated call updates. |
+| `Veejr.GuestConferences` | Expiring email-capability invitations, host admission, and temporary guest-call identity/lifecycle. |
 | `Veejr.WatchParties` | One ephemeral, instance-local, host-controlled YouTube party and voice-signaling membership. |
 | `Veejr.Federation` | Remote discovery, friendship and delivery protocol, signed requests, peers, and retry outbox. |
 | `Veejr.Push` | Push subscriptions and RFC 8291/8292 Web Push delivery. |
@@ -62,6 +63,10 @@ encryption, decryption, attachment crypto, and map plaintext.
   and active watch-party hints.
 - Authenticated controller routes handle private blob upload/download, export,
   and push subscriptions.
+- `/guest/:token` and `/guest/:token/call` use a dedicated public LiveView
+  session. The hashed, expiring email capability is the only authorization for
+  the guest side; it grants no account, contacts, message, or history access.
+- `/watch/guest/:token` similarly uses a dedicated playback-only guest session.
 - `/api/instance`, `/api/directory/:username`, envelope capability fetches, and
   blob capability fetches are public federation surfaces.
 - Federation write endpoints pass through `VeejrWeb.FederationAuth`.
@@ -147,6 +152,20 @@ Acceptance opens a rolling five-minute `conversation_windows` entry for the
 user/peer pair. Sends and accepted receives extend it. New messages from that
 peer are auto-accepted while the window is active, avoiding a consent click for
 every message in an active conversation.
+
+Accepted incoming envelopes have a nullable `read_at`. Conversation summaries
+count unread accepted incoming copies without loading ciphertext and preload
+only the latest encrypted envelope so a browser hook can decrypt its preview.
+Opening a Messages thread stamps its accepted incoming copies read. These
+read/unread markers are server-readable presentation metadata; preview
+plaintext remains browser-only.
+
+Contacts and Messages appearance preferences are browser-local `localStorage`
+choices and do not alter stored content. Contacts supports Classic, Quiet, six
+flat playful palettes, and the Orbit/Soiree WebGL views. Messages supports
+Classic, Salon, Party, and Comic; new-message animation and explicit control
+states change with the choice. Message bubbles render a semantic UTC date/time
+from the envelope timestamp.
 
 ## Federation
 
@@ -290,6 +309,25 @@ only an involuntary callee disconnect exposes caller re-invite. See
 [CALLS_AND_WATCH_PARTIES.md](CALLS_AND_WATCH_PARTIES.md) for user-visible
 behavior and operational limits.
 
+### Email-capability guest calls
+
+An authenticated, key-configured local host can email one no-account guest an
+unguessable 256-bit capability. The database stores only its SHA-256 hash,
+normalized invited email, two-hour expiry, lifecycle timestamps, and eventual
+temporary display name/public key. The guest route generates an ephemeral
+X25519 identity in that browser tab, checks devices, and enters a waiting room.
+The host must explicitly admit the expected display name before a `guest_calls`
+row and WebRTC session are created; the host may decline or revoke beforehand.
+
+Guest SDP/ICE is sealed between the host's pinned identity and the guest's
+temporary public key. Media, chat, and files use the same peer-to-peer call
+channels and remain ephemeral. Ending the call clears the persisted guest
+public key, while lifecycle metadata and invited email remain in the
+guest-conference row. The capability grants only that conference and expires
+after two hours. After an ended call, the guest may optionally exchange it for
+a normal membership invitation when instance invitation policy allows; no
+hidden user account is created automatically.
+
 ## YouTube watch parties
 
 `Veejr.WatchParties` holds at most one party in process memory. It stores the
@@ -348,12 +386,13 @@ message plaintext. Push services still observe endpoint and timing metadata.
 | `friendships` | Canonical user pair and `pending`/`accepted` state. |
 | `groups`, `group_members` | Owner-local organization of accepted friends. |
 | `contact_notes`, `group_notes` | Owner-private but server-readable plaintext notes. |
-| `envelopes` | Per-recipient ciphertext, nonce, sender-key snapshot, delivery/edit/expiry/display metadata, and a materialized per-viewer thread key so conversation lists and pages are index queries that load no ciphertext. |
+| `envelopes` | Per-recipient ciphertext, nonce, sender-key snapshot, delivery/read/edit/expiry/display metadata, and a materialized per-viewer thread key so conversation lists and pages are index queries that load no ciphertext except the newest encrypted preview candidate. |
 | `conversation_archives` | Archived/preserved conversation instances; archiving stamps member envelopes with the instance key. |
 | `notifications` | Per-envelope consent state. |
 | `conversation_windows` | Rolling user/peer auto-accept expiry. |
 | `calls` | 1:1 call consent/lifecycle state (ringing/accepted/…); signaling itself is relayed, never stored. |
-| `scheduled_calls` | Persistent organizer/invitee plans, UTC time, device and two-minute email reminder checkpoints, shared notes, and lifecycle state. |
+| `scheduled_calls` | Persistent organizer/invitee plans, UTC time, device and two-minute email reminder checkpoints, shared notes, lifecycle state, cancellation actor, and optional cancellation reason. |
+| `guest_conferences`, `guest_calls` | Expiring hashed email capabilities, invited email, temporary guest identity, host admission/lifecycle metadata, and one guest call; signaling and media are not stored. |
 | `blobs` | Opaque encrypted file location, owner, size, and public capability ID. |
 | `instance_credentials` | Server-side Ed25519 federation and P-256 VAPID keypairs. |
 | `peers` | TOFU-pinned remote instance signing keys. |
@@ -401,6 +440,8 @@ The server can observe or control:
 
 - account identifiers, friend graph, groups, contact/group notes, and login
   activity;
+- guest-conference host, invited email, capability hash, expiry/lifecycle
+  timestamps, temporary display name/public key while active, and call timing;
 - sender/recipient relationships, item kinds, timestamps, expiry/display
   policy, attachment sizes, notification decisions, and delivery timing;
 - ciphertext and capability identifiers;

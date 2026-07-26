@@ -19,12 +19,15 @@ curl.exe https://veejr.example.com/api/v1/capabilities
 Healthy output has one running replica (`1/1`), a recent task without an error,
 Phoenix listening on port 4000, and HTTP status 200 from the public URL.
 
-Scheduled-call invitation and two-minute reminder emails use the configured
-`Veejr.Mailer`. Failed deliveries are recorded under the `email` channel in
-**Recent delivery failures**. Separate persisted organizer and invitee email
-checkpoints prevent duplicate two-minute reminders while allowing one failed
-address to retry independently; they are separate from the configurable
-device-notification `reminded_at` checkpoint.
+Guest-call invitations and scheduled-call invitation, cancellation, and
+two-minute reminder emails use the configured `Veejr.Mailer`. Failed
+deliveries are recorded under the `email` channel in **Recent delivery
+failures**. Separate persisted organizer and invitee email checkpoints prevent
+duplicate two-minute reminders while allowing one failed address to retry
+independently; they are separate from the configurable device-notification
+`reminded_at` checkpoint. Cancellation delivery is attempted when the state
+changes and does not roll back a successful cancellation if SMTP fails.
+Failed guest-invitation email revokes that newly created guest capability.
 
 Check the supporting containers separately:
 
@@ -444,6 +447,18 @@ in Firebase and remove the old Docker secret.
 - Federated schedule changes use the durable federation outbox. Check peer
   block/key state and retry the outbox if the other participant does not see
   the plan. The later realtime ring remains synchronous.
+- Cancellation email operation is `scheduled_call_cancellation`. Each home
+  instance emails only its own local recipient after the signed cancellation
+  is applied; it never sends to a federated placeholder email address.
+
+### Guest-call invitation does not arrive
+
+- Review `email` failures for operation `guest_conference_invitation` and test
+  the configured SMTP transport/sender.
+- A failed send revokes the generated capability. Send a new guest invitation
+  after fixing SMTP rather than trying to recover the old link.
+- A delivered link expires after two hours and becomes unavailable when the
+  host cancels or declines it.
 
 ### Recorded voice or video message fails
 

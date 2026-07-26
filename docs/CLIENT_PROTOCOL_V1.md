@@ -49,7 +49,8 @@ The governing security boundary is:
 - Changing the version 1 cryptographic algorithms during the Android port.
 - Making `/api/v1` federation endpoints. Native clients never hold instance
   federation-signing credentials and never impersonate remote instances.
-- Standardizing the browser WebRTC call, ephemeral call-data-channel, or
+- Standardizing member-to-member or email-capability guest WebRTC calls,
+  ephemeral call-data-channel traffic, scheduled-call lifecycle, or
   instance-local watch-party signaling surfaces. These features exist in the
   web application, but their LiveView/federation events are not part of HTTP
   client protocol v1. A native client MUST NOT infer a stable contract from
@@ -1090,10 +1091,11 @@ The following remain part of the intended v1 contract but may follow the MVP:
 - rewrap, rotation, reset, and remote-key confirmation;
 - settings, export download, and account deletion.
 
-Browser 1:1 calls and instance-local watch parties are implemented product
-features but are outside this HTTP API version. Native parity for calls,
-ephemeral call chat/files, synchronized YouTube, and watch-party voice remains
-deferred until a separate signaling/lifecycle contract is specified.
+Browser member and guest 1:1 calls, scheduled calls, and instance-local watch
+parties are implemented product features but are outside this HTTP API
+version. Native parity for calls, ephemeral call chat/files, synchronized
+YouTube, and watch-party voice remains deferred until a separate
+signaling/lifecycle contract is specified.
 
 Deferral does not permit an incompatible provisional format. Implemented v1
 endpoints must follow this document.

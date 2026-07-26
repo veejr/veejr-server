@@ -213,6 +213,11 @@ defmodule VeejrWeb.MessagesLiveTest do
   test "offers encrypted voice and video recording controls", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 
+    assert has_element?(
+             view,
+             "#message-composer label.messages-composer-action[data-role='file-toggle'][aria-label='Attach files'] .hero-paper-clip"
+           )
+
     assert has_element?(view, "#message-composer [data-role='audio-toggle']")
 
     assert has_element?(
