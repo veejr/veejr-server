@@ -652,7 +652,7 @@ export const InstallApp = {
 export const ChatTheme = {
   mounted() {
     this.storageKey = "veejr:chat-theme"
-    this.allowedThemes = new Set(["classic", "salon"])
+    this.allowedThemes = new Set(["classic", "salon", "party"])
     this.onThemeClick = (event) => {
       const option = event.target.closest("[data-chat-theme-option]")
       if (!option || !this.el.contains(option)) return
@@ -1943,6 +1943,9 @@ export const ScrollBottom = {
     this.beforeLoadHeight = 0
     this.threadId = this.el.id
     this.pinnedToBottom = true
+    this.knownMessageIds = new Set(
+      [...this.el.querySelectorAll("[id^='message-shell-']")].map((node) => node.id),
+    )
     this.hasMore = () => {
       const value = this.el.dataset.hasMore
       return value === "" || value === "true"
@@ -1981,6 +1984,29 @@ export const ScrollBottom = {
       this.toBottom()
     })
     this.mutationObserver = new MutationObserver(() => {
+      if (this.threadId !== this.el.id) {
+        this.threadId = this.el.id
+        this.knownMessageIds = new Set(
+          [...this.el.querySelectorAll("[id^='message-shell-']")].map((node) => node.id),
+        )
+        return
+      }
+
+      const incoming = [...this.el.querySelectorAll("[id^='message-shell-']")].filter(
+        (node) => !this.knownMessageIds.has(node.id),
+      )
+      incoming.forEach((node) => this.knownMessageIds.add(node.id))
+
+      if (!this.loadingMore) {
+        const received = incoming.filter((node) => node.dataset.messageMine === "false")
+        received.forEach((node) => {
+          node.classList.remove("message-arrival")
+          void node.offsetWidth
+          node.classList.add("message-arrival")
+        })
+        if (received.length > 0) this.celebrateIncomingMessage()
+      }
+
       if (!this.loadingMore && this.pinnedToBottom) this.toBottom()
     })
     this.mutationObserver.observe(this.el, {childList: true, subtree: true})
@@ -1993,6 +2019,9 @@ export const ScrollBottom = {
     if (threadChanged) {
       this.loadingMore = false
       this.pinnedToBottom = true
+      this.knownMessageIds = new Set(
+        [...this.el.querySelectorAll("[id^='message-shell-']")].map((node) => node.id),
+      )
       this.toBottom()
       return
     }
@@ -2012,6 +2041,7 @@ export const ScrollBottom = {
     if (this.onClick) this.el.removeEventListener("click", this.onClick)
     if (this.mutationObserver) this.mutationObserver.disconnect()
     clearTimeout(this.scrollRetry)
+    clearTimeout(this.celebrationTimer)
   },
   toBottom() {
     // Let decrypted bubbles and their media dimensions paint before measuring.
@@ -2025,6 +2055,27 @@ export const ScrollBottom = {
     requestAnimationFrame(scroll)
     clearTimeout(this.scrollRetry)
     this.scrollRetry = setTimeout(scroll, 120)
+  },
+  celebrateIncomingMessage() {
+    const workspace = this.el.closest("#messages-workspace")
+    const celebration = workspace?.querySelector("[data-role='new-message-celebration']")
+    if (!celebration) return
+
+    const announcement = celebration.querySelector("[data-role='arrival-announcement']")
+    if (announcement) {
+      announcement.textContent = ""
+      requestAnimationFrame(() => {
+        announcement.textContent = "New message received."
+      })
+    }
+
+    clearTimeout(this.celebrationTimer)
+    celebration.classList.remove("is-visible")
+    void celebration.offsetWidth
+    celebration.classList.add("is-visible")
+    this.celebrationTimer = setTimeout(() => {
+      celebration.classList.remove("is-visible")
+    }, 2200)
   },
 }
 

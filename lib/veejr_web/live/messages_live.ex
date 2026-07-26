@@ -64,6 +64,15 @@ defmodule VeejrWeb.MessagesLive do
                 >
                   Salon
                 </button>
+                <button
+                  id="chat-theme-party"
+                  type="button"
+                  data-chat-theme-option="party"
+                  aria-pressed="false"
+                  class="chat-theme-option rounded-full px-3 py-1.5 text-xs font-medium transition"
+                >
+                  Party
+                </button>
               </div>
               <.link
                 id="messages-invite-person"
@@ -81,6 +90,18 @@ defmodule VeejrWeb.MessagesLive do
               />
             </div>
           </div>
+        </div>
+
+        <div
+          id="new-message-celebration"
+          data-role="new-message-celebration"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          class="message-celebration pointer-events-none fixed top-20 left-1/2 z-[1050] -translate-x-1/2"
+        >
+          <span data-role="celebration-label" aria-hidden="true">New message!</span>
+          <span data-role="arrival-announcement" class="sr-only"></span>
         </div>
 
         <section

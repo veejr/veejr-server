@@ -700,6 +700,258 @@
   background: color-mix(in srgb, var(--salon-gold) 9%, var(--salon-panel));
 }
 
+/* "Party" — candy gradients, buoyant surfaces, and a celebratory incoming
+   message treatment. It stays scoped to Messages and never changes the
+   application-wide theme. */
+@keyframes party-gradient-drift {
+  0%, 100% { background-position: 0% 45%; }
+  50% { background-position: 100% 55%; }
+}
+
+@keyframes party-bubble-float {
+  0%, 100% { transform: translateY(0) rotate(-0.4deg); }
+  50% { transform: translateY(-4px) rotate(0.4deg); }
+}
+
+@keyframes message-arrival-classic {
+  0% { opacity: 0; transform: translateY(24px) scale(0.86); }
+  58% { opacity: 1; transform: translateY(-5px) scale(1.045); }
+  78% { transform: translateY(2px) scale(0.985); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+@keyframes message-arrival-salon {
+  0% { opacity: 0; transform: translateX(-36px); filter: brightness(1.8); }
+  55% { opacity: 1; transform: translateX(5px); }
+  100% { transform: translateX(0); filter: brightness(1); }
+}
+
+@keyframes message-arrival-party {
+  0% { opacity: 0; transform: translateY(52px) rotate(-5deg) scale(0.65); }
+  48% { opacity: 1; transform: translateY(-12px) rotate(2deg) scale(1.12); }
+  68% { transform: translateY(5px) rotate(-1deg) scale(0.96); }
+  84% { transform: translateY(-2px) rotate(0.4deg) scale(1.03); }
+  100% { transform: translateY(0) rotate(0) scale(1); }
+}
+
+@keyframes message-celebration-pop {
+  0% { opacity: 0; transform: translate(-50%, -24px) scale(0.5) rotate(-5deg); }
+  25% { opacity: 1; transform: translate(-50%, 4px) scale(1.12) rotate(2deg); }
+  42%, 72% { opacity: 1; transform: translate(-50%, 0) scale(1) rotate(0); }
+  100% { opacity: 0; transform: translate(-50%, -14px) scale(0.92); }
+}
+
+.message-celebration {
+  opacity: 0;
+  transform: translate(-50%, -16px) scale(0.8);
+}
+
+.message-celebration > [data-role="celebration-label"] {
+  display: block;
+  border: 2px solid color-mix(in oklab, var(--color-primary) 70%, white);
+  border-radius: 999px;
+  background: var(--color-primary);
+  padding: 0.75rem 1.35rem;
+  color: var(--color-primary-content);
+  font-size: clamp(1rem, 3vw, 1.35rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow:
+    0 12px 38px color-mix(in oklab, var(--color-primary) 38%, transparent),
+    0 0 0 7px color-mix(in oklab, var(--color-primary) 14%, transparent);
+}
+
+.message-celebration.is-visible {
+  animation: message-celebration-pop 2.2s cubic-bezier(0.2, 0.85, 0.28, 1) both;
+}
+
+#messages-workspace[data-chat-theme="classic"] .message-arrival {
+  animation: message-arrival-classic 720ms cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+}
+
+#messages-workspace[data-chat-theme="salon"] .message-arrival {
+  animation: message-arrival-salon 780ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+
+#messages-workspace[data-chat-theme="salon"] .message-celebration > [data-role="celebration-label"] {
+  border-color: var(--salon-gold);
+  border-radius: 0.3rem;
+  background: var(--salon-ink);
+  color: var(--salon-gold);
+  font-family: Georgia, "Times New Roman", serif;
+  box-shadow:
+    0 0 0 1px var(--salon-ink),
+    0 0 0 4px var(--salon-gold),
+    0 18px 48px rgba(8, 7, 15, 0.55);
+}
+
+#messages-workspace[data-chat-theme="party"] {
+  --party-ink: #2a1746;
+  --party-panel: #fff8fd;
+  --party-panel-soft: #fff0f8;
+  --party-pink: #ff4fa3;
+  --party-purple: #7c4dff;
+  --party-cyan: #16c7d9;
+  --party-yellow: #ffd84d;
+  overflow: hidden;
+  border-color: #e6b4dc;
+  background: linear-gradient(130deg, #fff0f8, #f1ecff, #e8fbff, #fff7d7);
+  background-size: 300% 300%;
+  color: var(--party-ink);
+  box-shadow: 0 28px 90px rgba(124, 77, 255, 0.22);
+  animation: party-gradient-drift 14s ease-in-out infinite;
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-page-header,
+#messages-workspace[data-chat-theme="party"] .messages-chat-header,
+#messages-workspace[data-chat-theme="party"] .messages-rail,
+#messages-workspace[data-chat-theme="party"] .messages-main,
+#messages-workspace[data-chat-theme="party"] .messages-composer-dock {
+  border-color: #e9bee0;
+  color: var(--party-ink);
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-page-header {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 216, 77, 0.62), transparent 27%),
+    radial-gradient(circle at 95% 10%, rgba(22, 199, 217, 0.32), transparent 30%),
+    rgba(255, 248, 253, 0.9);
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-page-header h1,
+#messages-workspace[data-chat-theme="party"] .messages-chat-header h2 {
+  color: var(--party-ink);
+  font-weight: 900;
+  letter-spacing: -0.035em;
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-page-header p,
+#messages-workspace[data-chat-theme="party"] .messages-page-header a,
+#messages-workspace[data-chat-theme="party"] .messages-chat-header p {
+  color: color-mix(in srgb, var(--party-ink) 70%, transparent);
+}
+
+#messages-workspace[data-chat-theme="party"] .chat-theme-picker {
+  border-color: #e2add6;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 white;
+}
+
+#messages-workspace[data-chat-theme="party"] .chat-theme-option {
+  color: #77416c;
+}
+
+#messages-workspace[data-chat-theme="party"] .chat-theme-option[aria-pressed="true"] {
+  background: linear-gradient(135deg, var(--party-pink), var(--party-purple));
+  color: white;
+  box-shadow: 0 6px 16px rgba(124, 77, 255, 0.28);
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-rail {
+  background: rgba(255, 248, 253, 0.88);
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-rail > div > div {
+  border-radius: 1.25rem;
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-rail > div > div:hover {
+  background: rgba(255, 79, 163, 0.1);
+  transform: translateX(3px);
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-main {
+  background: rgba(247, 240, 255, 0.66);
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-chat-header {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-thread {
+  background:
+    radial-gradient(circle at 12% 16%, rgba(255, 79, 163, 0.12) 0 5rem, transparent 5.1rem),
+    radial-gradient(circle at 88% 72%, rgba(22, 199, 217, 0.12) 0 6rem, transparent 6.1rem),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(241, 230, 255, 0.7));
+  scrollbar-color: var(--party-purple) #f5e9ff;
+}
+
+#messages-workspace[data-chat-theme="party"] .veejr-bubble {
+  border: 2px solid rgba(42, 23, 70, 0.1);
+  color: var(--party-ink);
+  font-weight: 550;
+  box-shadow: 0 8px 20px rgba(42, 23, 70, 0.1);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+#messages-workspace[data-chat-theme="party"] .veejr-bubble:hover {
+  transform: translateY(-2px) rotate(-0.3deg);
+  box-shadow: 0 12px 28px rgba(124, 77, 255, 0.18);
+}
+
+#messages-workspace[data-chat-theme="party"] .veejr-bubble-peer {
+  border-radius: 1.35rem 1.35rem 1.35rem 0.35rem;
+  background: white;
+}
+
+#messages-workspace[data-chat-theme="party"] .veejr-bubble-mine {
+  border-color: rgba(255, 255, 255, 0.4);
+  border-radius: 1.35rem 1.35rem 0.35rem 1.35rem;
+  background: linear-gradient(135deg, var(--party-pink), var(--party-purple));
+  color: white;
+}
+
+#messages-workspace[data-chat-theme="party"] .veejr-bubble-author,
+#messages-workspace[data-chat-theme="party"] .veejr-bubble-meta {
+  color: #704469;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-thread img {
+  box-shadow:
+    0 0 0 3px white,
+    0 0 0 6px var(--party-cyan);
+  animation: party-bubble-float 4s ease-in-out infinite;
+}
+
+#messages-workspace[data-chat-theme="party"] .messages-composer-dock {
+  background: rgba(255, 248, 253, 0.9);
+}
+
+#messages-workspace[data-chat-theme="party"] #message-composer {
+  border-color: rgba(124, 77, 255, 0.28);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--party-ink);
+  box-shadow: 0 10px 30px rgba(124, 77, 255, 0.12);
+}
+
+#messages-workspace[data-chat-theme="party"] #message-composer textarea {
+  background: transparent;
+  color: var(--party-ink);
+}
+
+#messages-workspace[data-chat-theme="party"] .message-arrival {
+  animation: message-arrival-party 980ms cubic-bezier(0.16, 0.9, 0.25, 1.25) both;
+}
+
+#messages-workspace[data-chat-theme="party"] .message-arrival .veejr-bubble {
+  box-shadow:
+    0 0 0 5px rgba(255, 216, 77, 0.68),
+    0 18px 46px rgba(255, 79, 163, 0.34);
+}
+
+#messages-workspace[data-chat-theme="party"] .message-celebration > [data-role="celebration-label"] {
+  border-color: white;
+  background: linear-gradient(135deg, var(--party-pink), var(--party-purple));
+  color: white;
+  text-shadow: 0 2px 0 rgba(42, 23, 70, 0.2);
+  box-shadow:
+    0 0 0 6px var(--party-yellow),
+    0 18px 50px rgba(124, 77, 255, 0.35);
+}
+
 @media (max-width: 640px) {
   #messages-workspace[data-chat-theme="salon"] .messages-thread .veejr-bubble {
     max-width: 88%;
@@ -713,6 +965,30 @@
 @media (prefers-reduced-motion: reduce) {
   #messages-workspace .chat-theme-option {
     transition: none;
+  }
+
+  #messages-workspace[data-chat-theme] {
+    animation: none;
+  }
+
+  #messages-workspace[data-chat-theme] .message-arrival {
+    animation: none;
+  }
+
+  #messages-workspace[data-chat-theme] .message-arrival .veejr-bubble {
+    box-shadow:
+      0 0 0 4px color-mix(in oklab, var(--color-primary) 45%, transparent),
+      0 12px 30px color-mix(in oklab, var(--color-primary) 18%, transparent);
+  }
+
+  #messages-workspace[data-chat-theme] .message-celebration.is-visible {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+    animation: none;
+  }
+
+  #messages-workspace[data-chat-theme="party"] .messages-thread img {
+    animation: none;
   }
 }
 

@@ -645,6 +645,7 @@ defmodule VeejrWeb.MessagingComponents do
     <div
       id={"message-shell-#{@envelope.public_id}"}
       phx-hook={if(@mine, do: "MessageBubble", else: nil)}
+      data-message-mine={to_string(@mine)}
       class={["flex", @mine && "justify-end", !@mine && "items-start gap-2"]}
     >
       <.user_avatar

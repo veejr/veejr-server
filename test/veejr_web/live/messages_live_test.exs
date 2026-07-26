@@ -30,7 +30,7 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#messages-conversation-builder-form")
   end
 
-  test "offers persistent Classic and Salon chat appearances", %{conn: conn} do
+  test "offers three persistent chat appearances and an arrival celebration", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 
     assert has_element?(
@@ -41,6 +41,13 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#chat-theme-picker[aria-label='Chat appearance']")
     assert has_element?(view, "#chat-theme-classic[data-chat-theme-option='classic']")
     assert has_element?(view, "#chat-theme-salon[data-chat-theme-option='salon']")
+    assert has_element?(view, "#chat-theme-party[data-chat-theme-option='party']")
+
+    assert has_element?(
+             view,
+             "#new-message-celebration[role='status'][aria-live='polite']",
+             "New message!"
+           )
   end
 
   test "puts pending message consent front and center with a busy quick reply", %{
@@ -371,7 +378,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     {:ok, view, _html} = live(conn, "/messages?conversation=#{key}")
 
-    assert has_element?(view, "#message-shell-#{newest.public_id}")
+    assert has_element?(view, "#message-shell-#{newest.public_id}[data-message-mine='true']")
 
     assert has_element?(
              view,
