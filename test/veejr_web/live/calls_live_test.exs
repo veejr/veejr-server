@@ -40,6 +40,15 @@ defmodule VeejrWeb.CallsLiveTest do
     |> render_submit()
 
     [schedule] = Calls.list_scheduled_calls(user)
+    assert has_element?(view, "details#scheduled-call-#{schedule.id}")
+    refute has_element?(view, "details#scheduled-call-#{schedule.id}[open]")
+
+    assert has_element?(
+             view,
+             "#scheduled-call-summary-#{schedule.id}",
+             Social.Address.handle(friend)
+           )
+
     assert has_element?(view, "#scheduled-call-#{schedule.id}", "Project catch-up")
     assert has_element?(view, "#scheduled-call-time-#{schedule.id}[phx-hook='LocalTime']")
     assert has_element?(view, "#scheduled-call-note-form-#{schedule.id}")

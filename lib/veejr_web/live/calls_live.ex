@@ -113,106 +113,132 @@ defmodule VeejrWeb.CallsLive do
           <p class="mt-1 text-sm opacity-60">Choose a friend and a time above.</p>
         </div>
 
-        <article
+        <details
           :for={schedule <- @schedules}
           id={"scheduled-call-#{schedule.id}"}
-          class="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+          phx-hook=".ScheduledCallCard"
+          class="group overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm transition-shadow open:shadow-md"
         >
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div class="flex min-w-0 items-center gap-4">
-              <.user_avatar
-                user={peer(schedule, @current_scope.user)}
-                class="size-12 text-sm"
-              />
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h3 class="truncate text-lg font-semibold">
-                    {Social.Address.handle(peer(schedule, @current_scope.user))}
-                  </h3>
-                  <span class={status_class(schedule.status)}>{status_label(schedule.status)}</span>
+          <summary
+            id={"scheduled-call-summary-#{schedule.id}"}
+            class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors select-none hover:bg-base-200/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
+          >
+            <span class="min-w-0 flex-1 truncate font-semibold">
+              {Social.Address.handle(peer(schedule, @current_scope.user))}
+            </span>
+            <time
+              id={"scheduled-call-time-#{schedule.id}"}
+              phx-hook="LocalTime"
+              datetime={DateTime.to_iso8601(schedule.scheduled_for)}
+              class="shrink-0 whitespace-nowrap text-xs font-medium text-primary sm:text-sm"
+            >
+              {Calendar.strftime(schedule.scheduled_for, "%b %d, %Y %H:%M UTC")}
+            </time>
+            <.icon
+              name="hero-chevron-down"
+              class="size-4 shrink-0 opacity-55 transition-transform group-open:rotate-180"
+            />
+          </summary>
+          <div class="border-t border-base-300 p-5">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex min-w-0 items-center gap-4">
+                <.user_avatar
+                  user={peer(schedule, @current_scope.user)}
+                  class="size-12 text-sm"
+                />
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="truncate text-lg font-semibold">
+                      {Social.Address.handle(peer(schedule, @current_scope.user))}
+                    </h3>
+                    <span class={status_class(schedule.status)}>{status_label(schedule.status)}</span>
+                  </div>
+                  <p class="mt-1 text-xs opacity-60">
+                    Reminder {reminder_label(schedule.reminder_minutes)}
+                    <span :if={schedule.organizer_id != @current_scope.user.id}>
+                      · organized by {Social.Address.handle(schedule.organizer)}
+                    </span>
+                  </p>
                 </div>
-                <time
-                  id={"scheduled-call-time-#{schedule.id}"}
-                  phx-hook="LocalTime"
-                  datetime={DateTime.to_iso8601(schedule.scheduled_for)}
-                  class="mt-1 block text-sm font-medium text-primary"
+              </div>
+
+              <div :if={schedule.status == "scheduled"} class="flex shrink-0 flex-wrap gap-2">
+                <button
+                  :if={schedule.organizer_id == @current_scope.user.id}
+                  id={"start-scheduled-call-#{schedule.id}"}
+                  phx-click="start"
+                  phx-value-id={schedule.id}
+                  phx-disable-with="Starting…"
+                  class="btn btn-primary btn-sm rounded-xl"
                 >
-                  {Calendar.strftime(schedule.scheduled_for, "%b %d, %Y %H:%M UTC")}
-                </time>
-                <p class="mt-1 text-xs opacity-60">
-                  Reminder {reminder_label(schedule.reminder_minutes)}
-                  <span :if={schedule.organizer_id != @current_scope.user.id}>
-                    · organized by {Social.Address.handle(schedule.organizer)}
-                  </span>
-                </p>
+                  <.icon name="hero-phone" class="size-4" /> Start now
+                </button>
+                <button
+                  :if={schedule.organizer_id == @current_scope.user.id}
+                  id={"cancel-scheduled-call-#{schedule.id}"}
+                  phx-click="cancel"
+                  phx-value-id={schedule.id}
+                  data-confirm="Cancel this scheduled call for both people?"
+                  class="btn btn-ghost btn-sm rounded-xl text-error"
+                >
+                  Cancel
+                </button>
+                <span
+                  :if={schedule.organizer_id != @current_scope.user.id}
+                  class="rounded-xl bg-base-200 px-3 py-2 text-xs opacity-65"
+                >
+                  Waiting for organizer
+                </span>
               </div>
             </div>
 
-            <div :if={schedule.status == "scheduled"} class="flex shrink-0 flex-wrap gap-2">
-              <button
-                :if={schedule.organizer_id == @current_scope.user.id}
-                id={"start-scheduled-call-#{schedule.id}"}
-                phx-click="start"
-                phx-value-id={schedule.id}
-                phx-disable-with="Starting…"
-                class="btn btn-primary btn-sm rounded-xl"
-              >
-                <.icon name="hero-phone" class="size-4" /> Start now
-              </button>
-              <button
-                :if={schedule.organizer_id == @current_scope.user.id}
-                id={"cancel-scheduled-call-#{schedule.id}"}
-                phx-click="cancel"
-                phx-value-id={schedule.id}
-                data-confirm="Cancel this scheduled call for both people?"
-                class="btn btn-ghost btn-sm rounded-xl text-error"
-              >
-                Cancel
-              </button>
-              <span
-                :if={schedule.organizer_id != @current_scope.user.id}
-                class="rounded-xl bg-base-200 px-3 py-2 text-xs opacity-65"
-              >
-                Waiting for organizer
-              </span>
-            </div>
+            <.form
+              for={@note_forms[schedule.id]}
+              id={"scheduled-call-note-form-#{schedule.id}"}
+              phx-submit="save_note"
+              class="mt-4 rounded-2xl border border-base-300 bg-base-200/60 p-4"
+            >
+              <input type="hidden" name="_id" value={schedule.id} />
+              <.input
+                field={@note_forms[schedule.id][:note]}
+                type="textarea"
+                label="Call notes"
+                maxlength="500"
+                rows="3"
+                disabled={schedule.organizer_id != @current_scope.user.id}
+                placeholder="Topics, links, or anything to remember for this call"
+              />
+              <div class="mt-2 flex items-center justify-between gap-3">
+                <p class="text-xs opacity-60">
+                  <%= if schedule.organizer_id == @current_scope.user.id do %>
+                    Shared with the invitee.
+                  <% else %>
+                    Shared by {Social.Address.handle(schedule.organizer)}.
+                  <% end %>
+                </p>
+                <button
+                  :if={schedule.organizer_id == @current_scope.user.id}
+                  id={"save-scheduled-call-note-#{schedule.id}"}
+                  type="submit"
+                  class="btn btn-outline btn-sm rounded-xl"
+                >
+                  Save notes
+                </button>
+              </div>
+            </.form>
           </div>
+        </details>
 
-          <.form
-            for={@note_forms[schedule.id]}
-            id={"scheduled-call-note-form-#{schedule.id}"}
-            phx-submit="save_note"
-            class="mt-4 rounded-2xl border border-base-300 bg-base-200/60 p-4"
-          >
-            <input type="hidden" name="_id" value={schedule.id} />
-            <.input
-              field={@note_forms[schedule.id][:note]}
-              type="textarea"
-              label="Call notes"
-              maxlength="500"
-              rows="3"
-              disabled={schedule.organizer_id != @current_scope.user.id}
-              placeholder="Topics, links, or anything to remember for this call"
-            />
-            <div class="mt-2 flex items-center justify-between gap-3">
-              <p class="text-xs opacity-60">
-                <%= if schedule.organizer_id == @current_scope.user.id do %>
-                  Shared with the invitee.
-                <% else %>
-                  Shared by {Social.Address.handle(schedule.organizer)}.
-                <% end %>
-              </p>
-              <button
-                :if={schedule.organizer_id == @current_scope.user.id}
-                id={"save-scheduled-call-note-#{schedule.id}"}
-                type="submit"
-                class="btn btn-outline btn-sm rounded-xl"
-              >
-                Save notes
-              </button>
-            </div>
-          </.form>
-        </article>
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".ScheduledCallCard">
+          export default {
+            beforeUpdate() {
+              this.wasOpen = this.el.open
+            },
+            updated() {
+              if (typeof this.wasOpen === "boolean") this.el.open = this.wasOpen
+            }
+          }
+        </script>
       </section>
     </Layouts.app>
     """
