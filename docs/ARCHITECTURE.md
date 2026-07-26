@@ -259,7 +259,10 @@ consent, lifecycle, presence, and signaling relay:
   `/api/federation/call_schedule` path. `Veejr.Calls.Reminders` polls every 30
   seconds, stamps `reminded_at`, publishes a user-scoped foreground event, and
   sends content-free browser/Android push alerts to local participants.
-  Schedule metadata and the optional note are server-readable.
+  Either participant may cancel; the signed cancellation carries its actor and
+  optional reason, and the recipient's home instance emails its own local user.
+  Schedule metadata, optional note, cancellation actor, and cancellation reason
+  are server-readable.
 - The device-preview gate and in-call passphrase prompt keep camera/microphone
   selection and key unwrap in the browser. The passphrase and raw secret key
   are never sent through LiveView.

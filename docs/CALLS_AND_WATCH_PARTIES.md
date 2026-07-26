@@ -53,9 +53,12 @@ Call button in a one-to-one conversation. Select an accepted friend, local date
 and time, reminder lead time, and optional shared call notes. Every scheduled
 call card keeps a call-notes field visible; the organizer can update it and the
 invitee sees the synchronized value. The Calls page lists upcoming plans for
-both participants; the organizer can start early or cancel. Starting creates a
-normal realtime call invitation, so the callee still explicitly accepts before
-media connects.
+both participants. The organizer can start early, and either participant can
+cancel with an optional reason. Cancellation records who canceled, mirrors the
+state and reason to the other home instance when federated, and emails the
+other participant from their own home instance. Starting creates a normal
+realtime call invitation, so the callee still explicitly accepts before media
+connects.
 
 Schedules are persistent. A reminder worker checks them every 30 seconds and
 dispatches each reminder once. Connected tabs show an in-app banner and browser
@@ -64,18 +67,20 @@ content-free push. If the instance was down at the reminder instant, a
 schedule up to one hour overdue is delivered on the next sweep. Notification
 permission and operating-system background restrictions still apply.
 
-The invitee also receives an email when the schedule is first created. Two
-minutes before the scheduled start, both organizer and invitee receive an email
-from their respective home instances. Email timestamps are explicitly UTC
-because Veejr does not persist a named browser time zone; the linked Calls page
-renders the same instant in the device's current local time. Email delivery
-failures appear in the operations failure log and do not cancel the schedule.
+The invitee also receives an email when the schedule is first created. A
+cancellation email goes to the other participant and includes the optional
+reason. Two minutes before the scheduled start, both organizer and invitee
+receive an email from their respective home instances. Email timestamps are
+explicitly UTC because Veejr does not persist a named browser time zone; the
+linked Calls page renders the same instant in the device's current local time.
+Email delivery failures appear in the operations failure log and do not undo
+the cancellation or cancel an active schedule.
 
 Federated schedules are mirrored through the durable federation outbox, unlike
 realtime rings and signaling. Each participant's home instance reminds its own
 local user. The scheduled time, reminder lead time, participants, lifecycle
-state, shared call notes, and reminder checkpoints are server-readable metadata
-on both home instances;
+state, shared call notes, cancellation actor and reason, and reminder
+checkpoints are server-readable metadata on both home instances;
 call media and signaling retain the privacy boundaries described below.
 
 ### In-call controls

@@ -848,6 +848,63 @@
   box-shadow: 0 6px 16px rgba(124, 77, 255, 0.28);
 }
 
+#messages-workspace[data-chat-theme="party"] :is(
+  .messages-page-header,
+  .messages-chat-header,
+  .messages-rail,
+  .messages-composer-dock
+) :is(button, a) {
+  color: var(--party-purple);
+}
+
+#messages-workspace[data-chat-theme="party"] :is(
+  .messages-page-header,
+  .messages-chat-header,
+  .messages-rail,
+  .messages-composer-dock
+) :is(button, a):hover {
+  background-color: rgba(255, 79, 163, 0.13);
+  color: #5c2bd1;
+}
+
+#messages-workspace[data-chat-theme="party"] :is(
+  .messages-page-header,
+  .messages-chat-header,
+  .messages-rail,
+  .messages-composer-dock
+) :is(button, a):active {
+  background-color: var(--party-yellow);
+  color: var(--party-ink);
+  transform: translateY(1px);
+}
+
+#messages-workspace[data-chat-theme="party"] :is(button, a):focus-visible {
+  outline: 3px solid var(--party-cyan);
+  outline-offset: 2px;
+}
+
+#messages-workspace[data-chat-theme="party"] :is(button, a):disabled {
+  color: rgba(42, 23, 70, 0.42);
+}
+
+#messages-workspace[data-chat-theme="party"] .chat-theme-option[aria-pressed="true"]:hover,
+#messages-workspace[data-chat-theme="party"] .chat-theme-option[aria-pressed="true"]:active {
+  background: linear-gradient(135deg, var(--party-pink), var(--party-purple));
+  color: white;
+}
+
+#messages-workspace[data-chat-theme="party"] .btn-outline {
+  border-color: var(--party-purple);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--party-purple);
+}
+
+#messages-workspace[data-chat-theme="party"] .btn-outline:hover {
+  border-color: var(--party-purple);
+  background: var(--party-purple);
+  color: white;
+}
+
 #messages-workspace[data-chat-theme="party"] .messages-rail {
   background: rgba(255, 248, 253, 0.88);
 }
@@ -1036,6 +1093,70 @@
   box-shadow: inset 0 0 0 2px var(--comic-ink);
 }
 
+#messages-workspace[data-chat-theme="comic"] :is(
+  .messages-page-header,
+  .messages-chat-header,
+  .messages-rail,
+  .messages-composer-dock
+) :is(button, a) {
+  color: var(--comic-ink);
+}
+
+#messages-workspace[data-chat-theme="comic"] :is(
+  .messages-page-header,
+  .messages-chat-header,
+  .messages-rail,
+  .messages-composer-dock
+) :is(button, a):hover {
+  background-color: var(--comic-yellow);
+  color: var(--comic-ink);
+}
+
+#messages-workspace[data-chat-theme="comic"] :is(
+  .messages-page-header,
+  .messages-chat-header,
+  .messages-rail,
+  .messages-composer-dock
+) :is(button, a):active {
+  background-color: var(--comic-blue);
+  color: white;
+  transform: translate(1px, 1px);
+}
+
+#messages-workspace[data-chat-theme="comic"] :is(button, a):focus-visible {
+  outline: 3px solid var(--comic-blue);
+  outline-offset: 3px;
+}
+
+#messages-workspace[data-chat-theme="comic"] :is(button, a):disabled {
+  color: #7d735c;
+}
+
+#messages-workspace[data-chat-theme="comic"] .chat-theme-option[aria-pressed="true"]:hover,
+#messages-workspace[data-chat-theme="comic"] .chat-theme-option[aria-pressed="true"]:active {
+  background: var(--comic-red);
+  color: white;
+}
+
+#messages-workspace[data-chat-theme="comic"] .btn-outline {
+  border: 2px solid var(--comic-ink);
+  background: var(--comic-white);
+  color: var(--comic-ink);
+  box-shadow: 2px 2px 0 var(--comic-ink);
+}
+
+#messages-workspace[data-chat-theme="comic"] .btn-outline:hover {
+  border-color: var(--comic-ink);
+  background: var(--comic-yellow);
+  color: var(--comic-ink);
+}
+
+#messages-workspace[data-chat-theme="comic"] .btn-outline:active {
+  background: var(--comic-blue);
+  color: white;
+  box-shadow: none;
+}
+
 #messages-workspace[data-chat-theme="comic"] .messages-rail {
   border-right-width: 3px;
   background: var(--comic-white);
@@ -1063,7 +1184,6 @@
 
 #messages-workspace[data-chat-theme="comic"] .messages-chat-header button,
 #messages-workspace[data-chat-theme="comic"] .messages-chat-header a {
-  color: var(--comic-blue);
   font-weight: 900;
 }
 

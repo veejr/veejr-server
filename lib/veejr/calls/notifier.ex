@@ -79,6 +79,38 @@ defmodule Veejr.Calls.Notifier do
 
   def deliver_two_minute_reminder(%ScheduledCall{}, %User{}), do: :ok
 
+  def deliver_cancellation(
+        %ScheduledCall{} = schedule,
+        %User{} = canceller,
+        %User{host: nil} = recipient
+      ) do
+    canceller_name = display_name(canceller)
+
+    deliver(
+      recipient,
+      "scheduled_call_cancellation",
+      "#{canceller_name} canceled your scheduled call",
+      """
+
+      ==============================
+
+      Hi #{display_name(recipient)},
+
+      #{canceller_name} canceled the private call that was scheduled for
+      #{scheduled_time(schedule)}.
+      #{cancellation_reason(schedule)}
+
+      Open Calls to review your calendar:
+
+      #{calls_url()}
+
+      ==============================
+      """
+    )
+  end
+
+  def deliver_cancellation(%ScheduledCall{}, %User{}, %User{}), do: :ok
+
   defp deliver(recipient, operation, subject, body) do
     email =
       new()
@@ -103,6 +135,12 @@ defmodule Veejr.Calls.Notifier do
   defp scheduled_time(schedule) do
     Calendar.strftime(schedule.scheduled_for, "%B %d, %Y at %H:%M UTC")
   end
+
+  defp cancellation_reason(%ScheduledCall{cancellation_reason: nil}),
+    do: "\nNo reason was provided.\n"
+
+  defp cancellation_reason(%ScheduledCall{cancellation_reason: reason}),
+    do: "\nReason: #{reason}\n"
 
   defp calls_url, do: VeejrWeb.Endpoint.url() <> "/calls"
 end

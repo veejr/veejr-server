@@ -458,6 +458,13 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(view, "#message-shell-#{newest.public_id}")
     assert has_element?(view, "#message-shell-#{newest_visible.public_id}")
+
+    assert has_element?(
+             view,
+             "#message-meta-#{newest.public_id} time[data-role='message-timestamp'][datetime='#{DateTime.to_iso8601(newest.inserted_at)}']",
+             Calendar.strftime(newest.inserted_at, "%b %d, %Y · %H:%M UTC")
+           )
+
     refute has_element?(view, "#message-shell-#{oldest_hidden.public_id}")
     refute has_element?(view, "#message-shell-#{oldest.public_id}")
     assert has_element?(view, "#load-more-messages")

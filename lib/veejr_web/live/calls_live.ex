@@ -173,16 +173,6 @@ defmodule VeejrWeb.CallsLive do
                 >
                   <.icon name="hero-phone" class="size-4" /> Start now
                 </button>
-                <button
-                  :if={schedule.organizer_id == @current_scope.user.id}
-                  id={"cancel-scheduled-call-#{schedule.id}"}
-                  phx-click="cancel"
-                  phx-value-id={schedule.id}
-                  data-confirm="Cancel this scheduled call for both people?"
-                  class="btn btn-ghost btn-sm rounded-xl text-error"
-                >
-                  Cancel
-                </button>
                 <span
                   :if={schedule.organizer_id != @current_scope.user.id}
                   class="rounded-xl bg-base-200 px-3 py-2 text-xs opacity-65"
@@ -223,6 +213,56 @@ defmodule VeejrWeb.CallsLive do
                   class="btn btn-outline btn-sm rounded-xl"
                 >
                   Save notes
+                </button>
+              </div>
+            </.form>
+
+            <div
+              :if={schedule.status == "cancelled"}
+              id={"scheduled-call-cancellation-#{schedule.id}"}
+              class="mt-4 rounded-2xl border border-error/25 bg-error/5 p-4"
+            >
+              <p class="flex items-center gap-2 text-sm font-semibold text-error">
+                <.icon name="hero-calendar-days" class="size-4" />
+                {cancellation_actor_label(schedule, @current_scope.user)}
+              </p>
+              <p
+                :if={schedule.cancellation_reason}
+                id={"scheduled-call-cancellation-reason-#{schedule.id}"}
+                class="mt-2 whitespace-pre-wrap text-sm leading-relaxed opacity-80"
+              >
+                Reason: {schedule.cancellation_reason}
+              </p>
+            </div>
+
+            <.form
+              :if={schedule.status == "scheduled"}
+              for={@cancellation_forms[schedule.id]}
+              id={"scheduled-call-cancellation-form-#{schedule.id}"}
+              phx-submit="cancel"
+              class="mt-4 rounded-2xl border border-error/25 bg-error/5 p-4"
+            >
+              <input type="hidden" name="_id" value={schedule.id} />
+              <.input
+                field={@cancellation_forms[schedule.id][:cancellation_reason]}
+                type="textarea"
+                label="Cancellation reason (optional)"
+                maxlength="500"
+                rows="3"
+                placeholder="Let them know why plans changed"
+              />
+              <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-xs leading-relaxed opacity-65">
+                  The other person will receive an email with your reason.
+                </p>
+                <button
+                  id={"cancel-scheduled-call-#{schedule.id}"}
+                  type="submit"
+                  data-confirm="Cancel this scheduled call for both people?"
+                  phx-disable-with="Cancellingâ€¦"
+                  class="btn btn-error btn-sm shrink-0 rounded-xl"
+                >
+                  <.icon name="hero-x-mark" class="size-4" /> Cancel scheduled call
                 </button>
               </div>
             </.form>
@@ -286,15 +326,22 @@ defmodule VeejrWeb.CallsLive do
     end
   end
 
-  def handle_event("cancel", %{"id" => id}, socket) do
+  def handle_event(
+        "cancel",
+        %{"_id" => id, "cancellation" => cancellation_params},
+        socket
+      ) do
     user = socket.assigns.current_scope.user
 
-    case Calls.cancel_scheduled_call(user, parse_id(id)) do
+    case Calls.cancel_scheduled_call(user, parse_id(id), cancellation_params) do
       {:ok, _schedule} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Scheduled call cancelled.")
+         |> put_flash(:info, "Scheduled call cancelled. The other person has been notified.")
          |> assign_schedules(user)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, put_flash(socket, :error, changeset_error(changeset))}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "The scheduled call could not be cancelled.")}
@@ -365,7 +412,21 @@ defmodule VeejrWeb.CallsLive do
         {schedule.id, to_form(%{"note" => schedule.note || ""}, as: :schedule_note)}
       end)
 
-    assign(socket, schedules: schedules, note_forms: note_forms)
+    cancellation_forms =
+      Map.new(schedules, fn schedule ->
+        {schedule.id,
+         to_form(
+           %{"cancellation_reason" => schedule.cancellation_reason || ""},
+           as: :cancellation
+         )}
+      end)
+
+    assign(
+      socket,
+      schedules: schedules,
+      note_forms: note_forms,
+      cancellation_forms: cancellation_forms
+    )
   end
 
   defp selected_friend_id(nil, _friends), do: nil
@@ -403,6 +464,27 @@ defmodule VeejrWeb.CallsLive do
   defp status_class("scheduled"), do: "badge badge-primary badge-sm"
   defp status_class("cancelled"), do: "badge badge-ghost badge-sm opacity-60"
   defp status_class("started"), do: "badge badge-success badge-sm"
+
+  defp cancellation_actor_label(
+         %ScheduledCall{cancelled_by_id: cancelled_by_id},
+         %{id: cancelled_by_id}
+       ),
+       do: "You canceled this call."
+
+  defp cancellation_actor_label(
+         %ScheduledCall{cancelled_by_id: cancelled_by_id, organizer_id: cancelled_by_id} =
+           schedule,
+         _user
+       ),
+       do: "#{Social.Address.handle(schedule.organizer)} canceled this call."
+
+  defp cancellation_actor_label(
+         %ScheduledCall{cancelled_by_id: cancelled_by_id, invitee_id: cancelled_by_id} = schedule,
+         _user
+       ),
+       do: "#{Social.Address.handle(schedule.invitee)} canceled this call."
+
+  defp cancellation_actor_label(_schedule, _user), do: "This call was canceled."
 
   defp changeset_error(changeset) do
     case changeset.errors do

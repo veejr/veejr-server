@@ -62,6 +62,7 @@ defmodule VeejrWeb.CallsLiveTest do
     assert has_element?(view, "#save-scheduled-call-note-#{schedule.id}")
     assert has_element?(view, "#start-scheduled-call-#{schedule.id}")
     assert has_element?(view, "#cancel-scheduled-call-#{schedule.id}")
+    assert has_element?(view, "#scheduled-call-cancellation-form-#{schedule.id}")
 
     view
     |> form("#scheduled-call-note-form-#{schedule.id}",
@@ -94,11 +95,21 @@ defmodule VeejrWeb.CallsLiveTest do
     {:ok, view, _html} = live(conn, "/calls")
 
     view
-    |> element("#cancel-scheduled-call-#{schedule.id}")
-    |> render_click()
+    |> form("#scheduled-call-cancellation-form-#{schedule.id}", %{
+      "cancellation" => %{"cancellation_reason" => "Calendar conflict"}
+    })
+    |> render_submit()
 
     assert has_element?(view, "#scheduled-call-#{schedule.id}", "Cancelled")
+
+    assert has_element?(
+             view,
+             "#scheduled-call-cancellation-reason-#{schedule.id}",
+             "Calendar conflict"
+           )
+
     refute has_element?(view, "#start-scheduled-call-#{schedule.id}")
+    refute has_element?(view, "#scheduled-call-cancellation-form-#{schedule.id}")
   end
 
   test "the invitee sees call notes on every schedule but cannot change them", %{
@@ -122,6 +133,18 @@ defmodule VeejrWeb.CallsLiveTest do
            )
 
     refute has_element?(view, "#save-scheduled-call-note-#{schedule.id}")
+    assert has_element?(view, "#scheduled-call-cancellation-form-#{schedule.id}")
+
+    view
+    |> form("#scheduled-call-cancellation-form-#{schedule.id}", %{
+      "cancellation" => %{"cancellation_reason" => "Can we reschedule?"}
+    })
+    |> render_submit()
+
+    assert {:ok, cancelled} = Calls.get_scheduled_call(friend, schedule.id)
+    assert cancelled.status == "cancelled"
+    assert cancelled.cancelled_by_id == friend.id
+    assert cancelled.cancellation_reason == "Can we reschedule?"
   end
 
   defp keyed_user do

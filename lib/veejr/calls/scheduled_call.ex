@@ -11,12 +11,14 @@ defmodule Veejr.Calls.ScheduledCall do
     field :reminder_minutes, :integer, default: 15
     field :note, :string
     field :status, :string, default: "scheduled"
+    field :cancellation_reason, :string
     field :reminded_at, :utc_datetime
     field :organizer_email_reminded_at, :utc_datetime
     field :invitee_email_reminded_at, :utc_datetime
 
     belongs_to :organizer, Veejr.Accounts.User
     belongs_to :invitee, Veejr.Accounts.User
+    belongs_to :cancelled_by, Veejr.Accounts.User
 
     timestamps(type: :utc_datetime)
   end
@@ -37,6 +39,24 @@ defmodule Veejr.Calls.ScheduledCall do
     schedule
     |> cast(attrs, [:note])
     |> validate_length(:note, max: 500)
+  end
+
+  def cancellation_changeset(schedule, attrs, cancelled_by_id) do
+    schedule
+    |> cast(attrs, [:cancellation_reason])
+    |> update_change(:cancellation_reason, fn
+      reason when is_binary(reason) ->
+        case String.trim(reason) do
+          "" -> nil
+          trimmed -> trimmed
+        end
+
+      _reason ->
+        nil
+    end)
+    |> validate_length(:cancellation_reason, max: 500)
+    |> put_change(:cancelled_by_id, cancelled_by_id)
+    |> put_change(:status, "cancelled")
   end
 
   defp validate_future(changeset) do

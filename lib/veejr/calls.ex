@@ -291,25 +291,33 @@ defmodule Veejr.Calls do
     end
   end
 
-  @doc "Cancels a scheduled call. Only its organizer may cancel it."
-  def cancel_scheduled_call(%User{id: user_id} = user, id) do
-    with {:ok, %ScheduledCall{organizer_id: ^user_id, status: "scheduled"} = schedule} <-
-           get_scheduled_call(user, id) do
+  @doc "Cancels a scheduled call as either participant, with an optional reason."
+  def cancel_scheduled_call(%User{id: user_id} = user, id, attrs \\ %{}) do
+    with {:ok, %ScheduledCall{status: "scheduled"} = schedule} <-
+           get_scheduled_call(user, id),
+         {:ok, schedule} <-
+           schedule
+           |> ScheduledCall.cancellation_changeset(attrs, user_id)
+           |> Repo.update() do
       schedule =
         schedule
-        |> Ecto.Changeset.change(status: "cancelled")
-        |> Repo.update!()
         |> preload_schedule()
 
       notify_schedule(schedule, :cancelled)
 
+      peer =
+        if schedule.organizer_id == user_id,
+          do: schedule.invitee,
+          else: schedule.organizer
+
       _delivery =
-        Veejr.Federation.deliver_call_schedule(
+        Veejr.Federation.deliver_call_schedule_cancellation(
           schedule,
-          schedule.organizer,
-          schedule.invitee,
-          "cancelled"
+          user,
+          peer
         )
+
+      _email = Notifier.deliver_cancellation(schedule, user, peer)
 
       {:ok, schedule}
     else
@@ -391,6 +399,40 @@ defmodule Veejr.Calls do
     end
   end
 
+  @doc "Applies a participant-authored cancellation from a verified peer."
+  def receive_remote_schedule_cancellation(
+        public_id,
+        verified_authority,
+        %User{} = remote_canceller,
+        %User{host: nil} = local_recipient,
+        attrs
+      ) do
+    with %ScheduledCall{} = schedule <-
+           Repo.get_by(ScheduledCall, public_id: public_id) || {:error, :not_found},
+         schedule <- preload_schedule(schedule),
+         true <- remote_canceller.host == verified_authority || {:error, :origin_mismatch},
+         true <-
+           scheduled_call_participants?(schedule, remote_canceller, local_recipient) ||
+             {:error, :origin_mismatch} do
+      if schedule.status == "scheduled" do
+        case schedule
+             |> ScheduledCall.cancellation_changeset(attrs, remote_canceller.id)
+             |> Repo.update() do
+          {:ok, schedule} ->
+            schedule = preload_schedule(schedule)
+            notify_schedule(schedule, :cancelled)
+            _email = Notifier.deliver_cancellation(schedule, remote_canceller, local_recipient)
+            {:ok, :applied}
+
+          {:error, _changeset} ->
+            {:error, :bad_request}
+        end
+      else
+        {:ok, :applied}
+      end
+    end
+  end
+
   @doc "Applies a cancelled or started schedule update from its verified home peer."
   def receive_remote_schedule_update(public_id, verified_authority, event)
       when event in ["cancelled", "started"] do
@@ -406,6 +448,10 @@ defmodule Veejr.Calls do
           |> preload_schedule()
 
         notify_schedule(schedule, String.to_existing_atom(event))
+
+        if event == "cancelled" do
+          _email = Notifier.deliver_cancellation(schedule, schedule.organizer, schedule.invitee)
+        end
       end
 
       {:ok, :applied}
@@ -969,6 +1015,11 @@ defmodule Veejr.Calls do
     if event in [:scheduled, :reminder] do
       Push.notify_user_async(user, schedule_push_payload(schedule, peer, event))
     end
+  end
+
+  defp scheduled_call_participants?(schedule, first, second) do
+    (schedule.organizer_id == first.id and schedule.invitee_id == second.id) or
+      (schedule.organizer_id == second.id and schedule.invitee_id == first.id)
   end
 
   defp schedule_push_payload(schedule, peer, :scheduled) do

@@ -444,9 +444,11 @@ pending --accept--> accepted --fetch/display--> accepted
 - An authenticated user may schedule a future call with an accepted friend,
   choose a reminder lead time, add shared call notes, start the call early, and
   cancel it. Every schedule display includes the notes field; only the
-  organizer edits it and federated updates mirror it to the invitee. The
-  schedule is visible to both participants; starting it creates an ordinary
-  consent-gated realtime ring.
+  organizer edits it and federated updates mirror it to the invitee. Either
+  participant MAY cancel a scheduled call and MAY supply a reason. The
+  cancellation MUST persist its actor and reason, and the other participant's
+  home instance MUST email its own local user. The schedule is visible to both
+  participants; starting it creates an ordinary consent-gated realtime ring.
 - Schedules and reminder delivery state MUST persist across application
   restarts. A background worker dispatches each due reminder at most once to
   foreground tabs and registered push devices. Push payloads MUST remain
@@ -460,7 +462,8 @@ pending --accept--> accepted --fetch/display--> accepted
 - Federated schedules use a signed, durable, retryable mirror operation. Each
   home instance reminds only its local participant. The schedule timestamp,
   reminder lead time, participant identities, lifecycle state, shared notes,
-  and reminder checkpoints are server-readable metadata.
+  cancellation actor and reason, and reminder checkpoints are server-readable
+  metadata.
 - A 1:1 YouTube share is controlled only by the participant who starts it and
   is transported over the WebRTC data channel. It is mutually exclusive with
   screen sharing.

@@ -178,7 +178,7 @@ defmodule Veejr.CallsTest do
   end
 
   describe "scheduled calls" do
-    test "an organizer schedules and cancels a call with a local friend" do
+    test "either participant can cancel a local schedule with a reason and email" do
       alice = user_fixture()
       bob = user_fixture()
       befriend(alice, bob)
@@ -204,12 +204,29 @@ defmodule Veejr.CallsTest do
         subject: "#{alice.display_name || "@#{alice.username}"} scheduled a call with you"
       )
 
-      subscribe_user(bob)
+      subscribe_user(alice)
 
-      assert {:ok, %ScheduledCall{status: "cancelled"}} =
-               Calls.cancel_scheduled_call(alice, id)
+      assert {:ok,
+              %ScheduledCall{
+                status: "cancelled",
+                cancelled_by_id: cancelled_by_id,
+                cancellation_reason: "Something came up"
+              }} =
+               Calls.cancel_scheduled_call(bob, id, %{
+                 "cancellation_reason" => "  Something came up  "
+               })
 
+      assert cancelled_by_id == bob.id
       assert_receive {:veejr_call_schedule, :cancelled, %ScheduledCall{id: ^id}, _peer}
+
+      assert_email_sent(fn email ->
+        assert email.to == [{"", alice.email}]
+
+        assert email.subject ==
+                 "#{bob.display_name || "@#{bob.username}"} canceled your scheduled call"
+
+        assert email.text_body =~ "Reason: Something came up"
+      end)
     end
 
     test "due reminders are persisted and broadcast once to both local participants" do
@@ -515,11 +532,26 @@ defmodule Veejr.CallsTest do
 
       assert {:ok, :applied} =
                Veejr.Federation.handle_call_schedule(
-                 %{"schedule_id" => schedule.public_id, "event" => "cancelled"},
+                 %{
+                   "from" => %{"username" => "carol", "authority" => @remote_host},
+                   "to" => "alice",
+                   "schedule_id" => schedule.public_id,
+                   "event" => "cancelled",
+                   "cancellation_reason" => "Travel delay"
+                 },
                  @remote_host
                )
 
-      assert Repo.get!(ScheduledCall, schedule.id).status == "cancelled"
+      persisted = Repo.get!(ScheduledCall, schedule.id)
+      assert persisted.status == "cancelled"
+      assert persisted.cancelled_by_id == carol.id
+      assert persisted.cancellation_reason == "Travel delay"
+
+      assert_email_sent(fn email ->
+        assert email.to == [{"", alice.email}]
+        assert email.subject == "@carol canceled your scheduled call"
+        assert email.text_body =~ "Reason: Travel delay"
+      end)
     end
 
     test "an unreachable callee instance fails the call cleanly", %{alice: alice, carol: carol} do

@@ -703,12 +703,20 @@ defmodule VeejrWeb.MessagingComponents do
             <span class="loading loading-dots loading-xs"></span>
           </div>
         </div>
-        <div class={[
-          "veejr-bubble-meta mt-1 text-xs opacity-60",
-          @mine && "mr-3",
-          !@mine && "ml-3"
-        ]}>
-          <span>{Calendar.strftime(@envelope.inserted_at, "%H:%M")}</span>
+        <div
+          class={[
+            "veejr-bubble-meta mt-1 text-xs opacity-60",
+            @mine && "mr-3",
+            !@mine && "ml-3"
+          ]}
+          id={"message-meta-#{@envelope.public_id}"}
+        >
+          <time
+            datetime={DateTime.to_iso8601(@envelope.inserted_at)}
+            data-role="message-timestamp"
+          >
+            {Calendar.strftime(@envelope.inserted_at, "%b %d, %Y · %H:%M UTC")}
+          </time>
           <span :if={@envelope.edited_at} class="ml-1">edited</span>
           <span :if={@envelope.expires_at} class="ml-1">
             <.icon name="hero-clock" class="inline size-3.5" />

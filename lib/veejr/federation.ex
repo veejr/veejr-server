@@ -200,6 +200,9 @@ defmodule Veejr.Federation do
         "updated" ->
           Map.put(payload, :note, schedule.note)
 
+        "cancelled" ->
+          Map.put(payload, :cancellation_reason, schedule.cancellation_reason)
+
         _ ->
           payload
       end
@@ -208,6 +211,24 @@ defmodule Veejr.Federation do
   end
 
   def deliver_call_schedule(_schedule, %User{}, %User{host: nil}, _event), do: :ok
+
+  @doc "Durably delivers a participant-authored scheduled-call cancellation."
+  def deliver_call_schedule_cancellation(
+        schedule,
+        %User{host: nil} = canceller,
+        %User{host: authority} = recipient
+      )
+      when is_binary(authority) do
+    queue_delivery(authority, "/api/federation/call_schedule", %{
+      from: %{username: canceller.username, authority: Veejr.instance_authority()},
+      to: recipient.username,
+      schedule_id: schedule.public_id,
+      event: "cancelled",
+      cancellation_reason: schedule.cancellation_reason
+    })
+  end
+
+  def deliver_call_schedule_cancellation(_schedule, %User{}, %User{host: nil}), do: :ok
 
   def handle_call_invite(
         %{
@@ -277,6 +298,30 @@ defmodule Veejr.Federation do
     Veejr.Calls.receive_remote_schedule_note_update(schedule_id, verified_authority, %{
       "note" => params["note"]
     })
+  end
+
+  def handle_call_schedule(
+        %{
+          "from" => %{"username" => username, "authority" => authority},
+          "to" => to,
+          "schedule_id" => schedule_id,
+          "event" => "cancelled"
+        } = params,
+        verified_authority
+      )
+      when is_binary(schedule_id) do
+    with :ok <- validate_origin(username, authority, verified_authority),
+         {:ok, remote_canceller} <- ensure_remote_user(username, authority),
+         %User{host: nil} = local_recipient <-
+           Veejr.Accounts.get_user_by_username(to) || {:error, :unknown_recipient} do
+      Veejr.Calls.receive_remote_schedule_cancellation(
+        schedule_id,
+        verified_authority,
+        remote_canceller,
+        local_recipient,
+        %{"cancellation_reason" => params["cancellation_reason"]}
+      )
+    end
   end
 
   def handle_call_schedule(
