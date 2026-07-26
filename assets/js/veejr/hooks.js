@@ -652,7 +652,7 @@ export const InstallApp = {
 export const ChatTheme = {
   mounted() {
     this.storageKey = "veejr:chat-theme"
-    this.allowedThemes = new Set(["classic", "salon", "party"])
+    this.allowedThemes = new Set(["classic", "salon", "party", "comic"])
     this.onThemeClick = (event) => {
       const option = event.target.closest("[data-chat-theme-option]")
       if (!option || !this.el.contains(option)) return

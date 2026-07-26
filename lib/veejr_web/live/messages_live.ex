@@ -73,6 +73,15 @@ defmodule VeejrWeb.MessagesLive do
                 >
                   Party
                 </button>
+                <button
+                  id="chat-theme-comic"
+                  type="button"
+                  data-chat-theme-option="comic"
+                  aria-pressed="false"
+                  class="chat-theme-option rounded-full px-3 py-1.5 text-xs font-medium transition"
+                >
+                  Comic
+                </button>
               </div>
               <.link
                 id="messages-invite-person"
