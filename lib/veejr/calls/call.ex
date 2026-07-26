@@ -1,7 +1,7 @@
 defmodule Veejr.Calls.Call do
   use Ecto.Schema
 
-  @states ~w(ringing accepted declined missed ended failed)
+  @states ~w(ringing accepted declined cancelled missed ended failed)
 
   schema "calls" do
     field :public_id, :string

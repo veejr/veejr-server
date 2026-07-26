@@ -24,7 +24,7 @@ defmodule VeejrWeb.CallLiveTest do
     %{conn: log_in_user(conn, user), user: user, friend: friend}
   end
 
-  test "ending a call returns to the exact originating conversation", %{
+  test "cancelling an outgoing invitation returns to the exact originating conversation", %{
     conn: conn,
     user: user,
     friend: friend
@@ -35,10 +35,24 @@ defmodule VeejrWeb.CallLiveTest do
 
     {:ok, view, _html} = live(conn, call_path)
 
-    assert has_element?(view, "#hang-up[data-call-exit]")
+    assert has_element?(view, "#hang-up[data-call-exit]", "Cancel invitation")
     view |> element("#hang-up") |> render_click()
 
     assert_redirect(view, return_to)
+    assert {:ok, %{state: "cancelled"}} = Calls.get_call(user, call.public_id)
+  end
+
+  test "an accepted call labels the control as End call", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, call} = Calls.start_call(user, friend.id)
+    {:ok, _accepted} = Calls.join_call(friend, call.public_id)
+
+    {:ok, view, _html} = live(conn, "/call/#{call.public_id}")
+
+    assert has_element?(view, "#hang-up[data-call-exit]", "End call")
   end
 
   test "renders local call quality feedback", %{conn: conn, user: user, friend: friend} do

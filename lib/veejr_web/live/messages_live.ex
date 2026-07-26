@@ -582,6 +582,15 @@ defmodule VeejrWeb.MessagesLive do
                   >
                     <.icon name="hero-phone" class="mr-1 inline size-4" /> Call
                   </button>
+                  <.link
+                    :if={call_peer_id(@selected_conversation)}
+                    id="schedule-call"
+                    navigate={~p"/calls?friend_id=#{call_peer_id(@selected_conversation)}"}
+                    title="Schedule a call and reminder"
+                    class="rounded-full px-3 py-1.5 text-sm font-medium opacity-80 hover:bg-base-200 hover:opacity-100"
+                  >
+                    <.icon name="hero-calendar-days" class="mr-1 inline size-4" /> Schedule
+                  </.link>
                   <button
                     id="archive-conversation"
                     phx-click="archive_conversation"

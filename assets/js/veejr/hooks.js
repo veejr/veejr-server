@@ -40,6 +40,71 @@ const csrfToken = () =>
 const currentLocationPath = () =>
   `${window.location.pathname}${window.location.search}${window.location.hash}`
 
+const ScheduleTime = {
+  mounted() {
+    this.bindInputs()
+  },
+
+  updated() {
+    this.bindInputs()
+  },
+
+  bindInputs() {
+    this.unbindInputs()
+    this.localInput = this.el.querySelector("#scheduled-call-local-time")
+    this.utcInput = this.el.querySelector("input[name='schedule[scheduled_for]']")
+    this.syncUtc = () => {
+      if (!this.localInput || !this.utcInput) return
+      const parsed = new Date(this.localInput.value)
+      this.utcInput.value = Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString()
+    }
+
+    if (this.localInput && this.utcInput) {
+      const initial = new Date(this.utcInput.value)
+      if (!Number.isNaN(initial.getTime())) {
+        const offset = initial.getTimezoneOffset() * 60_000
+        this.localInput.value = new Date(initial.getTime() - offset).toISOString().slice(0, 16)
+        this.localInput.min = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
+          .toISOString()
+          .slice(0, 16)
+      }
+      this.localInput.addEventListener("input", this.syncUtc)
+      this.localInput.addEventListener("change", this.syncUtc)
+      this.syncUtc()
+    }
+  },
+
+  unbindInputs() {
+    if (!this.localInput || !this.syncUtc) return
+    this.localInput.removeEventListener("input", this.syncUtc)
+    this.localInput.removeEventListener("change", this.syncUtc)
+  },
+
+  destroyed() {
+    this.unbindInputs()
+  },
+}
+
+const LocalTime = {
+  mounted() {
+    this.renderLocalTime()
+  },
+
+  updated() {
+    this.renderLocalTime()
+  },
+
+  renderLocalTime() {
+    const parsed = new Date(this.el.getAttribute("datetime"))
+    if (Number.isNaN(parsed.getTime())) return
+    this.el.textContent = parsed.toLocaleString([], {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })
+    this.el.title = Intl.DateTimeFormat().resolvedOptions().timeZone
+  },
+}
+
 // Encrypts one file with a fresh symmetric key and uploads the ciphertext.
 // Returns the attachment descriptor that rides inside the envelope payload.
 async function encryptAndUpload(file, metadata = {}) {
@@ -4415,5 +4480,7 @@ export default {
   ReplyTo,
   ScrollBottom,
   GuestConferenceLobby,
+  LocalTime,
+  ScheduleTime,
   VeejrMap,
 }

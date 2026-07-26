@@ -32,6 +32,9 @@ defmodule VeejrWeb.FederationController do
   def call_signal(conn, params),
     do: respond(conn, Federation.handle_call_signal(params, conn.assigns.federation_peer))
 
+  def call_schedule(conn, params),
+    do: respond(conn, Federation.handle_call_schedule(params, conn.assigns.federation_peer))
+
   # Capability fetch: the recipient's instance retrieves ciphertext after the
   # recipient accepted. Only envelopes addressed to remote users are served.
   def envelope(conn, %{"public_id" => public_id}) do

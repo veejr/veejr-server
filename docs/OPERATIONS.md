@@ -424,6 +424,20 @@ in Firebase and remove the old Docker secret.
 - See [CALLS_AND_WATCH_PARTIES.md](CALLS_AND_WATCH_PARTIES.md) for the complete
   recovery and browser-permission checklist.
 
+### Scheduled call reminders do not arrive
+
+- Confirm the schedule remains `scheduled`, its `scheduled_for` time is
+  correct in UTC, and `reminded_at` is still empty before the lead-time
+  threshold.
+- Confirm the `Veejr.Calls.Reminders` process is running. It checks every 30
+  seconds and catches reminders up to one hour after their scheduled time.
+- A connected tab receives the user-scoped reminder even without push. For
+  background delivery, confirm browser notification permission or an Android
+  push token and review push-service failures.
+- Federated schedule changes use the durable federation outbox. Check peer
+  block/key state and retry the outbox if the other participant does not see
+  the plan. The later realtime ring remains synchronous.
+
 ### Recorded voice or video message fails
 
 - Recheck browser site permissions for camera and microphone.

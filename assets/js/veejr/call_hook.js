@@ -236,6 +236,8 @@ export const CallSession = {
 
     this.handleEvent("call:peer_joined", () => {
       this.peerJoined = true
+      const hangupLabel = this.el.querySelector("[data-role=hangup-label]")
+      if (hangupLabel) hangupLabel.textContent = "End call"
       this.setLifecycle("connecting", "Connecting…")
       if (this.secureSessionStarted && this.role === "caller") this.startAsCaller()
     })
@@ -1939,6 +1941,8 @@ export const CallSession = {
   },
 }
 
+const ringNotifications = new Map()
+
 // Incoming-call banner: rings in every open veejr tab via the LiveNotify
 // push event. Accept and Decline are plain navigations, so this works from
 // any page without a dedicated reply channel.
@@ -1971,9 +1975,70 @@ export function installRingBanner() {
     setTimeout(() => banner.remove(), 60_000)
 
     if ("Notification" in window && Notification.permission === "granted") {
-      new Notification("veejr", {
+      const notification = new Notification("veejr", {
         body: `${detail.from} is calling you.`,
         tag: `veejr-call-${detail.call_id}`,
+      })
+      ringNotifications.set(detail.call_id, notification)
+      notification.addEventListener("close", () => ringNotifications.delete(detail.call_id))
+    }
+  })
+
+  window.addEventListener("phx:veejr:ring_cancelled", ({detail}) => {
+    document.getElementById(`veejr-ring-${detail.call_id}`)?.remove()
+    ringNotifications.get(detail.call_id)?.close()
+    ringNotifications.delete(detail.call_id)
+  })
+}
+
+export function installCallScheduleNotifications() {
+  window.addEventListener("phx:veejr:call_schedule", ({detail}) => {
+    const id = `veejr-call-schedule-${detail.schedule_id}`
+
+    if (detail.event === "cancelled" || detail.event === "started") {
+      document.getElementById(id)?.remove()
+      return
+    }
+
+    const existing = document.getElementById(id)
+    if (existing) existing.remove()
+
+    const when = new Date(detail.scheduled_for)
+    const time = Number.isNaN(when.getTime())
+      ? "soon"
+      : when.toLocaleString([], {dateStyle: "medium", timeStyle: "short"})
+    const reminder = detail.event === "reminder"
+    const banner = document.createElement("div")
+    banner.id = id
+    banner.className =
+      "fixed inset-x-0 top-4 z-[1200] mx-auto flex w-fit max-w-[92vw] items-center gap-4 rounded-2xl border border-base-300 bg-base-100 py-2 pl-5 pr-2 shadow-2xl"
+
+    const label = document.createElement("span")
+    label.className = "text-sm font-medium"
+    label.textContent = reminder
+      ? `Scheduled call with ${detail.from} is coming up`
+      : `${detail.from} scheduled a call for ${time}`
+
+    const open = document.createElement("a")
+    open.href = "/calls"
+    open.className = "btn btn-primary btn-sm rounded-full"
+    open.textContent = "View"
+
+    const dismiss = document.createElement("button")
+    dismiss.type = "button"
+    dismiss.className = "btn btn-ghost btn-sm rounded-full"
+    dismiss.textContent = "Dismiss"
+    dismiss.addEventListener("click", () => banner.remove())
+
+    banner.append(label, open, dismiss)
+    document.body.appendChild(banner)
+
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(reminder ? "Scheduled call reminder" : "Call scheduled", {
+        body: reminder
+          ? `Your call with ${detail.from} is coming up.`
+          : `${detail.from} scheduled a call for ${time}.`,
+        tag: id,
       })
     }
   })

@@ -93,7 +93,12 @@ defmodule VeejrWeb.CallLive do
             data-call-exit
             class="btn btn-error btn-sm"
           >
-            <.icon name="hero-phone-x-mark" class="size-4" /> End call
+            <.icon name="hero-phone-x-mark" class="size-4" />
+            <span data-role="hangup-label">
+              {if @role == "caller" and @call.state == "ringing",
+                do: "Cancel invitation",
+                else: "End call"}
+            </span>
           </button>
         </div>
 
@@ -678,11 +683,18 @@ defmodule VeejrWeb.CallLive do
   end
 
   def handle_event("hangup", _params, socket) do
-    Calls.end_call(socket.assigns.current_scope.user, socket.assigns.call.public_id)
+    user = socket.assigns.current_scope.user
+    call_id = socket.assigns.call.public_id
+
+    cancelled? =
+      socket.assigns.role == "caller" and
+        match?({:ok, _call}, Calls.cancel_call(user, call_id))
+
+    unless cancelled?, do: Calls.end_call(user, call_id)
 
     {:noreply,
      socket
-     |> put_flash(:info, "Call ended.")
+     |> put_flash(:info, if(cancelled?, do: "Call invitation cancelled.", else: "Call ended."))
      |> push_navigate(to: socket.assigns.return_to, replace: true)}
   end
 
@@ -727,6 +739,7 @@ defmodule VeejrWeb.CallLive do
     message =
       case reason do
         "declined" -> "Call declined."
+        "cancelled" -> "Call invitation cancelled."
         "missed" -> "Call ended before it was answered."
         _ -> "Call ended."
       end

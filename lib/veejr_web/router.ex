@@ -130,6 +130,7 @@ defmodule VeejrWeb.Router do
     post "/call_invite", FederationController, :call_invite
     post "/call_update", FederationController, :call_update
     post "/call_signal", FederationController, :call_signal
+    post "/call_schedule", FederationController, :call_schedule
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
@@ -182,6 +183,7 @@ defmodule VeejrWeb.Router do
       live "/history", HistoryLive
       live "/watch", WatchLive, :new
       live "/watch/:public_id", WatchLive, :show
+      live "/calls", CallsLive
       live "/call/:public_id", CallLive
     end
 

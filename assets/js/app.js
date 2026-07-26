@@ -25,7 +25,12 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/veejr"
 import topbar from "../vendor/topbar"
 import veejrHooks from "./veejr/hooks.js"
-import {CallSession, installCallExitGuard, installRingBanner} from "./veejr/call_hook.js"
+import {
+  CallSession,
+  installCallExitGuard,
+  installCallScheduleNotifications,
+  installRingBanner,
+} from "./veejr/call_hook.js"
 import {YouTubeWatch, installWatchBanner} from "./veejr/watch_hook.js"
 import {WatchVoice} from "./veejr/watch_voice_hook.js"
 
@@ -39,6 +44,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
 
 // Incoming-call banners can appear on any authenticated page.
 installRingBanner()
+installCallScheduleNotifications()
 installWatchBanner()
 
 // Show progress bar on live navigation and form submits

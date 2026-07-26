@@ -37,6 +37,33 @@ then join. A missing camera does not prevent an audio-only call. Both caller
 and callee may enter their encryption passphrase on this page if the tab has
 not already unlocked the identity key.
 
+While an outgoing invitation is still ringing, the caller sees **Cancel
+invitation**. Cancelling records a distinct cancelled state, dismisses the
+callee's in-app ring banner, and mirrors the cancellation to a federated
+callee. After the callee accepts, the same control becomes **End call**.
+
+### Schedule a call and reminders
+
+Open **Calls** from the global navigation, or choose **Schedule** beside the
+Call button in a one-to-one conversation. Select an accepted friend, local date
+and time, reminder lead time, and an optional note. The Calls page lists
+upcoming plans for both participants; the organizer can start early or cancel.
+Starting creates a normal realtime call invitation, so the callee still
+explicitly accepts before media connects.
+
+Schedules are persistent. A reminder worker checks them every 30 seconds and
+dispatches each reminder once. Connected tabs show an in-app banner and browser
+notification; registered browser and Android devices also receive a
+content-free push. If the instance was down at the reminder instant, a
+schedule up to one hour overdue is delivered on the next sweep. Notification
+permission and operating-system background restrictions still apply.
+
+Federated schedules are mirrored through the durable federation outbox, unlike
+realtime rings and signaling. Each participant's home instance reminds its own
+local user. The scheduled time, reminder lead time, participants, lifecycle
+state, and optional note are server-readable metadata on both home instances;
+call media and signaling retain the privacy boundaries described below.
+
 ### In-call controls
 
 - Mute/unmute the microphone (`M`) and turn the camera on/off (`V`).
@@ -93,6 +120,9 @@ lost, returning to Messages no longer produces the active-call warning.
   only ciphertext and do not store signaling history.
 - Call rows store participant IDs, a random public ID, lifecycle state, and
   timestamps. Instances can observe who called whom and when.
+- Scheduled-call rows additionally store the organizer, invitee, UTC time,
+  reminder lead time, lifecycle state, reminder delivery time, and optional
+  note. These are metadata, not encrypted message content.
 - Call chat and file transfer use the authenticated WebRTC data channel. They
   disappear when the call ends and are not included in History or account
   exports. A recipient can still save a transferred file, copy text, record
@@ -152,6 +182,18 @@ playback state, and timing, but not voice content.
 - For federated calls, inspect both instances' logs and peer block/key state.
   Call invites are synchronous and are not queued in the durable federation
   outbox.
+
+### Scheduled call or reminder does not appear
+
+- Confirm both people are still accepted friends and the scheduled time is in
+  the future.
+- For federated schedules, inspect the durable federation outbox and peer
+  block/key state. Scheduling is retried; the eventual realtime ring is not.
+- Confirm browser notification permission and a registered push subscription
+  under Account settings. The Calls page remains the authoritative list even
+  when an operating system suppresses a notification.
+- Check that `Veejr.Calls.Reminders` is running and the database is writable.
+  A reminder already stamped `reminded_at` is not dispatched twice.
 
 ### Call connects on some networks but not others
 

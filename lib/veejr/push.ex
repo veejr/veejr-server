@@ -183,6 +183,54 @@ defmodule Veejr.Push do
     :ok
   end
 
+  @doc """
+  Sends a content-free, non-message alert to all of a user's registered
+  devices. Scheduled-call reminders use this path because they do not create
+  encrypted-message notification rows.
+  """
+  def notify_user(%User{id: user_id}, payload) when is_map(payload) do
+    subscriptions =
+      from(s in Subscription, where: s.user_id == ^user_id)
+      |> Repo.all()
+
+    android_sessions =
+      from(s in ApiDeviceSession,
+        where: s.user_id == ^user_id and not is_nil(s.push_token)
+      )
+      |> Repo.all()
+
+    Enum.each(subscriptions, fn subscription ->
+      case WebPush.send_push(subscription, payload) do
+        {:ok, _status} -> :ok
+        {:error, {:http, status}} when status in [404, 410] -> Repo.delete(subscription)
+        {:error, reason} -> Logger.warning("push: direct delivery failed: #{inspect(reason)}")
+      end
+    end)
+
+    if AndroidPush.enabled?() do
+      Enum.each(android_sessions, fn session ->
+        case AndroidPush.send_push(session.push_token, payload) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("push: direct Android delivery failed: #{inspect(reason)}")
+        end
+      end)
+    end
+
+    :ok
+  end
+
+  @doc "Fire-and-forget `notify_user/2`; disabled with the normal push test setting."
+  def notify_user_async(%User{} = user, payload) when is_map(payload) do
+    if Application.get_env(:veejr, :push_enabled, true) do
+      Task.Supervisor.start_child(Veejr.TaskSupervisor, fn -> notify_user(user, payload) end)
+    end
+
+    :ok
+  end
+
   def deliver_due do
     now = DateTime.utc_now(:second)
 

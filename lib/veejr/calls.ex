@@ -21,10 +21,11 @@ defmodule Veejr.Calls do
   require Logger
 
   alias Veejr.Accounts.User
-  alias Veejr.Calls.Call
+  alias Veejr.Calls.{Call, ScheduledCall}
   alias Veejr.GuestConferences
   alias Veejr.GuestConferences.GuestCall
   alias Veejr.GuestConferences.GuestConference
+  alias Veejr.Push
   alias Veejr.Repo
   alias Veejr.Social
 
@@ -171,6 +172,230 @@ defmodule Veejr.Calls do
     |> Repo.one()
   end
 
+  ## Scheduled calls
+
+  @doc "Lists a participant's recent and upcoming scheduled calls."
+  def list_scheduled_calls(%User{id: user_id}) do
+    cutoff = DateTime.add(DateTime.utc_now(:second), -24, :hour)
+
+    from(schedule in ScheduledCall,
+      where:
+        (schedule.organizer_id == ^user_id or schedule.invitee_id == ^user_id) and
+          schedule.scheduled_for >= ^cutoff,
+      order_by: [asc: schedule.scheduled_for],
+      preload: [:organizer, :invitee]
+    )
+    |> Repo.all()
+  end
+
+  @doc "Fetches one scheduled call, scoped to either participant."
+  def get_scheduled_call(%User{id: user_id}, id) do
+    from(schedule in ScheduledCall,
+      where:
+        schedule.id == ^id and
+          (schedule.organizer_id == ^user_id or schedule.invitee_id == ^user_id),
+      preload: [:organizer, :invitee]
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      schedule -> {:ok, schedule}
+    end
+  end
+
+  @doc "Schedules a future call with an accepted friend."
+  def schedule_call(%User{host: nil} = organizer, invitee_id, attrs) do
+    with {:ok, invitee_id} <- parse_id(invitee_id),
+         %User{} = invitee <- Repo.get(User, invitee_id) || {:error, :not_found},
+         true <- invitee.id != organizer.id || {:error, :self},
+         true <- Social.friends?(organizer.id, invitee.id) || {:error, :not_a_friend} do
+      %ScheduledCall{
+        public_id: random_id(),
+        organizer_id: organizer.id,
+        invitee_id: invitee.id
+      }
+      |> ScheduledCall.changeset(attrs)
+      |> Repo.insert()
+      |> case do
+        {:ok, schedule} ->
+          schedule = preload_schedule(schedule)
+
+          case Veejr.Federation.deliver_call_schedule(
+                 schedule,
+                 organizer,
+                 invitee,
+                 "scheduled"
+               ) do
+            :ok ->
+              notify_schedule_created(schedule)
+              {:ok, schedule}
+
+            {:error, reason} ->
+              Repo.delete!(schedule)
+              {:error, reason}
+          end
+
+        error ->
+          error
+      end
+    else
+      error -> error
+    end
+  end
+
+  @doc "Cancels a scheduled call. Only its organizer may cancel it."
+  def cancel_scheduled_call(%User{id: user_id} = user, id) do
+    with {:ok, %ScheduledCall{organizer_id: ^user_id, status: "scheduled"} = schedule} <-
+           get_scheduled_call(user, id) do
+      schedule =
+        schedule
+        |> Ecto.Changeset.change(status: "cancelled")
+        |> Repo.update!()
+        |> preload_schedule()
+
+      notify_schedule(schedule, :cancelled)
+
+      _delivery =
+        Veejr.Federation.deliver_call_schedule(
+          schedule,
+          schedule.organizer,
+          schedule.invitee,
+          "cancelled"
+        )
+
+      {:ok, schedule}
+    else
+      {:ok, %ScheduledCall{}} -> {:error, :not_scheduled}
+      error -> error
+    end
+  end
+
+  @doc "Starts a scheduled call. The organizer sends the realtime invitation."
+  def start_scheduled_call(%User{id: user_id} = user, id) do
+    with {:ok, %ScheduledCall{organizer_id: ^user_id, status: "scheduled"} = schedule} <-
+           get_scheduled_call(user, id),
+         {:ok, call} <- start_call(user, schedule.invitee_id) do
+      schedule =
+        schedule
+        |> Ecto.Changeset.change(status: "started")
+        |> Repo.update!()
+        |> preload_schedule()
+
+      notify_schedule(schedule, :started)
+
+      _delivery =
+        Veejr.Federation.deliver_call_schedule(
+          schedule,
+          schedule.organizer,
+          schedule.invitee,
+          "started"
+        )
+
+      {:ok, call}
+    else
+      {:ok, %ScheduledCall{}} -> {:error, :not_scheduled}
+      error -> error
+    end
+  end
+
+  @doc "Creates the local mirror of a schedule from a verified peer."
+  def receive_remote_schedule(
+        %User{} = remote_organizer,
+        %User{host: nil} = local_invitee,
+        public_id,
+        attrs
+      )
+      when is_binary(public_id) do
+    cond do
+      not Social.friends?(remote_organizer.id, local_invitee.id) ->
+        {:error, :not_friends}
+
+      byte_size(public_id) > 100 ->
+        {:error, :bad_request}
+
+      schedule = Repo.get_by(ScheduledCall, public_id: public_id) ->
+        schedule = preload_schedule(schedule)
+
+        if schedule.organizer_id == remote_organizer.id and
+             schedule.invitee_id == local_invitee.id do
+          {:ok, schedule}
+        else
+          {:error, :origin_mismatch}
+        end
+
+      true ->
+        %ScheduledCall{
+          public_id: public_id,
+          organizer_id: remote_organizer.id,
+          invitee_id: local_invitee.id
+        }
+        |> ScheduledCall.changeset(attrs)
+        |> Repo.insert()
+        |> case do
+          {:ok, schedule} ->
+            schedule = preload_schedule(schedule)
+            notify_schedule_created(schedule)
+            {:ok, schedule}
+
+          {:error, _changeset} ->
+            {:error, :bad_request}
+        end
+    end
+  end
+
+  @doc "Applies a cancelled or started schedule update from its verified home peer."
+  def receive_remote_schedule_update(public_id, verified_authority, event)
+      when event in ["cancelled", "started"] do
+    with %ScheduledCall{} = schedule <-
+           Repo.get_by(ScheduledCall, public_id: public_id) || {:error, :not_found},
+         schedule <- preload_schedule(schedule),
+         true <- schedule.organizer.host == verified_authority || {:error, :origin_mismatch} do
+      if schedule.status == "scheduled" do
+        schedule =
+          schedule
+          |> Ecto.Changeset.change(status: event)
+          |> Repo.update!()
+          |> preload_schedule()
+
+        notify_schedule(schedule, String.to_existing_atom(event))
+      end
+
+      {:ok, :applied}
+    end
+  end
+
+  def receive_remote_schedule_update(_public_id, _verified_authority, _event),
+    do: {:error, :bad_request}
+
+  @doc "Dispatches persisted reminders whose configured lead time has elapsed."
+  def dispatch_due_reminders(now \\ DateTime.utc_now(:second)) do
+    cutoff = DateTime.add(now, -1, :hour)
+    horizon = DateTime.add(now, 1, :day)
+
+    schedules =
+      from(schedule in ScheduledCall,
+        where:
+          schedule.status == "scheduled" and is_nil(schedule.reminded_at) and
+            schedule.scheduled_for >= ^cutoff and schedule.scheduled_for <= ^horizon,
+        preload: [:organizer, :invitee]
+      )
+      |> Repo.all()
+      |> Enum.filter(fn schedule ->
+        reminder_at = DateTime.add(schedule.scheduled_for, -schedule.reminder_minutes, :minute)
+        DateTime.compare(reminder_at, now) != :gt
+      end)
+
+    Enum.each(schedules, fn schedule ->
+      schedule
+      |> Ecto.Changeset.change(reminded_at: now)
+      |> Repo.update!()
+      |> preload_schedule()
+      |> notify_schedule(:reminder)
+    end)
+
+    %{reminded: length(schedules)}
+  end
+
   @doc """
   The callee has opened the call page: the ring is answered. Tells the
   caller's side (locally or over federation) so it starts WebRTC
@@ -212,6 +437,25 @@ defmodule Veejr.Calls do
 
       relay_to_remote_peer(call, user, fn authority ->
         Veejr.Federation.deliver_call_update(authority, call, "declined")
+      end)
+
+      {:ok, call}
+    else
+      {:ok, %Call{}} -> {:error, :not_ringing}
+      error -> error
+    end
+  end
+
+  @doc "Cancels an unanswered invitation from its caller side."
+  def cancel_call(%User{id: user_id} = user, public_id) do
+    with {:ok, %Call{caller_id: ^user_id, state: "ringing"} = call} <-
+           get_call(user, public_id) do
+      call = set_state(call, "cancelled")
+      broadcast(call, {:call_ended, call.public_id, "cancelled"})
+      notify_ring_cancelled(call)
+
+      relay_to_remote_peer(call, user, fn authority ->
+        Veejr.Federation.deliver_call_update(authority, call, "cancelled")
       end)
 
       {:ok, call}
@@ -370,7 +614,7 @@ defmodule Veejr.Calls do
 
   @doc "Applies a joined/declined/ended/disconnected update relayed by the remote instance."
   def receive_remote_update(public_id, verified_authority, event)
-      when event in ["joined", "declined", "ended", "disconnected"] do
+      when event in ["joined", "declined", "cancelled", "ended", "disconnected"] do
     with {:ok, call} <- remote_party_call(public_id, verified_authority) do
       case event do
         "joined" when call.state == "ringing" ->
@@ -380,6 +624,11 @@ defmodule Veejr.Calls do
         "declined" when call.state == "ringing" ->
           call = set_state(call, "declined")
           broadcast(call, {:call_ended, call.public_id, "declined"})
+
+        "cancelled" when call.state == "ringing" ->
+          call = set_state(call, "cancelled")
+          broadcast(call, {:call_ended, call.public_id, "cancelled"})
+          notify_ring_cancelled(call)
 
         "ended" when call.state in ["ringing", "accepted"] ->
           final = if call.state == "ringing", do: "missed", else: "ended"
@@ -549,6 +798,81 @@ defmodule Veejr.Calls do
     end
   end
 
+  defp notify_ring_cancelled(%Call{callee: %User{host: nil, id: callee_id}} = call) do
+    Phoenix.PubSub.broadcast(
+      Veejr.PubSub,
+      "user:#{callee_id}",
+      {:veejr_call_cancelled, call.public_id}
+    )
+  end
+
+  defp notify_ring_cancelled(%Call{}), do: :ok
+
+  defp notify_schedule_created(%ScheduledCall{invitee: %User{host: nil}} = schedule),
+    do: notify_schedule_user(schedule, schedule.invitee, :scheduled)
+
+  defp notify_schedule_created(%ScheduledCall{}), do: :ok
+
+  defp notify_schedule(%ScheduledCall{} = schedule, event) do
+    schedule
+    |> local_schedule_users()
+    |> Enum.each(&notify_schedule_user(schedule, &1, event))
+
+    schedule
+  end
+
+  defp notify_schedule_user(schedule, user, event) do
+    peer = if user.id == schedule.organizer_id, do: schedule.invitee, else: schedule.organizer
+
+    Phoenix.PubSub.broadcast(
+      Veejr.PubSub,
+      "user:#{user.id}",
+      {:veejr_call_schedule, event, schedule, peer}
+    )
+
+    if event in [:scheduled, :reminder] do
+      Push.notify_user_async(user, schedule_push_payload(schedule, peer, event))
+    end
+  end
+
+  defp schedule_push_payload(schedule, peer, :scheduled) do
+    %{
+      title: "Call scheduled",
+      body: "#{Social.Address.handle(peer)} scheduled a call with you.",
+      url: "/calls",
+      type: "call_scheduled",
+      scheduled_call_id: schedule.public_id
+    }
+  end
+
+  defp schedule_push_payload(schedule, peer, :reminder) do
+    %{
+      title: "Scheduled call reminder",
+      body: "Your call with #{Social.Address.handle(peer)} is coming up.",
+      url: "/calls",
+      type: "call_reminder",
+      scheduled_call_id: schedule.public_id
+    }
+  end
+
+  defp local_schedule_users(schedule) do
+    [schedule.organizer, schedule.invitee]
+    |> Enum.filter(&is_nil(&1.host))
+  end
+
+  defp preload_schedule(schedule), do: Repo.preload(schedule, [:organizer, :invitee], force: true)
+
+  defp parse_id(id) when is_integer(id), do: {:ok, id}
+
+  defp parse_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed, ""} -> {:ok, parsed}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp parse_id(_id), do: {:error, :not_found}
+
   defp finish_guest_conference(%GuestCall{guest_conference: %GuestConference{} = conference}) do
     GuestConferences.mark_ended(conference)
     :ok
@@ -563,7 +887,7 @@ defmodule Veejr.Calls do
   end
 
   defp set_state(%Call{} = call, state)
-       when state in ~w(ringing accepted declined missed ended failed) do
+       when state in ~w(ringing accepted declined cancelled missed ended failed) do
     call
     |> Ecto.Changeset.change(state: state)
     |> Repo.update!()

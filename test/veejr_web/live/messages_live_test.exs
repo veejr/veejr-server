@@ -264,6 +264,12 @@ defmodule VeejrWeb.MessagesLiveTest do
     key = Messaging.conversation_key([Social.Address.handle(friend)])
     {:ok, view, _html} = live(conn, "/messages?conversation=#{key}")
 
+    assert has_element?(
+             view,
+             "#schedule-call[href='/calls?friend_id=#{friend.id}']",
+             "Schedule"
+           )
+
     view |> element("#start-call") |> render_click()
     {call_path, _flash} = assert_redirect(view)
     call_uri = URI.parse(call_path)

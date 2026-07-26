@@ -17,6 +17,9 @@ config :veejr, :outbox_tick_ms, :never
 # driven directly.
 config :veejr, :janitor_interval_ms, :never
 
+# Scheduled-call reminders are driven directly in tests.
+config :veejr, :call_reminder_interval_ms, :never
+
 # No deferred hang-up tasks in tests (they would outlive the DB sandbox);
 # presence and end_call are exercised directly.
 config :veejr, :call_grace_ms, :never

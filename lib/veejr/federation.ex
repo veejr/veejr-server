@@ -173,6 +173,37 @@ defmodule Veejr.Federation do
     })
   end
 
+  @doc "Durably mirrors a scheduled-call creation or state change to a remote friend."
+  def deliver_call_schedule(
+        schedule,
+        %User{host: nil} = organizer,
+        %User{host: authority} = invitee,
+        event
+      )
+      when is_binary(authority) and event in ["scheduled", "cancelled", "started"] do
+    payload = %{
+      from: %{username: organizer.username, authority: Veejr.instance_authority()},
+      to: invitee.username,
+      schedule_id: schedule.public_id,
+      event: event
+    }
+
+    payload =
+      if event == "scheduled" do
+        Map.merge(payload, %{
+          scheduled_for: DateTime.to_iso8601(schedule.scheduled_for),
+          reminder_minutes: schedule.reminder_minutes,
+          note: schedule.note
+        })
+      else
+        payload
+      end
+
+    queue_delivery(authority, "/api/federation/call_schedule", payload)
+  end
+
+  def deliver_call_schedule(_schedule, %User{}, %User{host: nil}, _event), do: :ok
+
   def handle_call_invite(
         %{
           "from" => %{"username" => username, "authority" => authority},
@@ -208,6 +239,40 @@ defmodule Veejr.Federation do
   end
 
   def handle_call_signal(_, _), do: {:error, :bad_request}
+
+  def handle_call_schedule(
+        %{
+          "from" => %{"username" => username, "authority" => authority},
+          "to" => to,
+          "schedule_id" => schedule_id,
+          "event" => "scheduled",
+          "scheduled_for" => scheduled_for,
+          "reminder_minutes" => reminder_minutes
+        } = params,
+        verified_authority
+      )
+      when is_binary(schedule_id) do
+    with :ok <- validate_origin(username, authority, verified_authority),
+         {:ok, remote} <- ensure_remote_user(username, authority),
+         %User{host: nil} = local <-
+           Veejr.Accounts.get_user_by_username(to) || {:error, :unknown_recipient} do
+      Veejr.Calls.receive_remote_schedule(remote, local, schedule_id, %{
+        "scheduled_for" => scheduled_for,
+        "reminder_minutes" => reminder_minutes,
+        "note" => params["note"]
+      })
+    end
+  end
+
+  def handle_call_schedule(
+        %{"schedule_id" => schedule_id, "event" => event},
+        verified_authority
+      )
+      when is_binary(schedule_id) and event in ["cancelled", "started"] do
+    Veejr.Calls.receive_remote_schedule_update(schedule_id, verified_authority, event)
+  end
+
+  def handle_call_schedule(_, _), do: {:error, :bad_request}
 
   @doc """
   Queues a content-free envelope announcement for the remote recipient's

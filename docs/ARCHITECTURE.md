@@ -41,7 +41,7 @@ The main domain contexts are:
 | `Veejr.Accounts` | Registration, authentication, profiles, invites, and identity-key lifecycle. |
 | `Veejr.Social` | Friendships, remote contacts, groups, and personal contact/group notes. |
 | `Veejr.Messaging` | Envelopes, consent notifications, conversation windows, edits, expiry/display limits, and blobs. |
-| `Veejr.Calls` | 1:1 call consent/lifecycle, sealed signaling relay, presence grace, and federated call updates. |
+| `Veejr.Calls` | 1:1 call consent/lifecycle, schedules and reminders, sealed signaling relay, presence grace, and federated call updates. |
 | `Veejr.WatchParties` | One ephemeral, instance-local, host-controlled YouTube party and voice-signaling membership. |
 | `Veejr.Federation` | Remote discovery, friendship and delivery protocol, signed requests, peers, and retry outbox. |
 | `Veejr.Push` | Push subscriptions and RFC 8291/8292 Web Push delivery. |
@@ -192,8 +192,9 @@ older peers.
 | `POST /api/federation/notify` | Announce an available envelope without sending its ciphertext. |
 | `POST /api/federation/key_update` | Announce a rotated user key for manual confirmation. |
 | `POST /api/federation/call_invite` | Mirror a current, consent-gated call invitation. |
-| `POST /api/federation/call_update` | Relay joined/declined/ended/disconnected lifecycle state. |
+| `POST /api/federation/call_update` | Relay joined/declined/cancelled/ended/disconnected lifecycle state. |
 | `POST /api/federation/call_signal` | Relay one sealed SDP/ICE payload synchronously. |
+| `POST /api/federation/call_schedule` | Durably mirror scheduled-call creation and state. |
 | `GET /api/envelopes/:public_id` | Fetch envelope ciphertext by capability. |
 | `GET /api/blobs/:id` | Fetch encrypted blob bytes by capability. |
 
@@ -242,6 +243,9 @@ consent, lifecycle, presence, and signaling relay:
 - Ringing reuses the consent model — the callee's open tabs show an
   incoming-call banner (`{:veejr_call_ring, call}` on the user topic) and
   nothing connects until they accept. Only accepted friends can ring.
+- A caller may explicitly cancel a still-ringing invitation. Cancellation has
+  its own lifecycle state and user-topic event so stale ring banners disappear;
+  federated peers relay it synchronously with other active-call updates.
 - Signaling payloads (SDP offers/answers, ICE candidates) are sealed
   browser-side with `nacl.box` between the participants' pinned identity
   keys. Instances relay opaque ciphertext, so a compromised server cannot
@@ -250,6 +254,12 @@ consent, lifecycle, presence, and signaling relay:
   id; invites, state updates, and sealed signals relay over the signed
   instance-to-instance channel synchronously (`/api/federation/call_*`) —
   a call is now or never, so the retry outbox is not involved.
+- Scheduled calls are separate persistent rows. Creation, cancellation, and
+  start state are mirrored to a remote participant through the durable signed
+  `/api/federation/call_schedule` path. `Veejr.Calls.Reminders` polls every 30
+  seconds, stamps `reminded_at`, publishes a user-scoped foreground event, and
+  sends content-free browser/Android push alerts to local participants.
+  Schedule metadata and the optional note are server-readable.
 - The device-preview gate and in-call passphrase prompt keep camera/microphone
   selection and key unwrap in the browser. The passphrase and raw secret key
   are never sent through LiveView.
@@ -332,6 +342,7 @@ message plaintext. Push services still observe endpoint and timing metadata.
 | `notifications` | Per-envelope consent state. |
 | `conversation_windows` | Rolling user/peer auto-accept expiry. |
 | `calls` | 1:1 call consent/lifecycle state (ringing/accepted/…); signaling itself is relayed, never stored. |
+| `scheduled_calls` | Persistent organizer/invitee plans, UTC time, reminder lead time, note, lifecycle state, and reminder stamp. |
 | `blobs` | Opaque encrypted file location, owner, size, and public capability ID. |
 | `instance_credentials` | Server-side Ed25519 federation and P-256 VAPID keypairs. |
 | `peers` | TOFU-pinned remote instance signing keys. |

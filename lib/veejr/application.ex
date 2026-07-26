@@ -20,6 +20,8 @@ defmodule Veejr.Application do
       {Veejr.Federation.Outbox, []},
       # Persists and retries browser and Android push delivery.
       {Veejr.Push.Outbox, []},
+      # Dispatches persistent scheduled-call reminders.
+      {Veejr.Calls.Reminders, []},
       # Periodic cleanup (abandoned attachment uploads, stale calls).
       {Veejr.Janitor, []},
       # Live presence of call participants (which tabs sit on a call page),

@@ -412,6 +412,9 @@ pending --accept--> accepted --fetch/display--> accepted
 
 - Only accepted friends may start a 1:1 call. The callee explicitly accepts or
   declines; unanswered rings expire after 60 seconds.
+- A caller MUST be able to cancel a still-ringing invitation. Cancellation is
+  distinct from a missed call, removes the callee's pending ring UI, and is
+  relayed to a federated participant.
 - A local call row records random public ID, caller, callee, lifecycle state,
   and timestamps. Federated peers mirror the same public ID.
 - SDP offers/answers and ICE candidates MUST be sealed client-side with
@@ -432,6 +435,18 @@ pending --accept--> accepted --fetch/display--> accepted
   explicit hangup and decline remain final.
 - A still-ringing invitation SHOULD be replayed when an offline local callee
   returns to an authenticated page. Reconnect MUST NOT silently accept a call.
+- An authenticated user may schedule a future call with an accepted friend,
+  choose a reminder lead time, add an optional note, start the call early, and
+  cancel it. The schedule is visible to both participants; starting it creates
+  an ordinary consent-gated realtime ring.
+- Schedules and reminder delivery state MUST persist across application
+  restarts. A background worker dispatches each due reminder at most once to
+  foreground tabs and registered push devices. Push payloads MUST remain
+  content-free and MUST NOT include the optional note.
+- Federated schedules use a signed, durable, retryable mirror operation. Each
+  home instance reminds only its local participant. The schedule timestamp,
+  reminder lead time, participant identities, lifecycle state, and optional
+  note are server-readable metadata.
 - A 1:1 YouTube share is controlled only by the participant who starts it and
   is transported over the WebRTC data channel. It is mutually exclusive with
   screen sharing.
@@ -482,8 +497,9 @@ They MUST NOT appear in push payloads or routine logs.
 | `POST /api/federation/key_update` | Announce a changed user encryption key. |
 | `POST /api/federation/account_move` | Announce a verified new home authority. |
 | `POST /api/federation/call_invite` | Mirror a current call invitation and ring the local callee. |
-| `POST /api/federation/call_update` | Relay joined, declined, ended, or disconnected state. |
+| `POST /api/federation/call_update` | Relay joined, declined, cancelled, ended, or disconnected state. |
 | `POST /api/federation/call_signal` | Relay one sealed SDP/ICE payload synchronously. |
+| `POST /api/federation/call_schedule` | Durably mirror scheduled, cancelled, or started call-plan state. |
 
 Each write is signed with the sending instance's Ed25519 key. The signed bytes
 bind the exact request path, timestamp, and SHA-256 digest of the raw body.
@@ -735,7 +751,7 @@ The exact visual design may change, but a compatible first-party UI provides:
 
 - Contacts as the post-login landing page, with separately collapsible
   Conversations, Groups, and Friends sections and Add Friend at the bottom.
-- A sticky responsive header. On smaller widths, Messages, Map, Friends,
+- A sticky responsive header. On smaller widths, Messages, Calls, Map, Friends,
   Groups, and History live in a hamburger menu.
 - Accessible light and dark modes across all pages, including Messages.
 - Full-row contact activation, consistent avatar dialogs, visible pending
@@ -751,6 +767,8 @@ The exact visual design may change, but a compatible first-party UI provides:
   and confirmation before navigation that would end an active call.
 - A caller-only re-invite action after unrecovered callee disconnect, and an
   incoming ring replay when a still-pending local callee reconnects.
+- A Calls page for creating, reviewing, starting, and cancelling persistent
+  one-to-one schedules with local-time display and configurable reminders.
 - An instance-local Watch page where the host controls synchronized YouTube
   and every participant independently opts into or out of microphone audio.
 - Account pages for settings, key management, avatar, export, and archives.

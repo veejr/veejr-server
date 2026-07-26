@@ -2,7 +2,7 @@ defmodule Veejr.CallsTest do
   use Veejr.DataCase, async: false
 
   alias Veejr.{Calls, Social}
-  alias Veejr.Calls.Call
+  alias Veejr.Calls.{Call, ScheduledCall}
   import Veejr.AccountsFixtures
 
   defp befriend(a, b) do
@@ -96,6 +96,22 @@ defmodule Veejr.CallsTest do
       assert {:ok, %Call{state: "missed"}} = Calls.get_call(bob, third.public_id)
     end
 
+    test "the caller explicitly cancels an unanswered invitation" do
+      alice = user_fixture()
+      bob = user_fixture()
+      befriend(alice, bob)
+      subscribe_user(bob)
+
+      {:ok, call} = Calls.start_call(alice, bob.id)
+      Calls.subscribe(call)
+
+      assert {:ok, %Call{state: "cancelled"}} = Calls.cancel_call(alice, call.public_id)
+      assert_receive {:call_ended, public_id, "cancelled"}
+      assert public_id == call.public_id
+      assert_receive {:veejr_call_cancelled, ^public_id}
+      assert {:error, :not_ringing} = Calls.cancel_call(bob, call.public_id)
+    end
+
     test "an accepted participant disconnect is distinguishable from a hang-up" do
       alice = user_fixture()
       bob = user_fixture()
@@ -110,6 +126,75 @@ defmodule Veejr.CallsTest do
       assert public_id == call.public_id
       assert departed_id == bob.id
       assert {:ok, %Call{state: "ended"}} = Calls.get_call(alice, call.public_id)
+    end
+  end
+
+  describe "scheduled calls" do
+    test "an organizer schedules and cancels a call with a local friend" do
+      alice = user_fixture()
+      bob = user_fixture()
+      befriend(alice, bob)
+
+      scheduled_for = DateTime.add(DateTime.utc_now(:second), 2, :hour)
+      browser_time = scheduled_for |> DateTime.to_iso8601() |> String.replace("Z", ".000Z")
+
+      assert {:ok, schedule} =
+               Calls.schedule_call(alice, bob.id, %{
+                 "scheduled_for" => browser_time,
+                 "reminder_minutes" => "30",
+                 "note" => "Plan the weekend"
+               })
+
+      assert schedule.status == "scheduled"
+      assert schedule.note == "Plan the weekend"
+      assert [%ScheduledCall{id: id}] = Calls.list_scheduled_calls(bob)
+
+      subscribe_user(bob)
+
+      assert {:ok, %ScheduledCall{status: "cancelled"}} =
+               Calls.cancel_scheduled_call(alice, id)
+
+      assert_receive {:veejr_call_schedule, :cancelled, %ScheduledCall{id: ^id}, _peer}
+    end
+
+    test "due reminders are persisted and broadcast once to both local participants" do
+      alice = user_fixture()
+      bob = user_fixture()
+      befriend(alice, bob)
+      now = DateTime.utc_now(:second)
+
+      {:ok, schedule} =
+        Calls.schedule_call(alice, bob.id, %{
+          "scheduled_for" => DateTime.to_iso8601(DateTime.add(now, 10, :minute)),
+          "reminder_minutes" => "15"
+        })
+
+      subscribe_user(alice)
+      subscribe_user(bob)
+
+      assert %{reminded: 1} = Calls.dispatch_due_reminders(now)
+      assert_receive {:veejr_call_schedule, :reminder, %ScheduledCall{id: id}, _peer}
+      assert id == schedule.id
+      assert_receive {:veejr_call_schedule, :reminder, %ScheduledCall{id: ^id}, _peer}
+      assert %{reminded: 0} = Calls.dispatch_due_reminders(now)
+      assert Repo.get!(ScheduledCall, schedule.id).reminded_at
+    end
+
+    test "the organizer starts a scheduled call" do
+      alice = user_fixture()
+      bob = user_fixture()
+      befriend(alice, bob)
+
+      {:ok, schedule} =
+        Calls.schedule_call(alice, bob.id, %{
+          "scheduled_for" =>
+            DateTime.utc_now(:second) |> DateTime.add(1, :hour) |> DateTime.to_iso8601(),
+          "reminder_minutes" => "15"
+        })
+
+      assert {:error, :not_scheduled} = Calls.start_scheduled_call(bob, schedule.id)
+      assert {:ok, %Call{state: "ringing"}} = Calls.start_scheduled_call(alice, schedule.id)
+      assert Repo.get!(ScheduledCall, schedule.id).status == "started"
     end
   end
 
@@ -175,6 +260,15 @@ defmodule Veejr.CallsTest do
                  },
                  @remote_host
                )
+
+      assert {:ok, :applied} =
+               Veejr.Federation.handle_call_update(
+                 %{"call_id" => "remote-call-1", "event" => "cancelled"},
+                 @remote_host
+               )
+
+      assert_receive {:veejr_call_cancelled, "remote-call-1"}
+      assert {:ok, %Call{state: "cancelled"}} = Calls.get_call(alice, "remote-call-1")
     end
 
     test "remote updates and signals only land from the call's own peer", %{alice: alice} do
@@ -232,6 +326,39 @@ defmodule Veejr.CallsTest do
     test "calling a remote friend delivers a signed invite", %{alice: alice, carol: carol} do
       assert {:ok, call} = Calls.start_call(alice, carol.id)
       assert call.state == "ringing"
+    end
+
+    test "a verified peer can mirror and cancel a scheduled call", %{
+      alice: alice,
+      carol: carol
+    } do
+      scheduled_for =
+        DateTime.utc_now(:second) |> DateTime.add(2, :hour) |> DateTime.to_iso8601()
+
+      assert {:ok, schedule} =
+               Veejr.Federation.handle_call_schedule(
+                 %{
+                   "from" => %{"username" => "carol", "authority" => @remote_host},
+                   "to" => "alice",
+                   "schedule_id" => "remote-schedule-1",
+                   "event" => "scheduled",
+                   "scheduled_for" => scheduled_for,
+                   "reminder_minutes" => 15,
+                   "note" => "Catch up"
+                 },
+                 @remote_host
+               )
+
+      assert schedule.organizer_id == carol.id
+      assert schedule.invitee_id == alice.id
+
+      assert {:ok, :applied} =
+               Veejr.Federation.handle_call_schedule(
+                 %{"schedule_id" => schedule.public_id, "event" => "cancelled"},
+                 @remote_host
+               )
+
+      assert Repo.get!(ScheduledCall, schedule.id).status == "cancelled"
     end
 
     test "an unreachable callee instance fails the call cleanly", %{alice: alice, carol: carol} do

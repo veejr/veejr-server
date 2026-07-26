@@ -43,6 +43,26 @@ defmodule VeejrWeb.LiveNotify do
     {:halt, push_call_ring(socket, call)}
   end
 
+  defp handle_info({:veejr_call_cancelled, public_id}, socket) do
+    {:halt, push_event(socket, "veejr:ring_cancelled", %{call_id: public_id})}
+  end
+
+  defp handle_info({:veejr_call_schedule, event, schedule, peer}, socket) do
+    socket =
+      push_event(socket, "veejr:call_schedule", %{
+        event: event,
+        schedule_id: schedule.public_id,
+        from: Veejr.Social.Address.handle(peer),
+        scheduled_for: DateTime.to_iso8601(schedule.scheduled_for)
+      })
+
+    if function_exported?(socket.view, :handle_info, 2) do
+      {:cont, socket}
+    else
+      {:halt, socket}
+    end
+  end
+
   defp handle_info({:watch_party_started, party}, socket) do
     {:halt, push_watch_invite(socket, party)}
   end
