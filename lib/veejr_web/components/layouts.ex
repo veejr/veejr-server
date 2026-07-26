@@ -78,50 +78,119 @@ defmodule VeejrWeb.Layouts do
   def app(assigns) do
     ~H"""
     <header class="sticky top-0 z-40 flex min-h-16 flex-wrap items-center gap-2 border-b border-base-300 bg-base-100/95 px-4 py-2 shadow-sm backdrop-blur sm:flex-nowrap sm:px-6 lg:px-8">
+      <details
+        :if={@current_scope}
+        id="primary-navigation-menu"
+        phx-hook=".NavigationMenu"
+        class="dropdown shrink-0"
+      >
+        <summary
+          id="primary-navigation-trigger"
+          class="btn btn-ghost btn-square btn-sm list-none [&::-webkit-details-marker]:hidden"
+          aria-label="Open navigation menu"
+          aria-controls="primary-navigation-links"
+          title="Menu"
+        >
+          <.icon name="hero-bars-3" class="size-5" />
+        </summary>
+        <nav
+          id="primary-navigation-links"
+          aria-label="Primary navigation"
+          class="dropdown-content z-50 mt-2 w-60 rounded-2xl border border-base-300 bg-base-100 p-2 shadow-xl"
+        >
+          <ul class="menu gap-1 p-0">
+            <li class="menu-title px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55">
+              Navigate
+            </li>
+            <li>
+              <.link
+                navigate={~p"/contacts"}
+                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+              >
+                <.icon name="hero-user-group" class="size-4" />
+                <span class="flex-1">Contacts</span>
+                <span
+                  :if={@pending_count && @pending_count > 0}
+                  class="badge badge-primary badge-sm"
+                >
+                  {@pending_count}
+                </span>
+              </.link>
+            </li>
+            <li>
+              <.link
+                navigate={~p"/messages"}
+                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+              >
+                <.icon name="hero-chat-bubble-left-right" class="size-4" /> Messages
+              </.link>
+            </li>
+            <li>
+              <.link
+                navigate={~p"/calls"}
+                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+              >
+                <.icon name="hero-video-camera" class="size-4" /> Calls
+              </.link>
+            </li>
+            <li>
+              <.link
+                navigate={~p"/map"}
+                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+              >
+                <.icon name="hero-map" class="size-4" /> Map
+              </.link>
+            </li>
+            <li>
+              <.link
+                navigate={~p"/history"}
+                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+              >
+                <.icon name="hero-clock" class="size-4" /> History
+              </.link>
+            </li>
+            <li>
+              <.link
+                navigate={~p"/watch"}
+                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+              >
+                <.icon name="hero-play-circle" class="size-4" /> Watch
+              </.link>
+            </li>
+          </ul>
+        </nav>
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".NavigationMenu">
+          export default {
+            mounted() {
+              this.closeOnOutsidePress = event => {
+                if (this.el.open && !this.el.contains(event.target)) {
+                  this.el.removeAttribute("open")
+                }
+              }
+              this.closeOnEscape = event => {
+                if (event.key === "Escape" && this.el.open) {
+                  this.el.removeAttribute("open")
+                  this.el.querySelector("summary")?.focus()
+                }
+              }
+              document.addEventListener("pointerdown", this.closeOnOutsidePress)
+              document.addEventListener("keydown", this.closeOnEscape)
+            },
+            destroyed() {
+              document.removeEventListener("pointerdown", this.closeOnOutsidePress)
+              document.removeEventListener("keydown", this.closeOnEscape)
+            }
+          }
+        </script>
+      </details>
       <.link
         navigate={~p"/"}
-        class="order-1 flex items-center gap-2 text-lg font-bold tracking-tight whitespace-nowrap"
+        class="flex items-center gap-2 text-lg font-bold tracking-tight whitespace-nowrap"
       >
         <.veejr_mark class="size-6 veejr-brand" id="header-mark" />
         <span class="lowercase">veejr</span>
       </.link>
-      <details :if={@current_scope} class="dropdown order-2 md:hidden">
-        <summary class="btn btn-ghost btn-sm" aria-label="Open navigation menu">
-          <.icon name="hero-bars-3" class="size-5" />
-        </summary>
-        <ul class="menu dropdown-content z-50 mt-2 w-48 rounded-box bg-base-100 p-2 shadow">
-          <li>
-            <.link navigate={~p"/contacts"}>
-              Contacts
-              <span :if={@pending_count && @pending_count > 0} class="badge badge-primary badge-sm">
-                {@pending_count}
-              </span>
-            </.link>
-          </li>
-          <li><.link navigate={~p"/messages"}>Messages</.link></li>
-          <li><.link navigate={~p"/calls"}>Calls</.link></li>
-          <li><.link navigate={~p"/map"}>Map</.link></li>
-          <li><.link navigate={~p"/history"}>History</.link></li>
-          <li><.link navigate={~p"/watch"}>Watch</.link></li>
-        </ul>
-      </details>
-      <nav
-        :if={@current_scope}
-        class="order-3 hidden w-full min-w-0 items-center gap-1 overflow-x-auto md:order-2 md:flex md:w-auto md:flex-1"
-      >
-        <.link navigate={~p"/contacts"} class="btn btn-ghost btn-sm">
-          Contacts
-          <span :if={@pending_count && @pending_count > 0} class="badge badge-primary badge-sm">
-            {@pending_count}
-          </span>
-        </.link>
-        <.link navigate={~p"/messages"} class="btn btn-ghost btn-sm">Messages</.link>
-        <.link navigate={~p"/calls"} class="btn btn-ghost btn-sm">Calls</.link>
-        <.link navigate={~p"/map"} class="btn btn-ghost btn-sm">Map</.link>
-        <.link navigate={~p"/history"} class="btn btn-ghost btn-sm">History</.link>
-        <.link navigate={~p"/watch"} class="btn btn-ghost btn-sm">Watch</.link>
-      </nav>
-      <div class="order-3 ml-auto shrink-0">
+      <div class="ml-auto shrink-0">
         <ul class="flex px-1 space-x-2 items-center">
           <li><.theme_toggle /></li>
           <%= if @current_scope do %>

@@ -63,11 +63,22 @@ defmodule VeejrWeb.ContactsLiveTest do
     assert has_element?(invite_view, "#invite-actions [data-role='share-invite']", "Share invite")
   end
 
-  test "keeps Messages directly available in global navigation", %{conn: conn} do
+  test "puts primary destinations in the far-left navigation menu", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/contacts")
 
-    assert has_element?(view, "header nav a[href='/messages']", "Messages")
-    assert has_element?(view, "header details a[href='/messages']", "Messages")
+    assert has_element?(
+             view,
+             "header > details#primary-navigation-menu > summary#primary-navigation-trigger"
+           )
+
+    assert has_element?(view, "header > a[href='/']", "veejr")
+    assert has_element?(view, "#primary-navigation-links a[href='/contacts']", "Contacts")
+    assert has_element?(view, "#primary-navigation-links a[href='/messages']", "Messages")
+    assert has_element?(view, "#primary-navigation-links a[href='/calls']", "Calls")
+    assert has_element?(view, "#primary-navigation-links a[href='/map']", "Map")
+    assert has_element?(view, "#primary-navigation-links a[href='/history']", "History")
+    assert has_element?(view, "#primary-navigation-links a[href='/watch']", "Watch")
+    refute has_element?(view, "header > nav")
   end
 
   test "shows a friend's uploaded image", %{conn: conn, friend: friend} do
