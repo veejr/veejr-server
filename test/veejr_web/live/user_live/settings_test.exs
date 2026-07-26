@@ -16,6 +16,10 @@ defmodule VeejrWeb.UserLive.SettingsTest do
       assert html =~ "Save Password"
       assert has_element?(view, "#avatar-upload")
       assert has_element?(view, "#settings-avatar [role='img']")
+      assert has_element?(view, "#account-backup")
+      assert has_element?(view, "#export-account-backup[href='/export']")
+      assert has_element?(view, "#restore-backup-form")
+      assert has_element?(view, "#restore-account-backup[disabled]")
       assert has_element?(view, "#admin-account-protection")
       refute has_element?(view, "button[phx-click='delete_account']")
     end
@@ -41,6 +45,36 @@ defmodule VeejrWeb.UserLive.SettingsTest do
 
       assert has_element?(view, "#profile-dialog", "Current Profile")
       refute has_element?(view, "#profile-dialog form")
+    end
+
+    test "restores an uploaded backup for the current key identity", %{conn: conn} do
+      user = user_fixture(%{username: "settings_restore"})
+
+      {:ok, user} =
+        Accounts.setup_user_keys(user, %{
+          "public_key" => Base.encode64("settings-public-key"),
+          "enc_secret_key" => Base.encode64("settings-wrapped-key"),
+          "key_salt" => Base.encode64("settings-salt"),
+          "key_nonce" => Base.encode64("settings-nonce")
+        })
+
+      {:ok, _, zip} = Veejr.Export.build(user)
+      {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/users/settings")
+
+      upload =
+        file_input(view, "#restore-backup-form", :backup, [
+          %{
+            last_modified: 1_700_000_000_000,
+            name: "veejr-backup.zip",
+            content: zip,
+            type: "application/zip"
+          }
+        ])
+
+      assert render_upload(upload, "veejr-backup.zip") =~ "veejr-backup.zip"
+      view |> form("#restore-backup-form", %{}) |> render_submit()
+
+      assert render(view) =~ "Backup restored: 0 messages and 0 attachments added."
     end
 
     test "keeps account deletion available to ordinary members", %{conn: conn} do

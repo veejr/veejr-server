@@ -140,16 +140,88 @@ defmodule VeejrWeb.UserLive.Settings do
 
       <div class="divider" />
 
-      <section>
-        <h2 class="text-lg font-semibold">Your data</h2>
-        <p class="mt-1 text-sm opacity-70">
-          Download everything: your profile, encrypted key material, friends, groups,
-          your full (still encrypted) message history, and your uploaded attachments.
-          Use it as a backup, or import it into your own personal veejr instance with <code>mix veejr.import</code>.
-        </p>
-        <.link href={~p"/export"} class="btn btn-outline btn-sm mt-3">
-          ⬇ Export my account
-        </.link>
+      <section
+        id="account-backup"
+        class="overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+      >
+        <div class="border-b border-base-300 bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 px-5 py-5 sm:px-6">
+          <div class="flex items-start gap-3">
+            <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+              <.icon name="hero-archive-box-arrow-down" class="size-5" />
+            </span>
+            <div>
+              <h2 class="text-lg font-semibold tracking-tight">Backup and restore</h2>
+              <p class="mt-1 max-w-2xl text-sm leading-6 text-base-content/70">
+                Keep a private copy of your profile, wrapped encryption keys, contacts,
+                encrypted message history, and uploaded encrypted attachments.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid gap-6 p-5 sm:p-6 lg:grid-cols-2">
+          <div>
+            <h3 class="font-semibold">Export a backup</h3>
+            <p class="mt-1 text-sm leading-6 text-base-content/65">
+              Your passphrase is still required to unlock encrypted content. The archive
+              reveals account and social metadata, so store it somewhere private.
+            </p>
+            <.link
+              id="export-account-backup"
+              href={~p"/export"}
+              class="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-content shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <.icon name="hero-arrow-down-tray" class="size-4" /> Download backup
+            </.link>
+          </div>
+
+          <div class="border-t border-base-300 pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <h3 class="font-semibold">Restore this account</h3>
+            <p class="mt-1 text-sm leading-6 text-base-content/65">
+              Restore missing data from a backup of this exact account. Existing data is
+              kept, and your login and encryption keys are never replaced.
+            </p>
+
+            <.form
+              for={@backup_form}
+              id="restore-backup-form"
+              phx-change="validate_backup"
+              phx-submit="restore_backup"
+              class="mt-4 space-y-3"
+            >
+              <label
+                for={@uploads.backup.ref}
+                class="group flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-base-300 bg-base-200/40 px-4 py-3 transition hover:border-primary/60 hover:bg-primary/5"
+              >
+                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-base-100 shadow-sm">
+                  <.icon name="hero-document-arrow-up" class="size-5 text-primary" />
+                </span>
+                <span class="min-w-0">
+                  <span class="block truncate text-sm font-medium">
+                    {backup_upload_label(@uploads.backup.entries)}
+                  </span>
+                  <span class="block text-xs text-base-content/55">Veejr .zip backup</span>
+                </span>
+                <.live_file_input upload={@uploads.backup} class="sr-only" />
+              </label>
+
+              <%= for entry <- @uploads.backup.entries,
+                      error <- upload_errors(@uploads.backup, entry) do %>
+                <p class="text-sm text-error">{backup_upload_error(error)}</p>
+              <% end %>
+
+              <button
+                id="restore-account-backup"
+                type="submit"
+                disabled={@uploads.backup.entries == []}
+                phx-disable-with="Restoring…"
+                class="inline-flex items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Restore backup
+              </button>
+            </.form>
+          </div>
+        </div>
       </section>
 
       <section :if={
@@ -227,6 +299,12 @@ defmodule VeejrWeb.UserLive.Settings do
       |> assign(:invite_url, nil)
       |> assign(:vapid_key, Veejr.Push.WebPush.vapid_public_key())
       |> assign(:push_devices, Veejr.Push.subscription_count(user))
+      |> assign(:backup_form, to_form(%{}, as: :backup))
+      |> allow_upload(:backup,
+        accept: [".zip"],
+        max_entries: 1,
+        max_file_size: Veejr.Import.max_archive_bytes()
+      )
 
     {:ok, socket}
   end
@@ -247,6 +325,39 @@ defmodule VeejrWeb.UserLive.Settings do
   def handle_event("avatar_uploaded", _params, socket) do
     user = Accounts.get_user!(socket.assigns.current_scope.user.id)
     {:noreply, assign(socket, :current_scope, Accounts.Scope.for_user(user))}
+  end
+
+  def handle_event("validate_backup", _params, socket), do: {:noreply, socket}
+
+  def handle_event("restore_backup", _params, socket) do
+    results =
+      consume_uploaded_entries(socket, :backup, fn %{path: path}, _entry ->
+        result =
+          with {:ok, zip_binary} <- File.read(path) do
+            Veejr.Import.restore(zip_binary, socket.assigns.current_scope.user)
+          end
+
+        {:ok, result}
+      end)
+
+    case results do
+      [{:ok, summary}] ->
+        user = Accounts.get_user!(socket.assigns.current_scope.user.id)
+
+        info =
+          "Backup restored: #{summary.envelopes} messages and #{summary.blobs} attachments added."
+
+        {:noreply,
+         socket
+         |> assign(:current_scope, Accounts.Scope.for_user(user))
+         |> put_flash(:info, info)}
+
+      [{:error, reason}] ->
+        {:noreply, put_flash(socket, :error, backup_restore_error(reason))}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Choose a Veejr backup file to restore.")}
+    end
   end
 
   def handle_event("open_profile", %{"id" => id}, socket) do
@@ -341,4 +452,32 @@ defmodule VeejrWeb.UserLive.Settings do
         {:noreply, put_flash(socket, :error, "Could not delete your account — please try again.")}
     end
   end
+
+  defp backup_upload_label([]), do: "Choose a backup"
+  defp backup_upload_label([entry | _entries]), do: entry.client_name
+
+  defp backup_upload_error(:too_large), do: "That backup is too large."
+  defp backup_upload_error(:not_accepted), do: "Choose a .zip backup created by Veejr."
+  defp backup_upload_error(:too_many_files), do: "Choose one backup at a time."
+  defp backup_upload_error(_error), do: "That file could not be uploaded."
+
+  defp backup_restore_error(:account_mismatch),
+    do: "That backup belongs to a different account or encryption-key identity."
+
+  defp backup_restore_error(:archive_too_large), do: "That backup is too large."
+  defp backup_restore_error(:unsafe_archive), do: "That backup has an unsafe archive structure."
+  defp backup_restore_error(:not_a_zip), do: "That file is not a valid zip backup."
+  defp backup_restore_error(:missing_manifest), do: "That archive is not a Veejr backup."
+  defp backup_restore_error(:invalid_manifest), do: "That backup manifest is invalid."
+
+  defp backup_restore_error(:integrity_check_failed),
+    do: "That backup failed its integrity check."
+
+  defp backup_restore_error({:unsupported_version, _version}),
+    do: "This Veejr version cannot restore that backup format."
+
+  defp backup_restore_error(:ownership_conflict),
+    do: "Restore stopped because archive data conflicts with another account."
+
+  defp backup_restore_error(_reason), do: "The backup could not be restored."
 end

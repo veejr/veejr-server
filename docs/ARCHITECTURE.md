@@ -361,6 +361,15 @@ includes profile and wrapped keys, friends, groups, and decryptable encrypted
 history with sender-key snapshots. It exposes social metadata despite retaining
 content encryption.
 
+The sudo-protected account Settings LiveView accepts the same zip for an
+additive restore into the signed-in account. It rejects oversized archives,
+unexpected or duplicate paths, excessive expansion, malformed manifests,
+cross-account public-ID collisions, and any username or wrapped-key identity
+mismatch before writing. Existing envelopes and blobs are skipped, so retrying
+the same restore is safe; credentials and key material are never overwritten.
+The LiveView stays in the existing authenticated account `live_session`, while
+the download remains in the authenticated `:browser` controller scope.
+
 `mix veejr.import export.zip` creates the owner, restores their profile image,
 accepted remote friendships, remote ghost contacts needed to identify
 historical senders, envelopes with

@@ -34,6 +34,23 @@ defmodule Veejr.Export do
 
   @doc "Builds the export zip for a user. Returns `{:ok, filename, zip_binary}`."
   def build(%User{} = user) do
+    blobs = Repo.all(from(b in Blob, where: b.owner_id == ^user.id))
+
+    avatar_files =
+      case Accounts.get_user_avatar_image(user) do
+        image when is_binary(image) -> [{"avatar.jpg", image}]
+        nil -> []
+      end
+
+    blob_files =
+      for blob <- blobs,
+          path = Veejr.Messaging.blob_file_path(blob),
+          File.exists?(path) do
+        {"blobs/#{blob.public_id}.bin", File.read!(path)}
+      end
+
+    payload_files = avatar_files ++ blob_files
+
     manifest = %{
       veejr_export: @format_version,
       exported_at: DateTime.utc_now() |> DateTime.to_iso8601(),
@@ -52,25 +69,13 @@ defmodule Veejr.Export do
       friends: export_friends(user),
       groups: export_groups(user),
       envelopes: export_envelopes(user),
-      blob_references: export_blob_references(user)
+      blob_references: export_blob_references(user),
+      file_hashes: Map.new(payload_files, fn {name, binary} -> {name, sha256(binary)} end)
     }
-
-    blobs = Repo.all(from(b in Blob, where: b.owner_id == ^user.id))
-
-    avatar_files =
-      case Accounts.get_user_avatar_image(user) do
-        image when is_binary(image) -> [{~c"avatar.jpg", image}]
-        nil -> []
-      end
 
     files =
       [{~c"export.json", Jason.encode!(manifest, pretty: true)}] ++
-        avatar_files ++
-        for blob <- blobs,
-            path = Veejr.Messaging.blob_file_path(blob),
-            File.exists?(path) do
-          {String.to_charlist("blobs/#{blob.public_id}.bin"), File.read!(path)}
-        end
+        Enum.map(payload_files, fn {name, binary} -> {String.to_charlist(name), binary} end)
 
     {:ok, {_name, zip_binary}} = :zip.create(~c"veejr-export.zip", files, [:memory])
     {:ok, "veejr-#{user.username}-export.zip", zip_binary}
@@ -131,5 +136,10 @@ defmodule Veejr.Export do
         select: %{public_id: b.public_id, batch_id: r.batch_id}
       )
     )
+  end
+
+  defp sha256(binary) do
+    :crypto.hash(:sha256, binary)
+    |> Base.encode16(case: :lower)
   end
 end

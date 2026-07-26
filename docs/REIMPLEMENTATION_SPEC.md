@@ -589,6 +589,12 @@ hashes, uniqueness, and ownership before committing. Import preserves public
 IDs and original timestamps where required for history compatibility. It
 creates remote contact stubs needed to attribute historical envelopes.
 
+An authenticated in-place restore MUST be additive and MUST require the
+archive username and complete wrapped-key identity to match the current
+account. It MUST NOT replace email, password, username, or key material.
+Repeated restores skip existing account-owned public IDs, while a public ID
+already owned by another account is a hard failure.
+
 The package remains encrypted at content level but exposes social metadata and
 must be handled as sensitive personal data. Version 1 does not guarantee
 contact/group notes, every newer message option, or received attachment blobs.

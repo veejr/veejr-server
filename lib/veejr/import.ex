@@ -34,11 +34,19 @@ defmodule Veejr.Import do
   alias Veejr.Social.Friendship
 
   @supported_versions [1]
+  @max_archive_bytes 512 * 1024 * 1024
+  @max_expanded_bytes 1024 * 1024 * 1024
+  @max_entries 20_000
+
+  def max_archive_bytes, do: @max_archive_bytes
 
   @doc "Imports an export zip (binary). Returns `{:ok, summary}` or `{:error, reason}`."
   def from_zip(zip_binary) when is_binary(zip_binary) do
     with {:ok, files} <- unzip(zip_binary),
-         {:ok, manifest} <- parse_manifest(files) do
+         {:ok, manifest} <- parse_manifest(files),
+         :ok <- validate_hashes(manifest, files),
+         :ok <- validate_owner_available(manifest),
+         :ok <- validate_new_import_ids(manifest, files) do
       Repo.transaction(fn ->
         owner = create_owner!(manifest)
         avatar_restored = restore_avatar!(files, owner)
@@ -53,6 +61,38 @@ defmodule Veejr.Import do
           owner_user: owner,
           avatar: avatar_restored,
           friends: manifest["friends"] || [],
+          ghost_contacts: map_size(ghosts),
+          envelopes: envelope_count,
+          blobs: blob_count
+        }
+      end)
+    end
+  end
+
+  @doc """
+  Restores a backup into an existing signed-in account.
+
+  The restore is additive and idempotent. Account credentials and key material
+  are never replaced; the archive must match the account's complete wrapped-key
+  identity before any data is written.
+  """
+  def restore(zip_binary, %User{} = owner) when is_binary(zip_binary) do
+    with {:ok, files} <- unzip(zip_binary),
+         {:ok, manifest} <- parse_manifest(files),
+         :ok <- validate_hashes(manifest, files),
+         :ok <- validate_identity(manifest, owner),
+         :ok <- validate_ownership(manifest, files, owner) do
+      Repo.transaction(fn ->
+        avatar_restored = restore_existing_avatar!(files, owner)
+        restore_friendships!(owner, manifest["friends"] || [])
+        ghosts = create_ghosts!(manifest, owner)
+        envelope_count = import_envelopes!(manifest, owner, ghosts)
+        blob_count = import_blobs!(files, owner)
+        restore_blob_references!(manifest, owner)
+
+        %{
+          owner: owner.username,
+          avatar: avatar_restored,
           ghost_contacts: map_size(ghosts),
           envelopes: envelope_count,
           blobs: blob_count
@@ -92,22 +132,216 @@ defmodule Veejr.Import do
     end
   end
 
-  defp unzip(zip_binary) do
-    case :zip.unzip(zip_binary, [:memory]) do
-      {:ok, files} -> {:ok, Map.new(files, fn {name, bin} -> {to_string(name), bin} end)}
-      {:error, _} -> {:error, :not_a_zip}
+  defp unzip(zip_binary) when byte_size(zip_binary) <= @max_archive_bytes do
+    with {:ok, entries} <- archive_entries(zip_binary),
+         :ok <- validate_entries(entries),
+         {:ok, files} <- :zip.unzip(zip_binary, [:memory]) do
+      {:ok, Map.new(files, fn {name, bin} -> {to_string(name), bin} end)}
+    else
+      {:error, reason} when reason in [:unsafe_archive, :archive_too_large] ->
+        {:error, reason}
+
+      _ ->
+        {:error, :not_a_zip}
     end
+  end
+
+  defp unzip(_zip_binary), do: {:error, :archive_too_large}
+
+  defp archive_entries(zip_binary) do
+    case :zip.table(zip_binary) do
+      {:ok, table} ->
+        entries =
+          for {:zip_file, name, file_info, _comment, _offset, _compressed_size} <- table do
+            %{name: to_string(name), size: elem(file_info, 1)}
+          end
+
+        {:ok, entries}
+
+      {:error, _} ->
+        {:error, :not_a_zip}
+    end
+  end
+
+  defp validate_entries(entries) do
+    names = Enum.map(entries, & &1.name)
+
+    safe? =
+      entries != [] and
+        length(entries) <= @max_entries and
+        length(names) == length(Enum.uniq(names)) and
+        Enum.sum_by(entries, & &1.size) <= @max_expanded_bytes and
+        Enum.all?(names, &allowed_archive_path?/1)
+
+    if safe?, do: :ok, else: {:error, :unsafe_archive}
+  end
+
+  defp allowed_archive_path?("export.json"), do: true
+  defp allowed_archive_path?("avatar.jpg"), do: true
+
+  defp allowed_archive_path?(name) do
+    Regex.match?(~r/\Ablobs\/[A-Za-z0-9_-]{1,128}\.bin\z/, name)
   end
 
   defp parse_manifest(%{"export.json" => json}) do
     case Jason.decode(json) do
-      {:ok, %{"veejr_export" => v} = manifest} when v in @supported_versions -> {:ok, manifest}
-      {:ok, %{"veejr_export" => v}} -> {:error, {:unsupported_version, v}}
-      _ -> {:error, :invalid_manifest}
+      {:ok, %{"veejr_export" => v} = manifest}
+      when v in @supported_versions and is_map_key(manifest, "profile") and
+             is_map_key(manifest, "keys") and is_map_key(manifest, "envelopes") ->
+        if valid_manifest?(manifest), do: {:ok, manifest}, else: {:error, :invalid_manifest}
+
+      {:ok, %{"veejr_export" => v}} ->
+        {:error, {:unsupported_version, v}}
+
+      _ ->
+        {:error, :invalid_manifest}
     end
   end
 
   defp parse_manifest(_files), do: {:error, :missing_manifest}
+
+  defp valid_manifest?(manifest) do
+    profile = manifest["profile"]
+    keys = manifest["keys"]
+    envelopes = manifest["envelopes"]
+    friends = manifest["friends"] || []
+    groups = manifest["groups"] || []
+    blob_references = manifest["blob_references"] || []
+
+    is_map(profile) and is_map(keys) and is_list(envelopes) and
+      is_list(friends) and is_list(groups) and is_list(blob_references) and
+      is_binary(profile["username"]) and is_binary(profile["email"]) and
+      Enum.all?(~w(public_key enc_secret_key key_salt key_nonce), &is_binary(keys[&1])) and
+      Enum.all?(envelopes, &valid_envelope?/1) and
+      Enum.all?(friends, &valid_friend?/1) and
+      Enum.all?(blob_references, &valid_blob_reference?/1)
+  end
+
+  defp valid_envelope?(entry) when is_map(entry) do
+    sender = entry["sender"]
+    recipients = entry["recipients"] || []
+
+    Enum.all?(~w(public_id batch_id kind ciphertext nonce inserted_at), &is_binary(entry[&1])) and
+      entry["kind"] in Envelope.kinds() and is_map(sender) and
+      is_binary(sender["username"]) and is_binary(sender["public_key"]) and
+      valid_optional_binary?(sender["host"]) and
+      is_list(recipients) and Enum.all?(recipients, &is_binary/1) and
+      entry["resealed"] in [nil, true, false] and
+      byte_size(entry["public_id"]) in 1..128 and byte_size(entry["batch_id"]) in 1..128 and
+      byte_size(entry["ciphertext"]) <= 350_000 and byte_size(entry["nonce"]) <= 256 and
+      valid_iso8601?(entry["inserted_at"])
+  end
+
+  defp valid_envelope?(_entry), do: false
+
+  defp valid_friend?(friend) when is_map(friend) do
+    is_binary(friend["username"]) and is_binary(friend["host"]) and
+      valid_optional_binary?(friend["display_name"]) and
+      valid_optional_binary?(friend["public_key"])
+  end
+
+  defp valid_friend?(_friend), do: false
+
+  defp valid_blob_reference?(reference) when is_map(reference) do
+    is_binary(reference["public_id"]) and is_binary(reference["batch_id"])
+  end
+
+  defp valid_blob_reference?(_reference), do: false
+
+  defp valid_optional_binary?(value), do: is_nil(value) or is_binary(value)
+
+  defp valid_iso8601?(value) do
+    match?({:ok, _datetime, _offset}, DateTime.from_iso8601(value))
+  end
+
+  defp validate_identity(%{"profile" => profile, "keys" => keys}, owner) do
+    matches? =
+      profile["username"] == owner.username and
+        Enum.all?(~w(public_key enc_secret_key key_salt key_nonce), fn field ->
+          keys[field] == Map.fetch!(owner, String.to_existing_atom(field))
+        end)
+
+    if matches?, do: :ok, else: {:error, :account_mismatch}
+  end
+
+  defp validate_hashes(%{"file_hashes" => hashes}, files) when is_map(hashes) do
+    payload_files = Map.drop(files, ["export.json"])
+
+    valid? =
+      Enum.sort(Map.keys(hashes)) == Enum.sort(Map.keys(payload_files)) and
+        Enum.all?(payload_files, fn {name, binary} ->
+          hashes[name] == sha256(binary)
+        end)
+
+    if valid?, do: :ok, else: {:error, :integrity_check_failed}
+  end
+
+  # Early version-1 backups predate embedded hashes. They remain importable,
+  # while every newly generated backup takes the verified branch above.
+  defp validate_hashes(_manifest, _files), do: :ok
+
+  defp validate_ownership(manifest, files, owner) do
+    envelope_ids = Enum.map(manifest["envelopes"], & &1["public_id"])
+
+    blob_ids =
+      for {name, _binary} <- files, String.starts_with?(name, "blobs/"), do: blob_id(name)
+
+    referenced_blob_ids = Enum.map(manifest["blob_references"] || [], & &1["public_id"])
+
+    duplicate_ids? =
+      length(envelope_ids) != length(Enum.uniq(envelope_ids)) or
+        length(blob_ids) != length(Enum.uniq(blob_ids)) or
+        not Enum.all?(referenced_blob_ids, &(&1 in blob_ids))
+
+    envelope_conflict? =
+      Repo.exists?(
+        from(e in Envelope,
+          where: e.public_id in ^envelope_ids and e.recipient_id != ^owner.id
+        )
+      )
+
+    blob_conflict? =
+      Repo.exists?(from(b in Blob, where: b.public_id in ^blob_ids and b.owner_id != ^owner.id))
+
+    if duplicate_ids? or envelope_conflict? or blob_conflict?,
+      do: {:error, :ownership_conflict},
+      else: :ok
+  end
+
+  defp validate_new_import_ids(manifest, files) do
+    envelope_ids = Enum.map(manifest["envelopes"], & &1["public_id"])
+
+    blob_ids =
+      for {name, _binary} <- files, String.starts_with?(name, "blobs/"), do: blob_id(name)
+
+    referenced_blob_ids = Enum.map(manifest["blob_references"] || [], & &1["public_id"])
+
+    conflict? =
+      length(envelope_ids) != length(Enum.uniq(envelope_ids)) or
+        length(blob_ids) != length(Enum.uniq(blob_ids)) or
+        not Enum.all?(referenced_blob_ids, &(&1 in blob_ids)) or
+        Repo.exists?(from(e in Envelope, where: e.public_id in ^envelope_ids)) or
+        Repo.exists?(from(b in Blob, where: b.public_id in ^blob_ids))
+
+    if conflict?, do: {:error, :ownership_conflict}, else: :ok
+  end
+
+  defp validate_owner_available(%{"profile" => profile}) do
+    if Repo.get_by(User, username: profile["username"]) ||
+         Repo.get_by(User, email: profile["email"]),
+       do: {:error, :owner_already_exists},
+       else: :ok
+  end
+
+  defp restore_existing_avatar!(%{"avatar.jpg" => image}, owner) do
+    if Veejr.Accounts.get_user_avatar_image(owner) == image do
+      false
+    else
+      restore_avatar!(%{"avatar.jpg" => image}, owner)
+    end
+  end
+
+  defp restore_existing_avatar!(_files, _owner), do: false
 
   defp create_owner!(%{"profile" => profile, "keys" => keys}) do
     if Repo.get_by(User, username: profile["username"]) ||
@@ -361,4 +595,9 @@ defmodule Veejr.Import do
   end
 
   defp blob_id(name), do: name |> Path.basename() |> Path.rootname(".bin")
+
+  defp sha256(binary) do
+    :crypto.hash(:sha256, binary)
+    |> Base.encode16(case: :lower)
+  end
 end

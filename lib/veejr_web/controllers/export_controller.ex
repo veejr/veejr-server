@@ -5,7 +5,10 @@ defmodule VeejrWeb.ExportController do
     user = conn.assigns.current_scope.user
     {:ok, filename, zip_binary} = Veejr.Export.build(user)
 
-    send_download(conn, {:binary, zip_binary},
+    conn
+    |> put_resp_header("cache-control", "no-store")
+    |> put_resp_header("x-content-type-options", "nosniff")
+    |> send_download({:binary, zip_binary},
       filename: filename,
       content_type: "application/zip"
     )

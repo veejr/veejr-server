@@ -179,6 +179,74 @@ defmodule Veejr.ExportImportTest do
     refute File.exists?(restored_blob.path)
   end
 
+  test "restore adds missing backup data to the matching existing account idempotently" do
+    user = user_with_keys("restore_owner")
+
+    assert {:ok, _batch_id, []} =
+             Messaging.send_batch(user, "self_note", [
+               %{"recipient_id" => user.id, "ciphertext" => "backup-ct", "nonce" => "nonce"}
+             ])
+
+    {:ok, blob} = Messaging.create_blob(user, "backup-blob")
+    {:ok, _, zip} = Export.build(user)
+
+    Repo.delete_all(Veejr.Messaging.BlobReference)
+    Repo.delete_all(Veejr.Messaging.Envelope)
+    Repo.delete_all(Veejr.Messaging.Blob)
+
+    assert {:ok, summary} = Import.restore(zip, user)
+    assert summary.envelopes == 1
+    assert summary.blobs == 1
+    assert [restored] = Messaging.list_history(user)
+    assert restored.ciphertext == "backup-ct"
+    assert File.read!(Messaging.get_blob(blob.public_id).path) == "backup-blob"
+
+    assert {:ok, second_summary} = Import.restore(zip, user)
+    assert second_summary.envelopes == 0
+    assert second_summary.blobs == 0
+  end
+
+  test "restore rejects a backup from a different key identity" do
+    alice = user_with_keys("restore_alice")
+    bob = user_with_keys("restore_bob")
+    {:ok, _, zip} = Export.build(alice)
+
+    assert {:error, :account_mismatch} = Import.restore(zip, bob)
+  end
+
+  test "restore rejects unsafe archive paths before extraction" do
+    user = user_with_keys("restore_safe")
+    {:ok, _, zip} = Export.build(user)
+    {:ok, files} = :zip.unzip(zip, [:memory])
+
+    {:ok, {_name, unsafe_zip}} =
+      :zip.create(~c"unsafe.zip", [{~c"../outside.txt", "nope"} | files], [:memory])
+
+    assert {:error, :unsafe_archive} = Import.restore(unsafe_zip, user)
+  end
+
+  test "restore detects a changed encrypted blob" do
+    user = user_with_keys("restore_integrity")
+    {:ok, blob} = Messaging.create_blob(user, "original-ciphertext")
+    {:ok, _, zip} = Export.build(user)
+    {:ok, files} = :zip.unzip(zip, [:memory])
+    blob_name = String.to_charlist("blobs/#{blob.public_id}.bin")
+
+    tampered_files =
+      Enum.map(files, fn
+        {name, _binary} when name == blob_name ->
+          {name, "changed-ciphertext"}
+
+        file ->
+          file
+      end)
+
+    {:ok, {_name, tampered_zip}} =
+      :zip.create(~c"tampered.zip", tampered_files, [:memory])
+
+    assert {:error, :integrity_check_failed} = Import.restore(tampered_zip, user)
+  end
+
   test "delete_user withdraws sent envelopes from recipients" do
     bob = user_with_keys("bob")
     alice = user_with_keys("alice")

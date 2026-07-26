@@ -402,6 +402,12 @@ the user.
 The export remains encrypted at the content level but exposes social metadata,
 so treat it as private.
 
+The same **Backup and restore** panel accepts a previous export for the
+currently signed-in account. Browser restore is additive and idempotent: it
+restores missing encrypted history, contacts, profile image, and owned blobs
+without replacing login credentials or encryption keys. The archive's
+username and complete wrapped-key identity must match the current account.
+
 Import it into a fresh instance with:
 
 ```sh
