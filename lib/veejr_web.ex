@@ -18,8 +18,11 @@ defmodule VeejrWeb do
   """
 
   # "vendor" holds runtime libraries that are deliberately kept out of the
-  # esbuild bundle and fetched on demand instead — currently three.min.js,
-  # loaded only when the Contacts "Orbit" appearance is selected.
+  # esbuild bundle and fetched on demand instead: three.min.js, loaded only
+  # when the Contacts "Orbit" appearance is selected, and leaflet.js/.css
+  # (plus its marker images), loaded only by the map. They are served from
+  # this origin rather than a CDN so the Content-Security-Policy can keep
+  # script-src and style-src pinned to 'self'.
   def static_paths,
     do: ~w(assets fonts images videos vendor favicon.ico robots.txt sw.js manifest.webmanifest)
 
