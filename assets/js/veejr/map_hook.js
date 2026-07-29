@@ -6,8 +6,12 @@
 
 import {getSecretKey, openFrom} from "./crypto.js"
 
-const LEAFLET_JS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+// Served from this instance rather than a CDN: the Content-Security-Policy
+// confines script and style to this origin, and a privacy-focused app should
+// not hand every map user's address to a third party to fetch its own code.
+// Vendored alongside three.min.js in priv/static/vendor; see static_paths/0.
+const LEAFLET_JS = "/vendor/leaflet.js"
+const LEAFLET_CSS = "/vendor/leaflet.css"
 
 export function ensureLeaflet() {
   if (window.L) return Promise.resolve(window.L)

@@ -157,7 +157,20 @@ defmodule VeejrWeb.InvitationLive.New do
 
   @impl true
   def handle_event("new_invitation", _params, socket) do
-    {:noreply, assign_invitation(socket)}
+    # Authenticated, but each call mints a capability token; budget it so one
+    # account cannot generate invitations without bound.
+    case Veejr.RateLimiter.check(:invitation, socket.assigns.client_ip) do
+      :ok ->
+        {:noreply, assign_invitation(socket)}
+
+      {:error, retry_after} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Too many invitations created. Try again in #{retry_after} seconds."
+         )}
+    end
   end
 
   defp assign_invitation(socket) do

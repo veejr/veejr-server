@@ -460,3 +460,22 @@ from retaining content they have decrypted, and capability URLs may leak via
 logs or clients. Operational security therefore depends on TLS, restricted
 database/blob access, protected backups, prompt updates, and verification of
 the deployed client build.
+
+Browser responses carry a Content-Security-Policy
+(`VeejrWeb.ContentSecurityPolicy`) that confines `script-src` and
+`connect-src` to the instance's own origin, with the inline theme bootstrap
+authorized by a per-response nonce rather than `'unsafe-inline'`. This does not
+change the boundary above — an attacker who can rewrite `app.js` can rewrite
+the header alongside it. What it constrains is the weaker case: an injection,
+a compromised dependency, or a templating mistake cannot execute inline script
+and has no off-origin destination to send a captured key to. Federated avatars
+require `img-src` to allow arbitrary `https:` origins, and shared viewing
+requires `frame-src` for the YouTube embed host; both are content sources
+rather than script or exfiltration paths.
+
+Request budgets (`Veejr.RateLimiter`) cover authentication, directory,
+invitation, upload, and federation endpoints. Because every deployment sits
+behind a TLS-terminating proxy, budgets key on the client address resolved from
+`x-forwarded-for` via `Veejr.RemoteIp`, which believes the header only when the
+immediate peer is a configured trusted proxy and reads the chain right to left
+so a caller cannot spoof its address. Counters are per node and in memory.

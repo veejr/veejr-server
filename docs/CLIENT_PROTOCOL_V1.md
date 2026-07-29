@@ -955,6 +955,16 @@ The canonical v1 fixture is `protocol-fixtures/v1.json`. Regenerate it with
 `mix protocol.verify`. The fixture intentionally contains fixed test-only
 private keys and MUST never be reused for an account or production content.
 
+Verification runs in two stages. The first rebuilds the fixture from raw
+tweetnacl calls, proving the recorded values are internally consistent. The
+second replays the same fixture through `assets/js/veejr/crypto.js` — the
+module browsers actually load — using its real `unlockIdentity`, `openFrom`,
+and `decryptBlob`. Without the second stage a regression in the shipped module
+(changed KDF iterations, transposed key/nonce arguments, a broken base64
+helper) would leave the fixture matching and the check passing. Any client
+claiming v1 compatibility SHOULD verify against its own shipping crypto code
+rather than against a reimplementation of it.
+
 ## 18. Synchronization and idempotency
 
 v1 uses server-authoritative metadata and a client ciphertext cache.

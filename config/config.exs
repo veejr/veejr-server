@@ -80,6 +80,33 @@ config :tailwind,
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]
 
+# Per-surface request budgets as {max_requests, window_ms}, enforced by
+# Veejr.RateLimiter. Sized so a real person never reaches one; operators who
+# front an instance with their own limiter can set `enabled: false`.
+config :veejr, :rate_limits,
+  enabled: true,
+  login: {10, :timer.minutes(1)},
+  magic_link: {5, :timer.minutes(5)},
+  registration: {5, :timer.hours(1)},
+  directory: {60, :timer.minutes(1)},
+  invitation: {20, :timer.hours(1)},
+  upload: {60, :timer.minutes(1)},
+  federation: {120, :timer.minutes(1)}
+
+# Reverse proxies whose x-forwarded-for header may be believed. Defaults to
+# loopback and private ranges, which is what a same-host or container proxy
+# (Caddy, in the project deployment) connects from. See Veejr.RemoteIp.
+config :veejr, :trusted_proxies, [
+  "127.0.0.0/8",
+  "::1/128",
+  "10.0.0.0/8",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+  "169.254.0.0/16",
+  "fc00::/7",
+  "fe80::/10"
+]
+
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

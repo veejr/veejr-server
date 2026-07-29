@@ -120,20 +120,34 @@ defmodule VeejrWeb.UserLive.Login do
   def handle_event("submit_magic", %{"user" => %{"identifier" => identifier}}, socket) do
     return_to = socket.assigns.return_to
 
-    if user = Accounts.get_user_by_login_identifier(identifier) do
-      Accounts.deliver_login_instructions(
-        user,
-        &magic_login_url(&1, return_to)
-      )
+    # This runs over the LiveView socket rather than a controller, so the
+    # router's :limit_magic_link pipeline never sees it. Budget it here on the
+    # same bucket so both entry points share one allowance per client.
+    case Veejr.RateLimiter.check(:magic_link, socket.assigns.client_ip) do
+      :ok ->
+        if user = Accounts.get_user_by_login_identifier(identifier) do
+          Accounts.deliver_login_instructions(
+            user,
+            &magic_login_url(&1, return_to)
+          )
+        end
+
+        info =
+          "If your username or email is in our system, you will receive instructions for logging in shortly."
+
+        {:noreply,
+         socket
+         |> put_flash(:info, info)
+         |> push_navigate(to: login_path(return_to))}
+
+      {:error, retry_after} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Too many login requests. Try again in #{retry_after} seconds."
+         )}
     end
-
-    info =
-      "If your username or email is in our system, you will receive instructions for logging in shortly."
-
-    {:noreply,
-     socket
-     |> put_flash(:info, info)
-     |> push_navigate(to: login_path(return_to))}
   end
 
   defp login_path(nil), do: ~p"/users/log-in"

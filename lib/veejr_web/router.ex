@@ -10,6 +10,9 @@ defmodule VeejrWeb.Router do
     plug :put_root_layout, html: {VeejrWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    # After put_secure_browser_headers so the policy (and its per-response
+    # nonce) is not overwritten by the default header set.
+    plug VeejrWeb.ContentSecurityPolicy
     plug :fetch_current_scope_for_user
   end
 
@@ -23,12 +26,33 @@ defmodule VeejrWeb.Router do
 
   pipeline :federation do
     plug :accepts, ["json"]
+    # Budget before signature verification: an unauthenticated flood should
+    # not get to spend Ed25519 verifications.
+    plug VeejrWeb.Plugs.RateLimit, bucket: :federation, by: :federation_authority
     plug VeejrWeb.FederationAuth
   end
 
   pipeline :provisioner do
     plug :accepts, ["json"]
     plug VeejrWeb.ProvisionerAuth
+  end
+
+  # Per-surface request budgets required by REIMPLEMENTATION_SPEC.md §17.
+  # Each rejects with 429 + Retry-After; see VeejrWeb.Plugs.RateLimit.
+  pipeline :limit_login do
+    plug VeejrWeb.Plugs.RateLimit, bucket: :login
+  end
+
+  pipeline :limit_magic_link do
+    plug VeejrWeb.Plugs.RateLimit, bucket: :magic_link
+  end
+
+  pipeline :limit_directory do
+    plug VeejrWeb.Plugs.RateLimit, bucket: :directory
+  end
+
+  pipeline :limit_upload do
+    plug VeejrWeb.Plugs.RateLimit, bucket: :upload
   end
 
   scope "/api/provisioner/v1", VeejrWeb do
@@ -52,21 +76,40 @@ defmodule VeejrWeb.Router do
     pipe_through :api
 
     get "/instance", InstanceController, :instance
-    get "/directory/:username", InstanceController, :directory
 
     # Capability URL: the unguessable id (delivered only to the recipient's
     # instance) is the credential, and the content is E2E ciphertext.
     get "/envelopes/:public_id", FederationController, :envelope
   end
 
+  # Directory lookups publish a local user's public key and display name, so
+  # an unbudgeted endpoint enumerates the instance's whole membership.
+  scope "/api", VeejrWeb do
+    pipe_through [:api, :limit_directory]
+
+    get "/directory/:username", InstanceController, :directory
+  end
+
   scope "/api/v1", VeejrWeb.Api.V1 do
     pipe_through :api
 
     get "/capabilities", CapabilitiesController, :show
+  end
+
+  scope "/api/v1", VeejrWeb.Api.V1 do
+    pipe_through [:api, :limit_login]
+
     post "/auth/login", AuthController, :login
+    post "/auth/refresh", AuthController, :refresh
+  end
+
+  # Magic-link requests send mail to an address the caller names, so these
+  # carry a tighter budget than password attempts.
+  scope "/api/v1", VeejrWeb.Api.V1 do
+    pipe_through [:api, :limit_magic_link]
+
     post "/auth/magic-link", AuthController, :request_magic_link
     post "/auth/magic-link/exchange", AuthController, :exchange_magic_link
-    post "/auth/refresh", AuthController, :refresh
   end
 
   scope "/api/v1", VeejrWeb.Api.V1 do
@@ -86,7 +129,6 @@ defmodule VeejrWeb.Router do
     put "/groups/:id/note", GroupController, :note
     post "/recipients/resolve", RecipientController, :resolve
     post "/message-batches", MessageBatchController, :create
-    post "/blobs", BlobController, :create
     get "/envelopes", EnvelopeController, :index
     get "/message-delivery-policies", MessageDeliveryPolicyController, :index
     put "/contacts/:subject_id/message-delivery-policy", MessageDeliveryPolicyController, :contact
@@ -108,6 +150,12 @@ defmodule VeejrWeb.Router do
     delete "/conversations/:subject_id/message-delivery-policy",
            MessageDeliveryPolicyController,
            :delete_conversation
+  end
+
+  scope "/api/v1", VeejrWeb.Api.V1 do
+    pipe_through [:api, :require_api_user, :limit_upload]
+
+    post "/blobs", BlobController, :create
   end
 
   # Public attachment capability. No pipeline: serves opaque octet-stream
@@ -169,6 +217,7 @@ defmodule VeejrWeb.Router do
       on_mount: [
         {VeejrWeb.UserAuth, :require_authenticated},
         {VeejrWeb.KeyGate, :ensure_keys},
+        {VeejrWeb.ClientIp, :default},
         VeejrWeb.LiveNotify
       ] do
       live "/friends", FriendsLive
@@ -188,13 +237,20 @@ defmodule VeejrWeb.Router do
     end
 
     post "/users/update-password", UserSessionController, :update_password
-    post "/blobs", BlobController, :create
-    post "/account/avatar", AvatarController, :create
     get "/avatar-textures/:id", AvatarController, :texture
     get "/blobs/:id", BlobController, :show
     get "/export", ExportController, :download
     post "/push/subscriptions", PushController, :create
     delete "/push/subscriptions", PushController, :delete
+  end
+
+  # Encrypted attachment and avatar uploads: authenticated, but still the
+  # cheapest way for one account to consume an instance's disk.
+  scope "/", VeejrWeb do
+    pipe_through [:browser, :require_authenticated_user, :limit_upload]
+
+    post "/blobs", BlobController, :create
+    post "/account/avatar", AvatarController, :create
   end
 
   scope "/", VeejrWeb do
@@ -210,13 +266,18 @@ defmodule VeejrWeb.Router do
     end
 
     live_session :current_user,
-      on_mount: [{VeejrWeb.UserAuth, :mount_current_scope}] do
+      on_mount: [{VeejrWeb.UserAuth, :mount_current_scope}, {VeejrWeb.ClientIp, :default}] do
       live "/users/register", UserLive.Registration, :new
       live "/users/log-in", UserLive.Login, :new
       live "/users/log-in/:token", UserLive.Confirmation, :new
     end
 
-    post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
+  end
+
+  scope "/", VeejrWeb do
+    pipe_through [:browser, :limit_login]
+
+    post "/users/log-in", UserSessionController, :create
   end
 end
