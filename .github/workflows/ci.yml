@@ -115,6 +115,16 @@ jobs:
         env:
           MIX_ENV: prod
 
+      # assets.deploy runs tailwind/esbuild/digest but does not compile, and
+      # Tailwind's input imports phoenix-colocated/veejr/colocated.css, which
+      # the LiveView compiler generates into _build during `mix compile`. On
+      # the deployment host the app is always already compiled, so the
+      # dependency is invisible there; from a clean checkout it is not.
+      - name: Compile
+        run: mix compile
+        env:
+          MIX_ENV: prod
+
       - name: Build and digest assets
         run: mix assets.deploy
         env:
