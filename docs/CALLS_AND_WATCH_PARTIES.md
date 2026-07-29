@@ -15,13 +15,15 @@ For the lower-level trust model, see
 - Both participants need configured identity keys. A call page can unlock the
   wrapped key locally with the encryption passphrase; the passphrase never
   becomes a LiveView event or server request.
-- 1:1 calls work between accepted friends on the same instance or federated
-  Veejr instances. General watch parties are instance-local.
+- Calls work between accepted friends on the same instance or federated Veejr
+  instances. A call may hold up to three people, but a third participant must
+  be on the same instance as whoever started the call. General watch parties
+  are instance-local.
 - Media compatibility, screen sharing, speaker selection, Picture-in-Picture,
   and full-screen support vary by browser and operating system. Unsupported
   controls are hidden where the browser exposes no matching API.
 
-## 1:1 calls
+## Calls
 
 ### Start and answer
 
@@ -46,6 +48,32 @@ While an outgoing invitation is still ringing, the caller sees **Cancel
 invitation**. Cancelling records a distinct cancelled state, dismisses the
 callee's in-app ring banner, and mirrors the cancellation to a federated
 callee. After the callee accepts, the same control becomes **End call**.
+
+### Add a third person
+
+A call holds up to three people. Whoever started the call sees **Add someone**
+in the call controls; it lists their accepted contacts on this instance who are
+not already in the call. Choosing one rings that person exactly as a first
+invitee is rung — they see the same consent dialog and must accept before any
+media connects.
+
+Only the person who started the call can add someone. Guest calls and
+federated calls stay at two people: a guest has no account to invite anyone
+with, and a call that crosses instances is strictly one-to-one.
+
+Each participant appears as their own video tile, labelled with their name and
+their own muted, camera-off, and screen-sharing badges. A person who is still
+ringing shows as a waiting tile. When someone shares their screen, their tile
+leads, so full screen, Picture-in-Picture, and the pop-out follow it.
+
+Leaving a three-person call is a departure, not an ending: the other two keep
+talking, and their tiles rearrange. The call ends when fewer than two people
+remain. One invitee declining or being busy likewise leaves the rest talking.
+
+Because media travels directly between every pair, each browser uploads one
+copy of its video per other participant. Video therefore caps at the Balanced
+profile from three participants up, and the quality indicator reports the worst
+connection in the call rather than an average.
 
 ### Schedule a call and reminders
 
@@ -116,22 +144,24 @@ instance invitation policy still applies and no account is created silently.
   Picture-in-Picture, or pop the shared screen into a separate window.
 - Open call chat (`C`) to send text, paste/drop files, or select multiple
   files. HTTP/HTTPS links are rendered as clickable links. Each file is
-  limited to 25 MB.
+  limited to 25 MB. In a three-person call every message and file goes to both
+  other participants, and incoming ones are labelled with the sender's name.
 - Share a YouTube link or 11-character video ID. The person who starts that
-  share controls play, pause, seeking, and ending the shared video. The other
-  participant may need to tap once before audio can autoplay.
+  share controls play, pause, seeking, and ending the shared video for
+  everyone. Other participants may need to tap once before audio can autoplay.
 
-The call shows duration, connection quality, relay use, peer mute/camera
-state, and recovery status. Video starts at up to 720p/30fps and can move
-between HD, Balanced, and Data saver profiles while preserving audio priority.
-Screen sharing uses a separate screen-oriented profile.
+The call shows duration, connection quality, relay use, per-participant
+mute/camera state, and recovery status. Video starts at up to 720p/30fps and
+can move between HD, Balanced, and Data saver profiles while preserving audio
+priority; with three participants it starts at Balanced. Screen sharing uses a
+separate screen-oriented profile.
 
 Starting or stopping a screen share swaps the outgoing video track in place and
-then negotiates the session once more. The extra round is what makes the new
-picture appear on the other side: some receivers otherwise keep decoding the
-previous stream and hold a frozen frame. Offers for that round are always
-authored by the original caller, so they cannot collide with an ICE restart or
-with the other participant.
+then negotiates each connection once more. The extra round is what makes the
+new picture appear on the other side: some receivers otherwise keep decoding
+the previous stream and hold a frozen frame. Either end may author that round —
+and an ICE restart — because each pair negotiates independently and resolves a
+collision by having one agreed side yield.
 
 ### Interruption, reconnect, and re-invite
 
@@ -169,8 +199,10 @@ lost, returning to Messages no longer produces the active-call warning.
 - SDP offers, answers, and ICE candidates are sealed in the browser with
   `nacl.box` using the participants' pinned identity keys. Instances relay
   only ciphertext and do not store signaling history.
-- Call rows store participant IDs, a random public ID, lifecycle state, and
-  timestamps. Instances can observe who called whom and when.
+- Call rows store a random public ID, lifecycle state, timestamps, and who
+  started the call. A separate membership row per participant records their
+  role, their own lifecycle state, and when they joined or left. Instances can
+  observe who was in a call with whom and when.
 - Scheduled-call rows additionally store the organizer, invitee, UTC time,
   reminder lead time, lifecycle state, device and per-participant email
   reminder checkpoints, shared call notes, cancellation actor, and optional
@@ -184,7 +216,8 @@ lost, returning to Messages no longer produces the active-call warning.
   disappear when the call ends and are not included in History or account
   exports. A recipient can still save a transferred file, copy text, record
   media, or capture the screen.
-- Direct WebRTC normally reveals each peer's network address to the other.
+- Direct WebRTC normally reveals each peer's network address to the other, and
+  in a three-person call every participant connects directly to both others.
   TURN can relay traffic and reduce direct address exposure, but the TURN
   operator observes connection metadata and bandwidth. TURN cannot decrypt
   DTLS-SRTP media or the data channel.
@@ -250,6 +283,15 @@ content.
   Call invites are synchronous and are not queued in the durable federation
   outbox.
 
+### Cannot add a third person
+
+- Only the participant who started the call sees **Add someone**.
+- The list offers accepted contacts on this instance only. A federated contact
+  cannot be added; start a separate 1:1 call with them instead.
+- Three is the maximum. Someone must leave before another person can be added.
+- Someone still ringing already occupies their place; cancel by ending the call
+  or wait for them to decline before adding somebody else.
+
 ### Scheduled call or reminder does not appear
 
 - Confirm both people are still accepted friends and the scheduled time is in
@@ -313,6 +355,8 @@ screen stream only; closing it does not end screen sharing or the call.
   guest-call invitations; review sanitized `email` operational failures.
 - Test calls between different networks, including a cellular connection and
   a restrictive VPN, after changing proxy, firewall, DNS, or TURN settings.
+  Test a three-person call too: it needs every pair to connect, so it exposes
+  a one-sided NAT or TURN problem that a two-person call can hide.
 - Treat call metadata, watch participation, TURN logs, and YouTube access as
   privacy-sensitive operational data even though media content is encrypted.
 - Monitor application and coturn errors without enabling SDP, ICE candidate,

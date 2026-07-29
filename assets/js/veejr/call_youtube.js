@@ -57,6 +57,7 @@ export class CallYouTube {
     this.unlockLabel = hook.el.querySelector("[data-role='youtube-unlock-label']")
     this.active = false
     this.localController = false
+    this.controllerId = null
     this.ready = false
     this.unlocked = false
     this.playback = "paused"
@@ -108,7 +109,7 @@ export class CallYouTube {
 
   channelStateChanged() {
     if (!this.shareButton) return
-    const ready = this.hook.chatChannel?.readyState === "open"
+    const ready = this.hook.chatReady()
     this.shareButton.disabled = !ready
     this.shareButton.title = ready
       ? "Watch a YouTube video together"
@@ -122,10 +123,10 @@ export class CallYouTube {
       return
     }
 
-    if (this.hook.screenTrack || this.hook.remoteSharing) {
+    if (this.hook.screenTrack || this.hook.remoteSharing()) {
       return this.hook.showCallNotice("Stop screen sharing before sharing YouTube.")
     }
-    if (this.hook.chatChannel?.readyState !== "open") {
+    if (!this.hook.chatReady()) {
       return this.hook.showCallNotice("YouTube sharing will be ready once the call connects.")
     }
 
@@ -165,22 +166,23 @@ export class CallYouTube {
         video_id: this.videoId,
         playback: this.playback,
         position: this.position,
-        controller_id: Number(this.hook.el.dataset.userId),
       })
     } catch {
       this.hook.showCallNotice("The direct sharing connection was interrupted.")
     }
   }
 
-  handlePayload(payload) {
+  // `peer` is whoever's data channel delivered this, which is also who is
+  // controlling the video — the mesh gives each pair its own channel, so the
+  // sender never has to be named inside the payload.
+  handlePayload(payload, peer) {
     if (payload.kind === "youtube_start") {
       if (!VIDEO_ID_PATTERN.test(payload.video_id || "")) return true
-      if (Number(payload.controller_id) !== Number(this.hook.el.dataset.peerId)) return true
 
+      // Two people can start a share at the same instant. The same ordering
+      // that decides who is polite decides whose share survives.
       if (this.active && this.localController) {
-        const myId = Number(this.hook.el.dataset.userId)
-        const peerId = Number(this.hook.el.dataset.peerId)
-        if (myId < peerId) {
+        if (String(this.hook.localId) < String(peer.id)) {
           this.sendStart()
           return true
         }
@@ -188,13 +190,16 @@ export class CallYouTube {
 
       const playback = payload.playback === "playing" ? "playing" : "paused"
       const position = this.validPosition(payload.position)
+      this.controllerId = peer.id
       this.showShare(payload.video_id, false, playback, position)
-      this.hook.showCallNotice("The other person shared a YouTube video.")
+      this.hook.showCallNotice(`${peer.name} shared a YouTube video.`)
       return true
     }
 
+    // Only the person who started the share steers it, so a third
+    // participant's stray control is ignored rather than obeyed.
     if (payload.kind === "youtube_control") {
-      if (!this.active || this.localController) return true
+      if (!this.active || this.localController || this.controllerId !== peer.id) return true
       this.playback = payload.playback === "playing" ? "playing" : "paused"
       this.position = this.validPosition(payload.position)
       this.applyRemotePlayback()
@@ -202,7 +207,7 @@ export class CallYouTube {
     }
 
     if (payload.kind === "youtube_stop") {
-      if (this.active && !this.localController) {
+      if (this.active && !this.localController && this.controllerId === peer.id) {
         this.stopShare()
         this.hook.showCallNotice("YouTube sharing stopped.")
       }
@@ -226,9 +231,10 @@ export class CallYouTube {
 
     this.stage?.classList.remove("hidden")
     this.stage?.classList.add("block")
+    if (localController) this.controllerId = null
     this.controllerLabel.textContent = localController
       ? "You control this video"
-      : "Controlled by the other person"
+      : `Controlled by ${this.controllerName()}`
     this.endButton?.classList.toggle("hidden", !localController)
     this.unlock?.classList.toggle("hidden", localController || this.unlocked)
     this.unlock?.classList.toggle("flex", !localController && !this.unlocked)
@@ -312,8 +318,12 @@ export class CallYouTube {
     }
   }
 
+  controllerName() {
+    return this.hook.rosterEntry(this.controllerId)?.name || "the other person"
+  }
+
   sendControl() {
-    if (!this.active || !this.localController || this.hook.chatChannel?.readyState !== "open") return
+    if (!this.active || !this.localController || !this.hook.chatReady()) return
     try {
       this.hook.sendChatJson({
         kind: "youtube_control",
@@ -343,11 +353,11 @@ export class CallYouTube {
 
   stopLocal() {
     if (!this.active || !this.localController) return
-    if (this.hook.chatChannel?.readyState === "open") {
+    if (this.hook.chatReady()) {
       try {
         this.hook.sendChatJson({kind: "youtube_stop"})
       } catch {
-        // The peer has already disconnected.
+        // Every peer has already disconnected.
       }
     }
     this.stopShare()
@@ -359,6 +369,7 @@ export class CallYouTube {
     this.iframe = null
     this.active = false
     this.localController = false
+    this.controllerId = null
     this.ready = false
     this.appliedPlayback = null
     this.playerPosition = null
@@ -377,20 +388,21 @@ export class CallYouTube {
     this.iframe?.removeEventListener("load", this.listenToPlayer)
   }
 
+  // The shared video takes the stage, so the participants shrink to a strip.
+  // The tile grid's own layout belongs to the hook, which re-applies it on
+  // every roster change — hence a flag rather than a saved class name.
   compactCallVideos(compact) {
-    const remote = this.hook.remoteVideo
     const local = this.hook.localVideo
-    if (!remote || !local) return
+    if (!local) return
+
+    this.hook.compactTiles = compact
+    this.hook.renderTiles()
 
     if (compact) {
-      this.remoteVideoClass = remote.className
       this.localVideoClass = local.className
-      remote.className = "absolute left-3 top-16 z-20 h-24 w-32 rounded-xl border border-white/20 bg-black object-cover shadow-xl sm:left-4 sm:h-32 sm:w-44"
       local.className = "absolute right-3 top-16 z-20 h-24 w-32 rounded-xl border border-white/20 bg-black object-cover shadow-xl sm:right-4 sm:h-32 sm:w-44"
-    } else if (this.remoteVideoClass && this.localVideoClass) {
-      remote.className = this.remoteVideoClass
+    } else if (this.localVideoClass) {
       local.className = this.localVideoClass
-      this.remoteVideoClass = null
       this.localVideoClass = null
     }
   }

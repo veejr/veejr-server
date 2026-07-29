@@ -48,7 +48,7 @@ Veejr has become a genuinely interesting application. It is no longer just a mes
 - **The administrative layer is becoming mature.** Permanent instance administrator, registration policies, invitations, suspension, quotas, audit history, peer controls, and account moves form a serious operational foundation.
 - **Good media capabilities.** Images, PDFs, voice recordings, and video messages are encrypted and viewed inside the application.
 - **Encrypted personal workspace.** Notes to yourself now provides encrypted cards, checklists, organization, local search, attachments, and idempotent Google Keep import without creating a plaintext notes index.
-- **Substantial live communication.** Browser calls now include device setup, adaptive video, screen sharing, multiple viewing modes, ephemeral direct chat/files, synchronized YouTube, mobile lifecycle handling, and reconnect/re-invite. Instance-local watch parties add host-directed playback and opt-in peer voice.
+- **Substantial live communication.** Browser calls now include device setup, adaptive video, screen sharing, multiple viewing modes, ephemeral direct chat/files, synchronized YouTube, mobile lifecycle handling, and reconnect/re-invite. Three-person calls run over the same peer mesh, so one implementation serves both sizes. Instance-local watch parties add host-directed playback and opt-in peer voice.
 - **Browser and Android interoperability.** Using a documented protocol and shared cryptographic format is much stronger than treating Android as an unrelated companion app.
 - **Documentation is now a real asset.** The reimplementation specification makes the product understandable independently of Phoenix.
 
@@ -97,7 +97,8 @@ The wisest next phase is consolidation rather than adding many headline features
    - Make spawning a personal instance feel like an intentional product feature, not an administrative stunt.
 
 6. **Conferencing consolidation**
-   - Exercise 1:1 calls across Chrome, Firefox, Safari, Android, iOS, VPN, cellular, direct, and TURN-relayed paths; automate what can be made deterministic.
+   - Exercise two- and three-person calls across Chrome, Firefox, Safari, Android, iOS, VPN, cellular, direct, and TURN-relayed paths; automate what can be made deterministic. A three-person call needs every pair to connect, so it fails where a pair can still succeed.
+   - Decide whether calls should grow past three. The mesh is quadratic in upload, so a fourth participant is a scaling and trust-boundary question (SFU) rather than a limit to raise.
    - Add operator-visible, privacy-safe call diagnostics without persisting SDP, ICE candidates, chat, files, or media.
    - Replace static TURN credentials with time-limited credentials before operating a broadly public instance.
    - Keep general watch-party voice intentionally small or introduce an SFU only after a separate scaling and trust-boundary design. The current peer mesh grows upload work per participant.

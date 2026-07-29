@@ -27,9 +27,9 @@ defmodule VeejrWeb.CallLive do
         data-call-state={@call.state}
         data-role={@role}
         data-user-id={@actor.id}
-        data-peer-id={@peer.id}
+        data-local-id={@local_id}
+        data-peers={Jason.encode!(@peers)}
         data-my-key={@actor.public_key}
-        data-peer-key={@peer.public_key}
         data-enc-secret-key={@actor.enc_secret_key}
         data-key-salt={@actor.key_salt}
         data-key-nonce={@actor.key_nonce}
@@ -43,7 +43,8 @@ defmodule VeejrWeb.CallLive do
           class="flex items-center justify-between gap-3 border-b border-base-300 bg-base-100 px-5 py-4"
         >
           <div class="min-w-0">
-            <h1 class="text-xl font-semibold tracking-tight">
+            <%!-- The hook rewrites this from the roster as people join or leave. --%>
+            <h1 data-role="call-title" class="text-xl font-semibold tracking-tight">
               📞 {@peer.display_name || Veejr.Social.Address.handle(@peer)}
             </h1>
             <div class="mt-0.5 flex flex-wrap items-center gap-2">
@@ -103,14 +104,25 @@ defmodule VeejrWeb.CallLive do
         </div>
 
         <div id="call-stage" data-role="call-stage" class="relative min-h-[60vh] bg-black">
-          <video
-            id="call-remote-video"
-            data-role="remote-video"
-            autoplay
-            playsinline
-            title="Double-click for fullscreen"
-            class="h-[60vh] w-full object-contain"
-          ></video>
+          <%!--
+          One tile per other participant, built by the hook. This video is the
+          first tile's: it stays server-rendered so picture-in-picture, the
+          pop-out, and speaker selection have a stable element to hold.
+          --%>
+          <div
+            id="call-remote-tiles"
+            data-role="remote-tiles"
+            class="grid h-[60vh] w-full grid-cols-1 bg-black"
+          >
+            <video
+              id="call-remote-video"
+              data-role="remote-video"
+              autoplay
+              playsinline
+              title="Double-click for fullscreen"
+              class="size-full object-contain"
+            ></video>
+          </div>
           <video
             data-role="local-video"
             autoplay
@@ -504,6 +516,16 @@ defmodule VeejrWeb.CallLive do
             🔄 Camera
           </button>
           <button
+            :if={@can_add_participant}
+            id="call-add-someone"
+            type="button"
+            phx-click="open_add_participant"
+            title={"Bring another person into this call (up to #{Calls.max_participants()})"}
+            class="btn btn-outline btn-sm"
+          >
+            <.icon name="hero-user-plus" class="size-4" /> Add someone
+          </button>
+          <button
             data-role="share-screen"
             title="Share your screen or a window"
             class="btn btn-outline btn-sm hidden"
@@ -589,6 +611,75 @@ defmodule VeejrWeb.CallLive do
         </div>
       </div>
 
+      <%!--
+      Outside #call-session on purpose: that element is phx-update="ignore", so
+      a list rendered inside it could never be refreshed as people join.
+      --%>
+      <div
+        :if={@can_add_participant}
+        id="call-add-participant"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="call-add-participant-title"
+        class={[
+          "fixed inset-0 z-[1100] items-center justify-center overflow-y-auto bg-base-content/45 p-4 backdrop-blur-sm",
+          if(@show_add_participant, do: "flex", else: "hidden")
+        ]}
+      >
+        <div class="my-auto w-full max-w-md rounded-3xl border border-base-300 bg-base-100 p-6 shadow-2xl sm:p-8">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="call-add-participant-title" class="text-xl font-semibold tracking-tight">
+                Add someone
+              </h2>
+              <p class="mt-1 text-sm opacity-65">
+                Up to {Calls.max_participants()} people can share one call. Whoever you pick is
+                rung and still has to accept.
+              </p>
+            </div>
+            <button
+              id="call-add-participant-close"
+              type="button"
+              phx-click="close_add_participant"
+              aria-label="Close"
+              class="btn btn-circle btn-ghost btn-sm"
+            >
+              <.icon name="hero-x-mark" class="size-5" />
+            </button>
+          </div>
+
+          <ul :if={@addable_friends != []} class="mt-5 max-h-72 space-y-1 overflow-y-auto">
+            <li :for={friend <- @addable_friends}>
+              <button
+                type="button"
+                phx-click="add_participant"
+                phx-value-id={friend.id}
+                class="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition hover:bg-base-200"
+              >
+                <span class="min-w-0">
+                  <span class="block truncate font-medium">
+                    {friend.display_name || Social.Address.handle(friend)}
+                  </span>
+                  <%!-- Without a display name the handle is already the label. --%>
+                  <span :if={friend.display_name} class="block truncate text-xs opacity-60">
+                    {Social.Address.handle(friend)}
+                  </span>
+                </span>
+                <.icon name="hero-phone-arrow-up-right" class="size-4 shrink-0 opacity-60" />
+              </button>
+            </li>
+          </ul>
+
+          <p
+            :if={@addable_friends == []}
+            class="mt-5 rounded-2xl bg-base-200 px-4 py-3 text-sm opacity-70"
+          >
+            Nobody left to add: either the call is full, or every contact on this instance is
+            already on it. Group calls stay within one instance.
+          </p>
+        </div>
+      </div>
+
       <p class="mt-3 text-center text-xs opacity-60">
         Audio and video travel directly between you, end-to-end encrypted. Leaving this
         page ends the call and returns you to the conversation.
@@ -658,7 +749,7 @@ defmodule VeejrWeb.CallLive do
           # The callee already joined — either we reconnected and missed the
           # transient broadcast (common on phones), or they accepted between
           # our dead and connected mounts. Replay it so negotiation starts.
-          send(self(), {:call_peer_joined, call.public_id})
+          send(self(), {:call_peer_joined, call.public_id, call.callee_id})
 
         role == "callee" and call.state == "accepted" ->
           # A full reload can lose the caller's first offer. Re-announce this
@@ -671,27 +762,109 @@ defmodule VeejrWeb.CallLive do
     end
 
     {:ok,
-     assign(socket,
+     socket
+     |> assign(
        page_title: "Call",
        call: call,
        role: role,
        peer: peer,
        actor: user,
+       local_id: user.id,
        layout_scope: socket.assigns.current_scope,
        is_guest: false,
        allow_reinvite: true,
+       can_add_participant: call.caller_id == user.id,
+       show_add_participant: false,
        return_to: return_to(params, call, user),
        ice_servers: Jason.encode!(Veejr.Calls.IceConfig.servers())
-     )}
+     )
+     |> refresh_peers()}
+  end
+
+  # The mesh needs every other participant's identity key to seal signaling
+  # pairwise, so the peer list is an assign the hook reads rather than
+  # something it can ask for.
+  defp refresh_peers(socket) do
+    call = socket.assigns.call
+    me = socket.assigns.actor
+
+    peers =
+      case me do
+        %{id: user_id} when is_integer(user_id) ->
+          call
+          |> Calls.peer_participants(user_id)
+          |> Enum.map(fn participant ->
+            %{
+              id: participant.user_id,
+              name:
+                participant.user.display_name || Veejr.Social.Address.handle(participant.user),
+              public_key: participant.user.public_key,
+              state: participant.state
+            }
+          end)
+
+        _ ->
+          []
+      end
+
+    socket
+    |> assign(peers: peers, addable_friends: addable_friends(socket, call, peers))
+    # The hook cannot re-read `data-peers`: its element is phx-update="ignore".
+    # The roster is pushed instead, and is what drives connect and disconnect.
+    |> push_event("call:peers", %{peers: peers})
+  end
+
+  defp addable_friends(socket, call, peers) do
+    if socket.assigns[:can_add_participant] and length(peers) + 1 < Calls.max_participants() do
+      taken = MapSet.new(Enum.map(peers, & &1.id))
+
+      socket.assigns.actor
+      |> Veejr.Social.list_friends()
+      |> Enum.filter(
+        &(is_nil(&1.host) and not MapSet.member?(taken, &1.id) and &1.id != call.caller_id)
+      )
+    else
+      []
+    end
   end
 
   @impl true
-  def handle_event("signal", %{"ciphertext" => ciphertext, "nonce" => nonce}, socket) do
+  def handle_event("signal", %{"ciphertext" => ciphertext, "nonce" => nonce} = params, socket) do
     user = socket.assigns.current_scope.user
+    target = parse_target(params["target"])
 
-    case Calls.signal(user, socket.assigns.call.public_id, ciphertext, nonce) do
+    case Calls.signal(user, socket.assigns.call.public_id, ciphertext, nonce, target) do
       :ok -> {:noreply, socket}
       {:error, _} -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("open_add_participant", _params, socket) do
+    # Refreshed on open so the list cannot offer someone who joined or left
+    # while the page sat there.
+    {:noreply, socket |> refresh_peers() |> assign(show_add_participant: true)}
+  end
+
+  def handle_event("close_add_participant", _params, socket) do
+    {:noreply, assign(socket, show_add_participant: false)}
+  end
+
+  def handle_event("add_participant", %{"id" => invitee_id}, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Calls.add_participant(user, socket.assigns.call.public_id, invitee_id) do
+      {:ok, _call} ->
+        {:noreply,
+         socket
+         |> refresh_peers()
+         |> assign(show_add_participant: false)
+         |> put_flash(:info, "Ringing them now.")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> refresh_peers()
+         |> put_flash(:error, add_participant_error(reason))}
     end
   end
 
@@ -736,15 +909,48 @@ defmodule VeejrWeb.CallLive do
   end
 
   @impl true
-  def handle_info({:call_peer_joined, _id}, socket) do
-    {:noreply, push_event(socket, "call:peer_joined", %{})}
-  end
+  def handle_info({:call_peer_joined, _id, participant_id}, socket) do
+    me = socket.assigns.current_scope.user.id
 
-  def handle_info({:call_signal, _id, from_id, ciphertext, nonce}, socket) do
-    if from_id == socket.assigns.current_scope.user.id do
+    if participant_id == me do
       {:noreply, socket}
     else
-      {:noreply, push_event(socket, "call:signal", %{ciphertext: ciphertext, nonce: nonce})}
+      {:noreply,
+       socket
+       |> refresh_peers()
+       |> push_event("call:peer_joined", %{peer: participant_id})}
+    end
+  end
+
+  def handle_info({:call_participants_changed, _id}, socket) do
+    {:noreply, refresh_peers(socket)}
+  end
+
+  def handle_info({:call_participant_left, _id, departed_id}, socket) do
+    if departed_id == socket.assigns.current_scope.user.id do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> refresh_peers()
+       |> push_event("call:peer_left", %{peer: departed_id})}
+    end
+  end
+
+  def handle_info({:call_signal, _id, from_id, target_id, ciphertext, nonce}, socket) do
+    me = socket.assigns.current_scope.user.id
+
+    # Deliver only what is addressed to us. Without this filter a third
+    # participant would receive the other two's offers and try to apply them.
+    if from_id == me or target_id not in [:any, me] do
+      {:noreply, socket}
+    else
+      {:noreply,
+       push_event(socket, "call:signal", %{
+         ciphertext: ciphertext,
+         nonce: nonce,
+         from: from_id
+       })}
     end
   end
 
@@ -779,6 +985,26 @@ defmodule VeejrWeb.CallLive do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp parse_target(nil), do: nil
+  defp parse_target(id) when is_integer(id), do: id
+
+  defp parse_target(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed, ""} -> parsed
+      _ -> nil
+    end
+  end
+
+  defp parse_target(_), do: nil
+
+  defp add_participant_error(:not_caller), do: "Only whoever started the call can add someone."
+  defp add_participant_error(:not_a_friend), do: "You can only add an accepted friend."
+  defp add_participant_error(:remote_participant), do: "Group calls are limited to this instance."
+  defp add_participant_error(:already_participating), do: "They are already on this call."
+  defp add_participant_error(:call_full), do: "This call is already full."
+  defp add_participant_error({:bad_state, _}), do: "That call is no longer active."
+  defp add_participant_error(_), do: "Could not add them to the call."
 
   defp return_to(params, call, user) do
     fallback = conversation_path(call, user)

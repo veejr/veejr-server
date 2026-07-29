@@ -79,10 +79,10 @@ defmodule Veejr.CallsTest do
 
       assert {:ok, joined} = Calls.join_call(bob, call.public_id)
       assert joined.state == "accepted"
-      assert_receive {:call_peer_joined, _id}
+      assert_receive {:call_peer_joined, _id, _participant}
 
       assert :ok = Calls.signal(alice, call.public_id, "sealed-offer", "nonce")
-      assert_receive {:call_signal, _id, from_id, "sealed-offer", "nonce"}
+      assert_receive {:call_signal, _id, from_id, _target, "sealed-offer", "nonce"}
       assert from_id == alice.id
 
       # the caller cannot join as callee
@@ -99,7 +99,7 @@ defmodule Veejr.CallsTest do
       Calls.subscribe(call)
 
       assert {:ok, %Call{state: "accepted"}} = Calls.rejoin_call(bob, call.public_id)
-      assert_receive {:call_peer_joined, public_id}
+      assert_receive {:call_peer_joined, public_id, _participant}
       assert public_id == call.public_id
     end
 
@@ -427,12 +427,12 @@ defmodule Veejr.CallsTest do
       assert {:ok, :applied} =
                Calls.receive_remote_update("remote-call-2", @remote_host, "joined")
 
-      assert_receive {:call_peer_joined, "remote-call-2"}
+      assert_receive {:call_peer_joined, "remote-call-2", _participant}
 
       assert {:ok, :relayed} =
                Calls.receive_remote_signal("remote-call-2", @remote_host, "sealed", "nonce")
 
-      assert_receive {:call_signal, "remote-call-2", _from, "sealed", "nonce"}
+      assert_receive {:call_signal, "remote-call-2", _from, _target, "sealed", "nonce"}
 
       assert {:ok, :applied} = Calls.receive_remote_update("remote-call-2", @remote_host, "ended")
       assert {:ok, %Call{state: "ended"}} = Calls.get_call(alice, "remote-call-2")

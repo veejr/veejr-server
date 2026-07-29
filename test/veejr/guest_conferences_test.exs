@@ -47,11 +47,12 @@ defmodule Veejr.GuestConferencesTest do
     Calls.subscribe(call)
     assert {:ok, accepted} = Calls.join_guest_call(waiting)
     assert accepted.state == "accepted"
-    assert_receive {:call_peer_joined, ^call_id}
+    assert_receive {:call_peer_joined, ^call_id, _participant}
 
     assert :ok = Calls.signal_guest(waiting, "guest-ciphertext", "guest-nonce")
 
-    assert_receive {:call_signal, ^call_id, {:guest, _}, "guest-ciphertext", "guest-nonce"}
+    assert_receive {:call_signal, ^call_id, {:guest, _}, _target, "guest-ciphertext",
+                    "guest-nonce"}
 
     assert :ok =
              Calls.signal_guest_host(
@@ -61,7 +62,7 @@ defmodule Veejr.GuestConferencesTest do
                "host-nonce"
              )
 
-    assert_receive {:call_signal, ^call_id, host_id, "host-ciphertext", "host-nonce"}
+    assert_receive {:call_signal, ^call_id, host_id, _target, "host-ciphertext", "host-nonce"}
     assert host_id == host.id
 
     assert :ok = Calls.end_guest_call(waiting)
