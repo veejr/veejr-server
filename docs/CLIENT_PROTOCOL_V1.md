@@ -1101,11 +1101,13 @@ The following remain part of the intended v1 contract but may follow the MVP:
 - rewrap, rotation, reset, and remote-key confirmation;
 - settings, export download, and account deletion.
 
-Browser member and guest 1:1 calls, scheduled calls, and instance-local watch
-parties are implemented product features but are outside this HTTP API
-version. Native parity for calls, ephemeral call chat/files, synchronized
-YouTube, and watch-party voice remains deferred until a separate
-signaling/lifecycle contract is specified.
+Browser member and guest calls (up to three participants), scheduled calls, and
+instance-local watch parties are implemented product features but are outside
+this HTTP API version. Native parity for calls, ephemeral call chat/files,
+synchronized YouTube, and watch-party voice remains deferred until a separate
+signaling/lifecycle contract is specified. That contract must carry per-call
+membership and an explicit signal target, not a caller/callee pair: the browser
+mesh already depends on both.
 
 Deferral does not permit an incompatible provisional format. Implemented v1
 endpoints must follow this document.

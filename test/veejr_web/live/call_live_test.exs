@@ -202,4 +202,144 @@ defmodule VeejrWeb.CallLiveTest do
 
     assert_redirect(view, "/messages?conversation=#{key}")
   end
+
+  describe "three-way calls" do
+    setup %{user: user} do
+      other = user_fixture()
+      {:ok, request} = Social.send_friend_request(user, other.username)
+      {:ok, _friendship} = Social.accept_friend_request(other, request.id)
+      %{other: other}
+    end
+
+    defp accepted_pair(caller, callee) do
+      {:ok, call} = Calls.start_call(caller, callee.id)
+      {:ok, call} = Calls.join_call(callee, call.public_id)
+      call
+    end
+
+    test "the person who started the call can add another contact", %{
+      conn: conn,
+      user: user,
+      friend: friend,
+      other: other
+    } do
+      call = accepted_pair(user, friend)
+
+      {:ok, view, _html} = live(conn, "/call/#{call.public_id}")
+
+      assert has_element?(view, "#call-add-someone[phx-click='open_add_participant']")
+      view |> element("#call-add-someone") |> render_click()
+
+      invite = "#call-add-participant button[phx-value-id='#{other.id}']"
+      assert has_element?(view, invite)
+      # Whoever is already on the call is not offered again.
+      refute has_element?(view, "#call-add-participant button[phx-value-id='#{friend.id}']")
+
+      view |> element(invite) |> render_click()
+
+      assert Calls.participant(call, other.id).state == "ringing"
+      # The roster the hook meshes over now names both of them.
+      assert_push_event view, "call:peers", %{peers: [_, _] = peers}
+      assert Enum.sort(Enum.map(peers, & &1.id)) == Enum.sort([friend.id, other.id])
+    end
+
+    test "someone who did not start the call gets no add control", %{
+      conn: conn,
+      user: user,
+      friend: friend
+    } do
+      {:ok, call} = Calls.start_call(friend, user.id)
+
+      {:ok, view, _html} = live(conn, "/call/#{call.public_id}")
+
+      refute has_element?(view, "#call-add-someone")
+      refute has_element?(view, "#call-add-participant")
+    end
+
+    test "a full call offers nobody, whoever is left over", %{
+      conn: conn,
+      user: user,
+      friend: friend,
+      other: other
+    } do
+      spare = user_fixture()
+      {:ok, request} = Social.send_friend_request(user, spare.username)
+      {:ok, _friendship} = Social.accept_friend_request(spare, request.id)
+
+      call = accepted_pair(user, friend)
+      {:ok, _call} = Calls.add_participant(user, call.public_id, other.id)
+
+      {:ok, view, _html} = live(conn, "/call/#{call.public_id}")
+      view |> element("#call-add-someone") |> render_click()
+
+      refute has_element?(view, "#call-add-participant button[phx-value-id='#{spare.id}']")
+      assert has_element?(view, "#call-add-participant-title")
+    end
+
+    test "the page carries a roster for every other participant", %{
+      conn: conn,
+      user: user,
+      friend: friend,
+      other: other
+    } do
+      call = accepted_pair(user, friend)
+      {:ok, _call} = Calls.add_participant(user, call.public_id, other.id)
+      {:ok, _call} = Calls.join_call(other, call.public_id)
+
+      {:ok, view, _html} = live(conn, "/call/#{call.public_id}")
+
+      # One tile grid, and the first paint already knows who is in the call:
+      # the hook's element is phx-update="ignore", so it reads this once.
+      assert has_element?(view, "#call-remote-tiles[data-role='remote-tiles']")
+      assert has_element?(view, "#call-session[data-local-id='#{user.id}']")
+      assert has_element?(view, ~s|#call-session[data-peers*="#{friend.id}"]|)
+      assert has_element?(view, ~s|#call-session[data-peers*="#{other.id}"]|)
+
+      assert_push_event view, "call:peers", %{peers: [_, _] = peers}
+      assert Enum.sort(Enum.map(peers, & &1.id)) == Enum.sort([friend.id, other.id])
+    end
+
+    test "one participant leaving keeps the call and names who to drop", %{
+      conn: conn,
+      user: user,
+      friend: friend,
+      other: other
+    } do
+      call = accepted_pair(user, friend)
+      {:ok, _call} = Calls.add_participant(user, call.public_id, other.id)
+      {:ok, _call} = Calls.join_call(other, call.public_id)
+
+      {:ok, view, _html} = live(conn, "/call/#{call.public_id}")
+
+      :ok = Calls.end_call(other, call.public_id)
+
+      assert_push_event view, "call:peer_left", %{peer: departed}
+      assert departed == other.id
+      # The remaining mesh is a pair again, and the call did not end.
+      assert_push_event view, "call:peers", %{peers: [%{id: remaining}]}
+      assert remaining == friend.id
+      refute_redirected(view, "/messages")
+    end
+
+    test "a third participant's own page authorises on membership alone", %{
+      conn: conn,
+      user: user,
+      friend: friend,
+      other: other
+    } do
+      # `friend` hosts, so `user` is neither caller nor first invitee.
+      {:ok, request} = Social.send_friend_request(friend, other.username)
+      {:ok, _friendship} = Social.accept_friend_request(other, request.id)
+      call = accepted_pair(friend, other)
+      {:ok, _call} = Calls.add_participant(friend, call.public_id, user.id)
+
+      {:ok, view, _html} = live(conn, "/call/#{call.public_id}")
+
+      refute call.caller_id == user.id
+      refute call.callee_id == user.id
+      assert has_element?(view, "#call-session")
+      assert_push_event view, "call:peers", %{peers: [_, _] = peers}
+      assert Enum.sort(Enum.map(peers, & &1.id)) == Enum.sort([friend.id, other.id])
+    end
+  end
 end

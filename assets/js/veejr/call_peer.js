@@ -37,6 +37,15 @@ export class CallPeer {
     this.remoteStream = null
     this.closed = false
 
+    // Per-pair state the session reads: what this peer says about their own
+    // microphone and camera, how many recovery attempts this leg has spent,
+    // and the previous statistics sample used to derive packet loss.
+    this.mediaState = {audio: true, video: true}
+    this.restartAttempts = 0
+    this.previousInbound = null
+    this.disconnectTimer = null
+    this.renegotiateTimer = null
+
     this.pc = new RTCPeerConnection({iceServers})
     this.#wire()
   }
@@ -163,9 +172,39 @@ export class CallPeer {
     }
   }
 
+  // `restartIce` raises `negotiationneeded`, so the recovery offer goes out
+  // through the same path as every other one.
   async restartIce() {
     if (this.closed || typeof this.pc.restartIce !== "function") return
     this.pc.restartIce()
+  }
+
+  // Forces one negotiation round so the far side's decoder picks up a track
+  // that was swapped in place — replaceTrack alone can leave it decoding the
+  // previous stream and holding a frozen frame. A collision with the other
+  // end's own offer is what perfect negotiation is there for.
+  async renegotiate(attempt = 0) {
+    if (this.closed || this.pc.connectionState === "closed") return
+
+    // A negotiation already in flight refreshes the decoder anyway; waiting
+    // it out beats colliding with it.
+    if (this.makingOffer || this.pc.signalingState !== "stable") {
+      if (attempt >= 3) return
+      clearTimeout(this.renegotiateTimer)
+      this.renegotiateTimer = setTimeout(() => this.renegotiate(attempt + 1), 1_000)
+      return
+    }
+
+    try {
+      this.makingOffer = true
+      await this.pc.setLocalDescription()
+      this.session.sendSignal(this, {kind: "offer", sdp: this.pc.localDescription.sdp})
+    } catch (_error) {
+      // The new track is already on the sender, so the call itself is fine;
+      // only the far side's decoder refresh was missed.
+    } finally {
+      this.makingOffer = false
+    }
   }
 
   sender(kind) {
@@ -188,6 +227,8 @@ export class CallPeer {
   close() {
     if (this.closed) return
     this.closed = true
+    clearTimeout(this.renegotiateTimer)
+    clearTimeout(this.disconnectTimer)
     try {
       this.chatChannel?.close()
     } catch (_error) {

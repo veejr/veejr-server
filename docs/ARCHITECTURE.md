@@ -41,7 +41,7 @@ The main domain contexts are:
 | `Veejr.Accounts` | Registration, authentication, profiles, invites, and identity-key lifecycle. |
 | `Veejr.Social` | Friendships, remote contacts, groups, and personal contact/group notes. |
 | `Veejr.Messaging` | Envelopes, consent notifications, conversation windows, edits, expiry/display limits, and blobs. |
-| `Veejr.Calls` | 1:1 call consent/lifecycle, schedules and reminders, sealed signaling relay, presence grace, and federated call updates. |
+| `Veejr.Calls` | Call membership, consent and lifecycle for up to three participants, schedules and reminders, addressed sealed signaling relay, presence grace, and federated call updates. |
 | `Veejr.GuestConferences` | Expiring email-capability invitations, host admission, and temporary guest-call identity/lifecycle. |
 | `Veejr.WatchParties` | One ephemeral, instance-local, host-controlled YouTube party and voice-signaling membership. |
 | `Veejr.Federation` | Remote discovery, friendship and delivery protocol, signed requests, peers, and retry outbox. |
@@ -255,10 +255,35 @@ retried.
 
 ## Calls
 
-1:1 audio/video calls use WebRTC: DTLS-SRTP media and the DTLS/SCTP call data
-channel flow peer-to-peer and never touch an instance. The server's role is
-consent, lifecycle, presence, and signaling relay:
+Audio/video calls use WebRTC: DTLS-SRTP media and the DTLS/SCTP call data
+channel flow peer-to-peer and never touch an instance. A call is a full mesh
+of up to three participants (`:max_call_participants`), and a two-person call
+is a mesh of one pair rather than a separate implementation. The server's role
+is consent, lifecycle, presence, and signaling relay:
 
+- Membership lives in `call_participants`, one row per person per call, each
+  with its own lifecycle state. Authorization for a call page is that row, not
+  the `calls.caller_id`/`callee_id` pair — those are retained because a
+  federated invite is strictly 1:1, with the caller acting as host.
+- Only the caller may add someone, and only an accepted local friend: with
+  three people, "who let them in?" needs exactly one answer. The invitee is
+  rung exactly as a first invitee is and must accept.
+- A participant leaving is a departure, not an ending. The call ends once
+  fewer than two participants remain, so one invitee declining leaves the
+  others talking.
+- Signaling is addressed (`{:call_signal, id, from, target, ct, nonce}`).
+  Without a target, three participants receive each other's offers with no way
+  to tell which pairing an SDP belongs to; a pair infers its target and
+  federated or guest calls address "the other side".
+- Each browser holds one `RTCPeerConnection`, data channel, and video tile per
+  other participant, using *perfect negotiation* (the peer with the lower id
+  is polite) so either side may author an offer or an ICE restart without
+  glare. Mesh upload grows with participant count, so video caps at the
+  Balanced sender profile from three participants up.
+- The peer roster reaches the browser as an assign — first paint via
+  `data-peers`, thereafter a `call:peers` push, because the hook's element is
+  `phx-update="ignore"`. Holding a connection to every joined roster entry is
+  what makes late arrivals, departures, and page reloads one code path.
 - Ringing reuses the consent model — the callee's open tabs show an
   incoming-call banner (`{:veejr_call_ring, call}` on the user topic) and
   nothing connects until they accept. Only accepted friends can ring.
@@ -285,16 +310,20 @@ consent, lifecycle, presence, and signaling relay:
 - The device-preview gate and in-call passphrase prompt keep camera/microphone
   selection and key unwrap in the browser. The passphrase and raw secret key
   are never sent through LiveView.
-- The data channel carries ephemeral text, clickable HTTP/HTTPS links, files
-  up to 25 MB, screen-share state, media-state hints, and synchronized YouTube
-  directions. These items are memory-only and disappear when the peer
-  connection closes; they are not envelopes or history.
+- The data channel carries ephemeral text, clickable HTTP/HTTPS links, and
+  files up to 25 MB; screen-share state, media-state hints, and synchronized
+  YouTube directions travel the same pairwise channels. With three people each
+  item is sent once per pair — there is no server copy to fan out — and
+  incoming chat is attributed to the peer whose channel delivered it. These
+  items are memory-only and disappear when the peer connection closes; they are
+  not envelopes or history.
 - Video capture begins at up to 720p/30fps. Browser WebRTC statistics drive
   HD/Balanced/Data saver sender profiles, with audio prioritized during
-  degradation. Screen capture uses a separate profile, and starting or stopping
-  it renegotiates the session once so the receiver decodes the swapped track
-  instead of holding the previous frame.
-- Calls attempt two ICE restarts after a connection failure. Call-page
+  degradation; the worst leg of the mesh decides, because averaging would hide
+  the leg that is failing. Screen capture uses a separate profile, and starting
+  or stopping it renegotiates every pairing once so receivers decode the
+  swapped track instead of holding the previous frame.
+- Each leg attempts two ICE restarts after a connection failure. Call-page
   presence has a 25-second server grace so LiveView reconnects do not end a
   call. If recovery fails, the original caller may create a fresh call ID and
   ring the callee again; a still-ringing invite is replayed when an offline
@@ -357,8 +386,9 @@ cost grows with participant count, so the feature targets small communities.
 The YouTube iframe runs in each browser against `youtube-nocookie.com`.
 Instances do not proxy video, but YouTube sees each viewer's request metadata.
 Playback directions are not content-encrypted in a general watch party; the
-video ID and state are server-readable. In a 1:1 call, the same directions use
-the authenticated WebRTC data channel instead.
+video ID and state are server-readable. In a call, the same directions use the
+authenticated WebRTC data channels instead, and only the participant whose
+channel started the share may steer it.
 
 ## Web Push
 
@@ -392,7 +422,8 @@ message plaintext. Push services still observe endpoint and timing metadata.
 | `conversation_archives` | Archived/preserved conversation instances; archiving stamps member envelopes with the instance key. |
 | `notifications` | Per-envelope consent state. |
 | `conversation_windows` | Rolling user/peer auto-accept expiry. |
-| `calls` | 1:1 call consent/lifecycle state (ringing/accepted/…); signaling itself is relayed, never stored. |
+| `calls` | Call consent/lifecycle state (ringing/accepted/…) plus the host and first invitee; signaling itself is relayed, never stored. |
+| `call_participants` | One membership row per person per call: role, own lifecycle state, and join/leave timestamps. The source of truth for who is in a call and who may open its page. |
 | `scheduled_calls` | Persistent organizer/invitee plans, UTC time, device and two-minute email reminder checkpoints, shared notes, lifecycle state, cancellation actor, and optional cancellation reason. |
 | `guest_conferences`, `guest_calls` | Expiring hashed email capabilities, invited email, temporary guest identity, host admission/lifecycle metadata, and one guest call; signaling and media are not stored. |
 | `blobs` | Opaque encrypted file location, owner, size, and public capability ID. |

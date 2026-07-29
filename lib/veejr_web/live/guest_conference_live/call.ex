@@ -30,6 +30,9 @@ defmodule VeejrWeb.GuestConferenceLive.Call do
          role: "callee",
          peer: call.host,
          actor: actor,
+         # The mesh id, not the identity-key handle in `actor.id`: "guest" is
+         # what the host's side calls this participant.
+         local_id: "guest",
          layout_scope: nil,
          pending_count: nil,
          is_guest: true,
@@ -46,6 +49,7 @@ defmodule VeejrWeb.GuestConferenceLive.Call do
          ],
          can_add_participant: false,
          addable_friends: [],
+         show_add_participant: false,
          conference: conference,
          token: token,
          return_to: ~p"/guest/#{token}",

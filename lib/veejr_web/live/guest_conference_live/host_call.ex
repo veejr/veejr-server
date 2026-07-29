@@ -29,6 +29,9 @@ defmodule VeejrWeb.GuestConferenceLive.HostCall do
          role: "caller",
          peer: guest_peer(conference),
          actor: host,
+         # The mesh id the guest's side uses for this participant, which is
+         # not the host's user id.
+         local_id: "host",
          layout_scope: socket.assigns.current_scope,
          is_guest: false,
          allow_reinvite: false,
@@ -37,6 +40,7 @@ defmodule VeejrWeb.GuestConferenceLive.HostCall do
          peers: [guest_peer_entry(conference)],
          can_add_participant: false,
          addable_friends: [],
+         show_add_participant: false,
          conference: conference,
          return_to: ~p"/guest-conferences/#{public_id}",
          ice_servers: Jason.encode!(Veejr.Calls.IceConfig.servers())

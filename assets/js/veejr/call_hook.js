@@ -1,10 +1,21 @@
-// 1:1 audio/video calls over WebRTC.
+// Audio/video calls over WebRTC, for two or three people.
 //
 // Media flows peer-to-peer (DTLS-SRTP); this hook only exchanges signaling
 // through the server, and every signaling payload (SDP, ICE) is sealed with
-// nacl.box between the two participants' pinned identity keys before it
+// nacl.box between one *pair* of participants' pinned identity keys before it
 // leaves the browser. The server relays ciphertext it cannot read or alter,
 // so it cannot substitute DTLS fingerprints to man-in-the-middle a call.
+//
+// A call is a full mesh: one `CallPeer` (call_peer.js) per other participant,
+// each owning its connection, its data channel, and its video tile. A 1:1
+// call is a mesh of one, so there is a single implementation rather than two.
+// Everything shared across peers — local capture, device pickers, the chat
+// panel, quality rendering, YouTube — lives here.
+//
+// Who is in the call comes from the server as a roster: `data-peers` for the
+// first paint, then a `call:peers` event on every change. The hook holds a
+// connection to every roster entry that has joined, which is what makes
+// reloads, late arrivals, and departures all take the same path.
 
 import {
   getSecretKey,
@@ -14,6 +25,7 @@ import {
   cacheSecretKey,
   forgetSecretKey,
 } from "./crypto.js"
+import {CallPeer} from "./call_peer.js"
 import {CallYouTube} from "./call_youtube.js"
 
 const MICROPHONE_CONSTRAINTS = {
@@ -156,6 +168,10 @@ export const VIDEO_PROFILES = [
   {label: "Data saver", maxBitrate: 350_000, maxFramerate: 30, scaleResolutionDownBy: 2},
 ]
 
+// A mesh sends one copy of the outgoing video per peer, so upload grows with
+// the number of people. Past a pair, HD is not offered at all.
+export const GROUP_VIDEO_PROFILE_FLOOR = 1
+
 export function nextVideoProfileIndex(current, quality, goodSamples, degradedSamples) {
   const downgradeAfter = quality === "poor" ? 2 : 3
 
@@ -179,31 +195,42 @@ export function classifyCallQuality({loss = 0, rtt = 0, jitter = 0, bitrate} = {
   return "good"
 }
 
+// The single worst peer decides what the call as a whole reports: a mesh is
+// only as good as its weakest leg, and averaging would hide the leg that is
+// actually failing.
+export function worstCallQuality(qualities) {
+  for (const level of ["poor", "unstable"]) {
+    if (qualities.includes(level)) return level
+  }
+  return "good"
+}
+
 export const CallSession = {
   mounted() {
-    const {callId, role, userId, peerKey} = this.el.dataset
+    const {callId, role, userId, localId} = this.el.dataset
     activateCallExitGuard(callId)
     this.role = role
     this.isGuest = this.el.dataset.isGuest === "true"
-    this.peerKey = peerKey
+    // The mesh id, which is not the crypto key handle: a guest's identity is
+    // keyed by a per-conference id but is "guest" to the other side.
+    this.localId = String(localId || userId)
     this.mySecret = getSecretKey(userId)
     this.iceServers = JSON.parse(this.el.dataset.iceServers || "[]")
-    this.pc = null
+    this.peers = new Map()
+    this.connecting = new Map()
+    this.tiles = new Map()
+    this.roster = this.parseRoster(this.el.dataset.peers)
     this.localStream = null
-    this.pendingIce = []
-    this.restartAttempts = 0
     this.maxRestartAttempts = 2
-    this.restartInProgress = false
-    this.renegotiateTimer = null
-    this.previousInbound = null
+    this.compactTiles = false
     this.videoProfileIndex = 0
     this.goodQualitySamples = 0
     this.degradedQualitySamples = 0
-    this.remoteSharing = false
+    this.sharingPeerId = null
     this.remoteFitMode = "contain"
+    this.speakerId = ""
     this.popoutWindow = null
     this.popoutVideo = null
-    this.chatChannel = null
     this.chatOpen = false
     this.chatUnread = 0
     this.chatSending = false
@@ -213,16 +240,16 @@ export const CallSession = {
     this.connectedAt = null
     this.callTimer = null
     this.wakeLock = null
-    this.remoteMediaState = {audio: true, video: true}
-    this.peerJoined = this.el.dataset.callState === "accepted"
     this.pendingSealedSignals = []
     this.secureSessionStarted = false
+    this.remoteTiles = this.el.querySelector("[data-role=remote-tiles]")
     this.remoteVideo = this.el.querySelector("[data-role=remote-video]")
     this.localVideo = this.el.querySelector("[data-role=local-video]")
     this.remoteShareStatus = this.el.querySelector("[data-role=remote-share-status]")
     this.setupVideo = this.el.querySelector("[data-role=setup-video]")
     this.setupEl = this.el.querySelector("[data-role=device-setup]")
     this.statusEl = this.el.querySelector("[data-role=call-status]")
+    this.titleEl = this.el.querySelector("[data-role=call-title]")
     this.durationEl = this.el.querySelector("[data-role=call-duration]")
     this.qualityEl = this.el.querySelector("[data-role=call-quality]")
     this.noticeEl = this.el.querySelector("[data-role=call-notice]")
@@ -235,20 +262,24 @@ export const CallSession = {
       this.resolveMediaReady = resolve
     })
 
-    this.handleEvent("call:peer_joined", () => {
-      this.peerJoined = true
+    // The roster is authoritative: joining, leaving, reloading, and being
+    // added late all arrive as one kind of update.
+    this.handleEvent("call:peers", ({peers}) => this.setRoster(peers))
+
+    this.handleEvent("call:peer_joined", ({peer}) => {
       const hangupLabel = this.el.querySelector("[data-role=hangup-label]")
       if (hangupLabel) hangupLabel.textContent = "End call"
-      this.setLifecycle("connecting", "Connecting…")
-      if (this.secureSessionStarted && this.role === "caller") {
-        if (this.pc) this.restartConnection()
-        else this.startAsCaller()
-      }
+      if (this.lifecycle !== "connected") this.setLifecycle("connecting", "Connecting…")
+      // Guest calls have a fixed roster and never push `call:peers`, so this
+      // is where their single peer becomes connectable.
+      if (peer !== undefined && peer !== null) this.markRosterJoined(peer)
     })
 
-    this.handleEvent("call:signal", ({ciphertext, nonce}) => {
-      if (this.mySecret) this.openCallSignal(ciphertext, nonce)
-      else this.pendingSealedSignals.push({ciphertext, nonce})
+    this.handleEvent("call:peer_left", ({peer}) => this.dropPeer(peer))
+
+    this.handleEvent("call:signal", (payload) => {
+      if (this.mySecret) this.openCallSignal(payload)
+      else this.pendingSealedSignals.push(payload)
     })
 
     this.handleEvent("call:peer_disconnected", () => this.showReinvite())
@@ -270,6 +301,7 @@ export const CallSession = {
       }
       this.pushEvent("hangup", {})
     } else {
+      this.renderTiles()
       this.showCallUnlock()
     }
   },
@@ -283,15 +315,13 @@ export const CallSession = {
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener("devicechange", this.deviceChangeHandler)
     }
-    // Negotiation awaits this promise: building the peer connection before
-    // the user confirms their preview would create a receive-only session or
-    // send from a device they did not mean to use.
+    // Negotiation awaits this promise: building a peer connection before the
+    // user confirms their preview would create a receive-only session or send
+    // from a device they did not mean to use.
     this.acquireMedia()
 
-    if (this.role === "caller" && this.peerJoined) this.startAsCaller()
-    for (const signal of this.pendingSealedSignals.splice(0)) {
-      this.openCallSignal(signal.ciphertext, signal.nonce)
-    }
+    this.setRoster(this.roster)
+    for (const signal of this.pendingSealedSignals.splice(0)) this.openCallSignal(signal)
   },
 
   showCallUnlock() {
@@ -355,10 +385,313 @@ export const CallSession = {
     })
   },
 
-  openCallSignal(ciphertext, nonce) {
-    const payload = openFrom(ciphertext, nonce, this.peerKey, this.mySecret)
+  // ---------------------------------------------------------------- roster
+
+  parseRoster(raw) {
+    try {
+      const entries = JSON.parse(raw || "[]")
+      return Array.isArray(entries) ? entries.map((entry) => this.normalisePeer(entry)) : []
+    } catch {
+      return []
+    }
+  },
+
+  normalisePeer(entry) {
+    return {
+      id: String(entry.id),
+      name: entry.name || "Someone",
+      public_key: entry.public_key,
+      state: entry.state || "joined",
+    }
+  },
+
+  setRoster(entries) {
+    this.roster = (Array.isArray(entries) ? entries : []).map((entry) => this.normalisePeer(entry))
+    const known = new Set(this.roster.map((entry) => entry.id))
+
+    for (const id of [...this.peers.keys()]) {
+      if (!known.has(id)) this.dropPeer(id)
+    }
+
+    this.renderTiles()
+    if (!this.secureSessionStarted) return
+
+    for (const entry of this.roster) {
+      if (entry.state === "joined") this.connectPeer(entry)
+    }
+  },
+
+  // A guest call's roster never changes, so its `call:peer_joined` is the
+  // only signal that the other side is actually there.
+  markRosterJoined(id) {
+    const entry = this.rosterEntry(id)
+    if (!entry) return
+    entry.state = "joined"
+    this.renderTiles()
+    if (this.secureSessionStarted) this.connectPeer(entry)
+  },
+
+  rosterEntry(id) {
+    const key = String(id)
+    return this.roster.find((entry) => entry.id === key)
+  },
+
+  // Whoever is sharing a screen leads, so pop-out, picture-in-picture, and
+  // the largest tile all follow the thing people are looking at.
+  orderedRoster() {
+    if (!this.sharingPeerId) return this.roster
+    const sharer = this.rosterEntry(this.sharingPeerId)
+    if (!sharer) return this.roster
+    return [sharer, ...this.roster.filter((entry) => entry !== sharer)]
+  },
+
+  meshSize() {
+    return this.roster.filter((entry) => entry.state === "joined").length
+  },
+
+  // --------------------------------------------------------------- peering
+
+  async connectPeer(entry) {
+    const id = entry.id
+    if (this.peers.has(id)) return this.peers.get(id)
+    if (this.connecting.has(id)) return this.connecting.get(id)
+
+    if (!entry.public_key) {
+      this.showError(`${entry.name} has no encryption key set up, so this call cannot reach them.`)
+      return null
+    }
+
+    const creation = (async () => {
+      // An offer authored before capture settles would be receive-only, and
+      // the other side would never see or hear this one.
+      const mediaAvailable = await this.mediaReady
+      if (!mediaAvailable || this.peers.has(id)) return this.peers.get(id) || null
+
+      const peer = new CallPeer({
+        id,
+        name: entry.name,
+        publicKey: entry.public_key,
+        iceServers: this.iceServers,
+        localId: this.localId,
+        session: this,
+      })
+      this.peers.set(id, peer)
+
+      // Exactly one data channel per pair: the impolite side opens it, the
+      // polite side receives it through `ondatachannel`.
+      if (!peer.polite) peer.createChatChannel()
+      // Adding tracks raises `negotiationneeded`, which is what actually
+      // starts this pairing off.
+      peer.addLocalTracks(this.localStream)
+
+      this.renderTiles()
+      this.applyVideoProfile({announce: false})
+      return peer
+    })()
+
+    this.connecting.set(id, creation)
+    try {
+      return await creation
+    } finally {
+      this.connecting.delete(id)
+    }
+  },
+
+  dropPeer(id) {
+    const key = String(id)
+    const peer = this.peers.get(key)
+    if (peer) {
+      peer.close()
+      this.peers.delete(key)
+    }
+
+    for (const transferId of [...this.incomingChatFiles.keys()]) {
+      if (transferId.startsWith(`${key} `)) this.incomingChatFiles.delete(transferId)
+    }
+
+    if (this.sharingPeerId === key) this.setPeerShareState(peer || {id: key}, false)
+    this.renderTiles()
+    this.updateChatComposer()
+    this.youtube?.channelStateChanged()
+    if (this.peers.size === 0) this.stopQualityMonitoring()
+  },
+
+  closeAllPeers() {
+    for (const peer of this.peers.values()) peer.close()
+    this.peers.clear()
+    this.connecting.clear()
+  },
+
+  // ------------------------------------------- callbacks used by CallPeer
+
+  sendSignal(peer, payload) {
+    if (!peer?.publicKey || !this.mySecret) return
+    const sealed = sealFor(peer.publicKey, payload, this.mySecret)
+    this.pushEvent("signal", {target: peer.id, ...sealed})
+  },
+
+  broadcastSignal(payload) {
+    for (const peer of this.peers.values()) this.sendSignal(peer, payload)
+  },
+
+  onPeerTrack(peer, event) {
+    const stream = event.streams[0] || (event.track ? new MediaStream([event.track]) : null)
+    if (!stream) return
+    // Media can in principle beat the roster entry that would have built the
+    // tile, and a stream with nowhere to go is a silent black frame.
+    if (!this.tiles.has(peer.id)) this.renderTiles()
+    const tile = this.tiles.get(peer.id)
+    if (!tile) return
+
+    tile.video.srcObject = stream
+    if (this.popoutVideo && this.primaryPeerId() === peer.id) this.popoutVideo.srcObject = stream
+    // Nudge playback in case the browser's autoplay policy paused it.
+    tile.video.play().catch(() => {})
+    this.applySpeaker(tile.video)
+  },
+
+  onPeerMediaState(peer, next) {
+    this.setPeerMediaState(peer, next)
+  },
+
+  onPeerConnectionState(peer, state) {
+    if (state === "connected") {
+      clearTimeout(peer.disconnectTimer)
+      peer.disconnectTimer = null
+      peer.restartAttempts = 0
+      this.setLifecycle("connected", this.connectedText())
+      this.startCallTimer()
+      this.requestWakeLock()
+      this.sendMediaState()
+      this.startQualityMonitoring()
+    } else if (state === "closed" && this.peers.size <= 1) {
+      // `dropPeer` runs after this, so the closing peer is still counted:
+      // `<= 1` means it was the last one. One of three closing is not the
+      // call ending.
+      this.setLifecycle("ended", "Call ended")
+    }
+
+    this.updateTileConnection(peer)
+  },
+
+  onPeerIceState(peer, state) {
+    if (state === "checking" && this.lifecycle !== "connected") {
+      this.setLifecycle("connecting", "Connecting…")
+    }
+
+    if (state === "disconnected") {
+      this.setLifecycle("reconnecting", this.reconnectingText(peer))
+      clearTimeout(peer.disconnectTimer)
+      peer.disconnectTimer = setTimeout(() => this.recoverPeer(peer), 5_000)
+    }
+
+    if (state === "failed") this.recoverPeer(peer)
+    this.updateTileConnection(peer)
+  },
+
+  // --------------------------------------------------------- signaling in
+
+  openCallSignal({from, ciphertext, nonce}) {
+    const entry = this.rosterEntry(from)
+    const peer = this.peers.get(String(from))
+    const publicKey = peer?.publicKey || entry?.public_key
+    if (!publicKey) return
+
+    const payload = openFrom(ciphertext, nonce, publicKey, this.mySecret)
     if (!payload) return // tampered or stale — never act on unauthenticated signaling
-    this.onSignal(payload)
+    this.receiveSignal(from, payload)
+  },
+
+  async receiveSignal(from, payload) {
+    const id = String(from)
+    let peer = this.peers.get(id)
+
+    if (!peer) {
+      const entry = this.rosterEntry(id)
+      if (!entry) return
+      // An offer can arrive before the roster update that announced its
+      // sender, so their first signal is also a reason to connect.
+      peer = await this.connectPeer(entry)
+      if (!peer) return
+    }
+
+    try {
+      if (["offer", "answer", "ice"].includes(payload.kind)) {
+        await peer.applySignal(payload)
+      } else if (payload.kind === "share_state") {
+        this.setPeerShareState(peer, payload.sharing === true)
+      } else if (payload.kind === "media_state") {
+        this.setPeerMediaState(peer, {
+          audio: payload.audio === true,
+          video: payload.video === true,
+        })
+      }
+    } catch (err) {
+      this.showError(`Call negotiation failed: ${err.message}`)
+    }
+  },
+
+  // -------------------------------------------------------------- recovery
+
+  // Perfect negotiation means either side may author the recovery offer, so
+  // a peer restarts its own ICE instead of asking the caller to do it.
+  async recoverPeer(peer) {
+    if (peer.closed || !this.peers.has(peer.id)) return
+
+    if (peer.restartAttempts >= this.maxRestartAttempts) {
+      clearTimeout(peer.disconnectTimer)
+      peer.disconnectTimer = null
+      this.setLifecycle("failed", `Could not reconnect to ${peer.name}`)
+      return this.showError(
+        `The connection to ${peer.name} could not recover after two attempts.` +
+          " Check your connection and try again."
+      )
+    }
+
+    peer.restartAttempts += 1
+    this.setLifecycle("reconnecting", this.reconnectingText(peer))
+
+    try {
+      await peer.restartIce()
+    } catch (err) {
+      this.showError(`Could not restart the connection: ${err.message}`)
+    }
+
+    clearTimeout(peer.disconnectTimer)
+    peer.disconnectTimer = setTimeout(() => this.recoverPeer(peer), 8_000)
+  },
+
+  reconnectingText(peer) {
+    const attempt = Math.max(1, peer.restartAttempts)
+    const who = this.peers.size > 1 ? ` to ${peer.name}` : ""
+    return `Reconnecting${who} (attempt ${attempt}/${this.maxRestartAttempts})…`
+  },
+
+  connectedText() {
+    const connected = [...this.peers.values()].filter(
+      (peer) => peer.pc.connectionState === "connected"
+    ).length
+
+    return this.peers.size > 1
+      ? `Connected to ${connected} of ${this.peers.size} — end-to-end encrypted`
+      : "Connected — end-to-end encrypted"
+  },
+
+  clearRecoveryTimers() {
+    for (const peer of this.peers.values()) {
+      clearTimeout(peer.disconnectTimer)
+      clearTimeout(peer.renegotiateTimer)
+      peer.disconnectTimer = null
+      peer.renegotiateTimer = null
+    }
+  },
+
+  // Replacing a sender's track needs no new SDP, but a receiver can keep
+  // decoding the old stream and sit on a frozen frame — the swapped-in screen
+  // never appears. One negotiation round per peer resets the far-side
+  // decoder; perfect negotiation makes a collision with the other end safe.
+  renegotiateAll() {
+    for (const peer of this.peers.values()) peer.renegotiate()
   },
 
   showReinvite() {
@@ -371,12 +704,10 @@ export const CallSession = {
     this.youtube?.stopShare()
     if (this.screenTrack) this.screenTrack.stop()
     this.localStream?.getTracks().forEach(track => track.stop())
-    if (this.chatChannel) this.chatChannel.close()
-    if (this.pc) this.pc.close()
-    this.pc = null
+    this.closeAllPeers()
     this.localStream = null
     if (this.localVideo) this.localVideo.srcObject = null
-    if (this.remoteVideo) this.remoteVideo.srcObject = null
+    for (const tile of this.tiles.values()) tile.video.srcObject = null
     this.setLifecycle("disconnected", "Connection lost")
 
     const panel = this.el.querySelector("[data-role=call-reinvite]")
@@ -410,13 +741,13 @@ export const CallSession = {
     this.closeSharePopout()
     this.chatObjectUrls.forEach((url) => URL.revokeObjectURL(url))
     this.youtube?.destroy()
-    if (this.chatChannel) this.chatChannel.close()
-    if (document.pictureInPictureElement === this.remoteVideo && document.exitPictureInPicture) {
-      document.exitPictureInPicture().catch(() => {})
-    }
+    const inPip = [...this.tiles.values()].some(
+      (tile) => document.pictureInPictureElement === tile.video
+    )
+    if (inPip && document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {})
     if (this.screenTrack) this.screenTrack.stop()
     if (this.localStream) this.localStream.getTracks().forEach((t) => t.stop())
-    if (this.pc) this.pc.close()
+    this.closeAllPeers()
   },
 
   async acquireMedia() {
@@ -517,7 +848,7 @@ export const CallSession = {
     field.classList.toggle("block", supported && this.speakers.length > 0)
     if (!supported || this.speakers.length === 0) return
 
-    const selectedId = this.remoteVideo.sinkId || ""
+    const selectedId = this.speakerId || ""
     select.replaceChildren()
     this.speakers.forEach((device, index) => {
       const option = document.createElement("option")
@@ -549,14 +880,9 @@ export const CallSession = {
       }
     }
 
-    const sinkId = this.remoteVideo && this.remoteVideo.sinkId
-    if (
-      sinkId &&
-      typeof this.remoteVideo.setSinkId === "function" &&
-      !this.speakers.some((device) => device.deviceId === sinkId)
-    ) {
+    if (this.speakerId && !this.speakers.some((device) => device.deviceId === this.speakerId)) {
       try {
-        await this.remoteVideo.setSinkId("")
+        await this.selectSpeaker("")
         this.showCallNotice("Speaker disconnected · switched to the system default.")
       } catch {
         this.showCallNotice("Speaker disconnected. Choose another output in Devices.")
@@ -564,11 +890,20 @@ export const CallSession = {
     }
   },
 
+  // Every tile plays its own audio, so an output choice has to reach all of
+  // them rather than one element.
+  applySpeaker(video) {
+    if (!this.speakerId || typeof video.setSinkId !== "function") return
+    video.setSinkId(this.speakerId).catch(() => {})
+  },
+
   async selectSpeaker(deviceId) {
     if (!this.remoteVideo || typeof this.remoteVideo.setSinkId !== "function") return
+
     try {
-      await this.remoteVideo.setSinkId(deviceId)
-      this.showCallNotice("Speaker changed.")
+      for (const tile of this.tiles.values()) await tile.video.setSinkId(deviceId)
+      this.speakerId = deviceId
+      if (deviceId) this.showCallNotice("Speaker changed.")
     } catch (err) {
       this.showError(`Could not change speaker: ${err.message}`)
       await this.refreshDeviceChoices()
@@ -688,19 +1023,14 @@ export const CallSession = {
       newTrack.contentHint = kind === "audio" ? "speech" : "motion"
       if (oldTrack) newTrack.enabled = oldTrack.enabled
 
-      const sender =
-        this.pc && this.pc.getSenders().find((item) => item.track && item.track.kind === kind)
-      if (this.pc && !sender) {
-        newTrack.stop()
-        throw new Error(`A new ${kind} track can only be added before joining the call.`)
-      }
-      if (sender) await sender.replaceTrack(newTrack)
-
       if (oldTrack) {
         this.localStream.removeTrack(oldTrack)
         oldTrack.stop()
       }
       this.localStream.addTrack(newTrack)
+
+      // Every leg of the mesh carries its own copy of this track.
+      for (const peer of this.peers.values()) await peer.replaceTrack(kind, newTrack)
 
       if (kind === "video") {
         await this.applyVideoProfile({announce: false})
@@ -723,9 +1053,9 @@ export const CallSession = {
   },
 
   // Shares the whole screen or one window (the browser's picker offers the
-  // choice). The screen track replaces the outgoing camera track on the
-  // existing sender — no renegotiation — and the camera comes back when
-  // sharing stops, including via the browser's own "Stop sharing" bar.
+  // choice). The screen track replaces the outgoing camera track on every
+  // peer's existing sender, and the camera comes back when sharing stops,
+  // including via the browser's own "Stop sharing" bar.
   async toggleScreenShare() {
     if (this.screenTrack) return this.stopScreenShare()
     if (this.youtube?.active) {
@@ -733,10 +1063,7 @@ export const CallSession = {
     }
 
     const cameraTrack = this.localStream && this.localStream.getVideoTracks()[0]
-    const sender =
-      this.pc && this.pc.getSenders().find((s) => s.track && s.track.kind === "video")
-
-    if (!cameraTrack || !sender) {
+    if (!cameraTrack || this.peers.size === 0) {
       return this.showError("Screen sharing needs a connected call with video.")
     }
 
@@ -747,7 +1074,7 @@ export const CallSession = {
       // Dismissing the picker is not an error, but an operating system or
       // policy that blocks capture rejects the same way — and staying silent
       // there leaves the sharer believing their screen is on its way while
-      // the other side keeps seeing the camera.
+      // the others keep seeing the camera.
       if (/by system/iu.test(err.message || "")) {
         return this.showError(
           "Your system is blocking screen capture. Allow screen recording for this browser" +
@@ -766,19 +1093,35 @@ export const CallSession = {
       track.contentHint = "detail"
       this.screenTrack = track
       track.addEventListener("ended", () => this.stopScreenShare())
-      await sender.replaceTrack(track)
-      // A sender that silently kept the camera track would leave the sharer
-      // looking at their own screen while the peer sees no change at all.
-      if (sender.track !== track) throw new Error("the outgoing video track did not switch")
-      await this.applyScreenShareProfile(sender)
+
+      for (const peer of this.peers.values()) {
+        await peer.replaceTrack("video", track)
+        // A sender that silently kept the camera track would leave the sharer
+        // looking at their own screen while a peer sees no change at all.
+        if (peer.sender("video")?.track !== track) {
+          throw new Error("the outgoing video track did not switch")
+        }
+        await this.applyScreenShareProfile(peer.sender("video"))
+      }
+
       if (this.localVideo) this.localVideo.srcObject = stream
       this.setShareUi(true)
-      this.sendSignal({kind: "share_state", sharing: true})
+      this.broadcastSignal({kind: "share_state", sharing: true})
       this.sendMediaState()
-      this.requestRenegotiation()
+      this.renegotiateAll()
     } catch (err) {
       this.screenTrack = null
       stream.getTracks().forEach((t) => t.stop())
+      // The loop may have switched some peers before failing, which would
+      // leave them receiving a stopped track. Put everyone back on camera.
+      const cameraTrack = this.localStream && this.localStream.getVideoTracks()[0]
+      if (cameraTrack) {
+        for (const peer of this.peers.values()) {
+          await peer.replaceTrack("video", cameraTrack).catch(() => {})
+        }
+        if (this.localVideo) this.localVideo.srcObject = this.localStream
+        this.renegotiateAll()
+      }
       this.showError(`Could not share the screen: ${err.message}`)
     }
   },
@@ -790,12 +1133,10 @@ export const CallSession = {
     track.stop()
 
     const cameraTrack = this.localStream && this.localStream.getVideoTracks()[0]
-    const sender =
-      this.pc && this.pc.getSenders().find((s) => s.track && s.track.kind === "video")
 
     try {
-      if (sender && cameraTrack) {
-        await sender.replaceTrack(cameraTrack)
+      if (cameraTrack) {
+        for (const peer of this.peers.values()) await peer.replaceTrack("video", cameraTrack)
         await this.applyVideoProfile({announce: false})
       }
     } catch (err) {
@@ -804,9 +1145,9 @@ export const CallSession = {
 
     if (this.localVideo) this.localVideo.srcObject = this.localStream
     this.setShareUi(false)
-    this.sendSignal({kind: "share_state", sharing: false})
+    this.broadcastSignal({kind: "share_state", sharing: false})
     this.sendMediaState()
-    this.requestRenegotiation()
+    this.renegotiateAll()
   },
 
   // While sharing, the camera controls would silently fight the screen
@@ -822,7 +1163,7 @@ export const CallSession = {
   },
 
   // Swaps the outgoing video to the next camera without renegotiating: the
-  // new track replaces the old one on the existing RTCRtpSender.
+  // new track replaces the old one on each peer's existing RTCRtpSender.
   async switchCamera() {
     if (this.screenTrack) return
     const oldTrack = this.localStream && this.localStream.getVideoTracks()[0]
@@ -835,237 +1176,153 @@ export const CallSession = {
     await this.replaceInput("video", next.deviceId)
   },
 
-  // The caller starts negotiation only after the callee's page joined, so
-  // no offer is ever sent into the void — and only after local capture has
-  // settled, so the offer actually carries this side's tracks.
-  async startAsCaller() {
-    if (this.negotiating || this.pc) return
-    this.negotiating = true
-    const mediaAvailable = await this.mediaReady
-    if (!mediaAvailable) {
-      this.negotiating = false
-      return
-    }
-    if (this.pc) return
-    this.createPeer()
-    const offer = await this.pc.createOffer()
-    await this.pc.setLocalDescription(offer)
-    this.sendSignal({kind: "offer", sdp: this.pc.localDescription.sdp})
+  // ----------------------------------------------------------- video tiles
+
+  primaryPeerId() {
+    return this.orderedRoster()[0]?.id || null
   },
 
-  createPeer() {
-    this.pc = new RTCPeerConnection({iceServers: this.iceServers})
-    this.pc.ondatachannel = (event) => this.setupChatChannel(event.channel)
-
-    if (this.role === "caller") {
-      this.setupChatChannel(this.pc.createDataChannel("veejr-call-chat", {ordered: true}))
-    }
-
-    for (const track of this.localStream ? this.localStream.getTracks() : []) {
-      this.pc.addTrack(track, this.localStream)
-    }
-    this.applyVideoProfile({announce: false})
-
-    this.pc.ontrack = (event) => {
-      if (this.remoteVideo && event.streams[0]) {
-        this.remoteVideo.srcObject = event.streams[0]
-        if (this.popoutVideo) this.popoutVideo.srcObject = event.streams[0]
-        // Nudge playback in case the browser's autoplay policy paused it.
-        this.remoteVideo.play().catch(() => {})
-      }
-      if (event.track) {
-        event.track.addEventListener("ended", () =>
-          this.setRemoteMediaState({[event.track.kind]: false})
-        )
-      }
-    }
-
-    this.pc.onicecandidate = (event) => {
-      if (event.candidate) this.sendSignal({kind: "ice", candidate: event.candidate.toJSON()})
-    }
-
-    this.pc.onconnectionstatechange = () => {
-      const state = this.pc.connectionState
-      if (state === "connected") {
-        this.clearRecoveryTimers()
-        this.restartAttempts = 0
-        this.setLifecycle("connected", "Connected — end-to-end encrypted")
-        this.startCallTimer()
-        this.requestWakeLock()
-        this.sendMediaState()
-        this.startQualityMonitoring()
-      } else if (state === "closed") {
-        this.setLifecycle("ended", "Call ended")
-      }
-    }
-
-    this.pc.oniceconnectionstatechange = () => {
-      const state = this.pc.iceConnectionState
-
-      if (state === "checking") this.setLifecycle("connecting", "Connecting…")
-
-      if (state === "disconnected") {
-        this.setLifecycle("reconnecting", "Connection interrupted — reconnecting…")
-        clearTimeout(this.disconnectTimer)
-        this.disconnectTimer = setTimeout(() => this.requestIceRecovery(), 5_000)
-      }
-
-      if (state === "failed") this.requestIceRecovery()
-    }
+  primaryVideo() {
+    const id = this.primaryPeerId()
+    return (id && this.tiles.get(id)?.video) || this.remoteVideo
   },
 
-  async onSignal(payload) {
-    try {
-      if (payload.kind === "offer") {
-        if (!this.pc) {
-          // Wait for capture before answering — an answer built without
-          // local tracks would be receive-only and the caller would never
-          // see or hear this side.
-          const mediaAvailable = await this.mediaReady
-          if (!mediaAvailable) return
-          if (!this.pc) this.createPeer()
-        }
+  // The roster drives the grid: one tile per other participant, in a stable
+  // order, so nobody's picture jumps when a third person arrives or leaves.
+  renderTiles() {
+    if (!this.remoteTiles) return
+    const entries = this.orderedRoster()
+    const keep = new Set(entries.map((entry) => entry.id))
 
-        await this.pc.setRemoteDescription({type: "offer", sdp: payload.sdp})
-        const answer = await this.pc.createAnswer()
-        await this.pc.setLocalDescription(answer)
-        this.sendSignal({kind: "answer", sdp: this.pc.localDescription.sdp})
-        await this.flushPendingIce()
-      } else if (payload.kind === "answer") {
-        if (!this.pc) return
-        await this.pc.setRemoteDescription({type: "answer", sdp: payload.sdp})
-        await this.flushPendingIce()
-      } else if (payload.kind === "ice") {
-        if (this.pc && this.pc.remoteDescription) {
-          await this.pc.addIceCandidate(payload.candidate)
-        } else {
-          this.pendingIce.push(payload.candidate)
-        }
-      } else if (payload.kind === "restart_request" && this.role === "caller") {
-        await this.restartConnection()
-      } else if (payload.kind === "renegotiate_request" && this.role === "caller") {
-        await this.renegotiate()
-      } else if (payload.kind === "share_state") {
-        this.setRemoteShareState(payload.sharing === true)
-      } else if (payload.kind === "media_state") {
-        this.setRemoteMediaState({audio: payload.audio === true, video: payload.video === true})
-      }
-    } catch (err) {
-      this.showError(`Call negotiation failed: ${err.message}`)
-    }
-  },
-
-  async flushPendingIce() {
-    while (this.pendingIce.length > 0) {
-      await this.pc.addIceCandidate(this.pendingIce.shift())
-    }
-  },
-
-  clearRecoveryTimers() {
-    clearTimeout(this.disconnectTimer)
-    clearTimeout(this.restartTimer)
-    clearTimeout(this.renegotiateTimer)
-    this.disconnectTimer = null
-    this.restartTimer = null
-    this.renegotiateTimer = null
-  },
-
-  async requestIceRecovery() {
-    if (!this.pc || this.pc.connectionState === "closed") return
-
-    if (this.restartAttempts >= this.maxRestartAttempts) {
-      this.clearRecoveryTimers()
-      this.stopQualityMonitoring()
-      this.setLifecycle("failed", "Connection failed")
-      return this.showError(
-        "The call could not reconnect after two attempts. Check your connection and try again."
-      )
+    for (const [id, tile] of this.tiles) {
+      if (keep.has(id)) continue
+      // Dropping the element is not enough to release the remote stream, and
+      // the template's video outlives its tile to be reused by the next one.
+      tile.video.srcObject = null
+      tile.figure.remove()
+      this.tiles.delete(id)
     }
 
-    if (this.role === "caller") {
-      await this.restartConnection()
-    } else {
-      this.restartAttempts += 1
-      this.setLifecycle(
-        "reconnecting",
-        `Reconnecting (attempt ${this.restartAttempts}/${this.maxRestartAttempts})…`
-      )
-      this.sendSignal({kind: "restart_request"})
-      clearTimeout(this.restartTimer)
-      this.restartTimer = setTimeout(() => this.requestIceRecovery(), 8_000)
+    entries.forEach((entry) => {
+      const tile = this.tiles.get(entry.id) || this.createTile(entry)
+      this.remoteTiles.appendChild(tile.figure)
+      this.updateTile(entry)
+    })
+
+    this.remoteTiles.className = this.compactTiles
+      ? "absolute left-3 top-16 z-20 grid h-24 w-32 grid-flow-col auto-cols-fr gap-px overflow-hidden rounded-xl border border-white/20 bg-black shadow-xl sm:left-4 sm:h-32 sm:w-44"
+      : entries.length > 1
+        ? "grid h-[60vh] w-full grid-cols-1 grid-rows-2 gap-px bg-base-300 sm:grid-cols-2 sm:grid-rows-1"
+        : "grid h-[60vh] w-full grid-cols-1 bg-black"
+
+    this.setRemoteFit(this.remoteFitMode)
+    this.updateCallTitle()
+    this.updatePeerBadges()
+  },
+
+  createTile(entry) {
+    const figure = document.createElement("figure")
+    figure.dataset.role = "remote-tile"
+    figure.dataset.peerId = entry.id
+    figure.className = "relative m-0 min-h-0 min-w-0 overflow-hidden bg-black"
+
+    // The first tile reuses the server-rendered video element so that the
+    // element identity picture-in-picture and the pop-out hold stays put.
+    const reusable = this.remoteVideo && ![...this.tiles.values()].some((t) => t.video === this.remoteVideo)
+    const video = reusable ? this.remoteVideo : document.createElement("video")
+    video.autoplay = true
+    video.playsInline = true
+    if (!reusable) video.className = "size-full object-contain"
+    figure.appendChild(video)
+
+    const waiting = document.createElement("div")
+    waiting.dataset.role = "tile-waiting"
+    waiting.className =
+      "pointer-events-none absolute inset-0 grid place-items-center px-4 text-center text-sm text-white/70"
+
+    const caption = document.createElement("figcaption")
+    caption.className = "pointer-events-none absolute inset-x-2 bottom-2 flex flex-wrap gap-1.5"
+
+    const name = document.createElement("span")
+    name.dataset.role = "tile-name"
+    name.className =
+      "rounded-full bg-black/70 px-2.5 py-0.5 text-xs font-medium text-white backdrop-blur"
+
+    const badge = (role, text, extra) => {
+      const span = document.createElement("span")
+      span.dataset.role = role
+      span.className = `hidden rounded-full px-2.5 py-0.5 text-xs font-medium backdrop-blur ${extra}`
+      span.textContent = text
+      return span
+    }
+
+    const muted = badge("tile-muted", "Muted", "bg-warning/85 text-warning-content")
+    const cameraOff = badge("tile-camera-off", "Camera off", "bg-black/70 text-white")
+    const sharing = badge("tile-sharing", "Sharing screen", "bg-primary/85 text-primary-content")
+
+    caption.append(name, muted, cameraOff, sharing)
+    figure.append(waiting, caption)
+
+    const tile = {figure, video, waiting, name, muted, cameraOff, sharing}
+    this.tiles.set(entry.id, tile)
+    this.applySpeaker(video)
+    return tile
+  },
+
+  updateTile(entry) {
+    const tile = this.tiles.get(entry.id)
+    if (!tile) return
+    const peer = this.peers.get(entry.id)
+
+    tile.name.textContent = entry.name
+    tile.sharing.classList.toggle("hidden", this.sharingPeerId !== entry.id)
+    tile.muted.classList.toggle("hidden", peer?.mediaState?.audio !== false)
+    tile.cameraOff.classList.toggle("hidden", peer?.mediaState?.video !== false)
+
+    const connected = peer?.pc?.connectionState === "connected"
+    tile.waiting.textContent =
+      entry.state === "ringing"
+        ? `Ringing ${entry.name}…`
+        : connected
+          ? ""
+          : `Connecting to ${entry.name}…`
+    tile.waiting.classList.toggle("hidden", tile.waiting.textContent === "")
+  },
+
+  updateTileConnection(peer) {
+    const entry = this.rosterEntry(peer.id)
+    if (entry) this.updateTile(entry)
+    if (this.lifecycle === "connected") this.say(this.connectedText())
+  },
+
+  updateCallTitle() {
+    if (!this.titleEl || this.roster.length === 0) return
+    const names = this.roster.map((entry) => entry.name)
+    this.titleEl.textContent =
+      names.length > 1 ? `📞 ${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : `📞 ${names[0]}`
+  },
+
+  // The header badges describe "the other person", which only means anything
+  // in a pair. With a third participant the per-tile badges say it instead.
+  updatePeerBadges() {
+    const solo = this.roster.length === 1
+    const peer = solo ? this.peers.get(this.roster[0].id) : null
+
+    for (const [role, active] of [
+      ["peer-muted", peer?.mediaState?.audio !== false],
+      ["peer-camera-off", peer?.mediaState?.video !== false],
+    ]) {
+      const badge = this.el.querySelector(`[data-role=${role}]`)
+      if (!badge) continue
+      badge.classList.toggle("hidden", !solo || active)
+      badge.classList.toggle("inline-flex", solo && !active)
     }
   },
 
-  // Only the original caller creates restart offers. That fixed ownership
-  // avoids offer glare when both browsers notice the same network change.
-  async restartConnection() {
-    if (
-      !this.pc ||
-      this.restartInProgress ||
-      this.restartAttempts >= this.maxRestartAttempts ||
-      this.pc.signalingState !== "stable"
-    ) {
-      return
-    }
-
-    this.restartInProgress = true
-    this.restartAttempts += 1
-    this.setLifecycle(
-      "reconnecting",
-      `Reconnecting (attempt ${this.restartAttempts}/${this.maxRestartAttempts})…`
-    )
-
-    try {
-      this.pc.restartIce()
-      const offer = await this.pc.createOffer({iceRestart: true})
-      await this.pc.setLocalDescription(offer)
-      this.sendSignal({kind: "offer", sdp: this.pc.localDescription.sdp, restart: true})
-    } catch (err) {
-      this.showError(`Could not restart the connection: ${err.message}`)
-    } finally {
-      this.restartInProgress = false
-    }
-
-    clearTimeout(this.restartTimer)
-    this.restartTimer = setTimeout(() => this.requestIceRecovery(), 8_000)
-  },
-
-  // Replacing a sender's track needs no new SDP, but a receiver can keep
-  // decoding the old stream and sit on a frozen frame — the swapped-in screen
-  // never appears. One negotiation round resets the far-side decoder. Offers
-  // stay owned by the caller for the same reason ICE restarts are: a single
-  // author can never collide with the other side's offer, so a sharing callee
-  // asks rather than offering.
-  requestRenegotiation() {
-    if (this.role === "caller") return this.renegotiate()
-    this.sendSignal({kind: "renegotiate_request"})
-  },
-
-  async renegotiate(attempt = 0) {
-    if (!this.pc || this.pc.connectionState === "closed") return
-
-    // A reconnect owns the session while it runs, and its offer already
-    // refreshes the decoder — wait it out instead of colliding with it.
-    if (this.restartInProgress || this.pc.signalingState !== "stable") {
-      if (attempt >= 3) return
-      clearTimeout(this.renegotiateTimer)
-      this.renegotiateTimer = setTimeout(() => this.renegotiate(attempt + 1), 1_000)
-      return
-    }
-
-    try {
-      const offer = await this.pc.createOffer()
-      await this.pc.setLocalDescription(offer)
-      this.sendSignal({kind: "offer", sdp: this.pc.localDescription.sdp})
-    } catch (err) {
-      // The new track is already on the sender, so the call itself is fine;
-      // only the far side's decoder refresh was missed.
-      this.showCallNotice(`Could not refresh the video stream: ${err.message}`)
-    }
-  },
+  // ------------------------------------------------------- quality control
 
   startQualityMonitoring() {
-    if (!this.pc || this.qualityTimer) return
+    if (this.peers.size === 0 || this.qualityTimer) return
     if (this.qualityEl) this.qualityEl.classList.remove("hidden")
     this.updateCallQuality()
     this.qualityTimer = setInterval(() => this.updateCallQuality(), 2_000)
@@ -1074,7 +1331,6 @@ export const CallSession = {
   stopQualityMonitoring() {
     clearInterval(this.qualityTimer)
     this.qualityTimer = null
-    this.previousInbound = null
     this.goodQualitySamples = 0
     this.degradedQualitySamples = 0
   },
@@ -1082,10 +1338,31 @@ export const CallSession = {
   // WebRTC statistics stay in this browser. Only a coarse quality label is
   // rendered; no IP addresses, candidate details, or metrics reach Phoenix.
   async updateCallQuality() {
-    if (!this.pc || !this.qualityEl || this.pc.connectionState !== "connected") return
+    if (!this.qualityEl) return
+    const connected = [...this.peers.values()].filter(
+      (peer) => peer.pc.connectionState === "connected"
+    )
+    if (connected.length === 0) return
 
+    const samples = []
+    for (const peer of connected) {
+      const sample = await this.peerQuality(peer)
+      if (sample) samples.push(sample)
+    }
+    if (samples.length === 0) return
+
+    const quality = worstCallQuality(samples.map((sample) => sample.quality))
+    const relayed = samples.some((sample) => sample.relayed)
+    const loss = Math.max(...samples.map((sample) => sample.loss))
+    const rtt = Math.max(...samples.map((sample) => sample.rtt))
+
+    await this.observeCallQuality(quality)
+    this.renderCallQuality(quality, relayed, {loss, rtt})
+  },
+
+  async peerQuality(peer) {
     try {
-      const stats = await this.pc.getStats()
+      const stats = await peer.pc.getStats()
       let pair
       let transport
       let received = 0
@@ -1106,27 +1383,27 @@ export const CallSession = {
 
       if (transport) pair = stats.get(transport.selectedCandidatePairId) || pair
 
-      const previous = this.previousInbound
+      const previous = peer.previousInbound
       const receivedDelta = previous ? Math.max(0, received - previous.received) : 0
       const lostDelta = previous ? Math.max(0, lost - previous.lost) : 0
       const packetDelta = receivedDelta + lostDelta
       const loss = packetDelta > 0 ? lostDelta / packetDelta : 0
-      this.previousInbound = {received, lost}
+      peer.previousInbound = {received, lost}
 
       const localCandidate = pair && stats.get(pair.localCandidateId)
       const remoteCandidate = pair && stats.get(pair.remoteCandidateId)
-      const relayed =
+      const relayed = Boolean(
         (localCandidate && localCandidate.candidateType === "relay") ||
-        (remoteCandidate && remoteCandidate.candidateType === "relay")
+          (remoteCandidate && remoteCandidate.candidateType === "relay")
+      )
       const rtt = (pair && pair.currentRoundTripTime) || 0
       const bitrate = pair && pair.availableOutgoingBitrate
-      const quality = classifyCallQuality({loss, rtt, jitter, bitrate})
 
-      await this.observeCallQuality(quality)
-      this.renderCallQuality(quality, relayed, {loss, rtt})
+      return {quality: classifyCallQuality({loss, rtt, jitter, bitrate}), relayed, loss, rtt}
     } catch {
       // Stats availability differs across browsers; the call itself should
       // never be interrupted because a quality sample is unavailable.
+      return null
     }
   },
 
@@ -1152,42 +1429,55 @@ export const CallSession = {
     if (nextIndex === this.videoProfileIndex) return
 
     const previousIndex = this.videoProfileIndex
+    const previousEffective = this.effectiveProfileIndex()
     this.videoProfileIndex = nextIndex
-    const applied = await this.applyVideoProfile({announce: true})
+    const applied = await this.applyVideoProfile({
+      announce: this.effectiveProfileIndex() !== previousEffective,
+    })
     if (!applied) this.videoProfileIndex = previousIndex
     this.goodQualitySamples = 0
     this.degradedQualitySamples = 0
   },
 
+  // Each extra participant costs another outgoing copy of the video, so a
+  // group call never runs at the HD profile however good the link looks.
+  effectiveProfileIndex() {
+    const floor = this.meshSize() > 1 ? GROUP_VIDEO_PROFILE_FLOOR : 0
+    return Math.max(this.videoProfileIndex, floor)
+  },
+
   async applyVideoProfile({announce = false} = {}) {
-    const sender =
-      this.pc && this.pc.getSenders().find((item) => item.track && item.track.kind === "video")
-    if (!sender || !sender.getParameters || !sender.setParameters) return false
+    const profile = VIDEO_PROFILES[this.effectiveProfileIndex()]
+    let applied = false
 
-    const profile = VIDEO_PROFILES[this.videoProfileIndex]
+    for (const peer of this.peers.values()) {
+      const sender = peer.sender("video")
+      if (!sender || !sender.getParameters || !sender.setParameters) continue
 
-    try {
-      const parameters = sender.getParameters()
-      if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}]
-      parameters.encodings[0].maxBitrate = profile.maxBitrate
-      parameters.encodings[0].maxFramerate = profile.maxFramerate
-      parameters.encodings[0].scaleResolutionDownBy = profile.scaleResolutionDownBy
-      await sender.setParameters(parameters)
-
-      if (announce) {
-        const reduced = this.videoProfileIndex > 0
-        this.showCallNotice(
-          reduced
-            ? `Video adjusted to ${profile.label.toLowerCase()} to keep audio clear.`
-            : "Connection improved — HD video restored."
-        )
+      try {
+        const parameters = sender.getParameters()
+        if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}]
+        parameters.encodings[0].maxBitrate = profile.maxBitrate
+        parameters.encodings[0].maxFramerate = profile.maxFramerate
+        parameters.encodings[0].scaleResolutionDownBy = profile.scaleResolutionDownBy
+        await sender.setParameters(parameters)
+        applied = true
+      } catch {
+        // Some browser versions expose getParameters without allowing
+        // encoding changes. That leg continues at the browser's own quality.
       }
-      return true
-    } catch {
-      // Some browser versions expose getParameters without allowing encoding
-      // changes. The call continues at the browser's own selected quality.
-      return false
     }
+
+    if (applied && announce) {
+      const reduced = this.effectiveProfileIndex() > 0
+      this.showCallNotice(
+        reduced
+          ? `Video adjusted to ${profile.label.toLowerCase()} to keep audio clear.`
+          : "Connection improved — HD video restored."
+      )
+    }
+
+    return applied
   },
 
   async applyScreenShareProfile(sender) {
@@ -1211,19 +1501,21 @@ export const CallSession = {
       unstable: "border-warning/50 bg-warning/10 text-warning",
       poor: "border-error/50 bg-error/10 text-error",
     }
+    const profile = VIDEO_PROFILES[this.effectiveProfileIndex()]
 
     this.qualityEl.className =
       `rounded-full border px-2 py-0.5 text-xs font-medium ${styles[quality]}`
     this.qualityEl.textContent =
       `${quality === "good" ? "Good" : quality === "unstable" ? "Unstable" : "Poor"}` +
       ` · ${relayed ? "relayed" : "direct"}` +
-      (this.videoProfileIndex > 0 ? ` · ${VIDEO_PROFILES[this.videoProfileIndex].label}` : "")
+      (this.effectiveProfileIndex() > 0 ? ` · ${profile.label}` : "")
     this.qualityEl.title =
       `Round trip ${Math.round(rtt * 1000)} ms · packet loss ${Math.round(loss * 100)}%` +
-      ` · video ${VIDEO_PROFILES[this.videoProfileIndex].label}`
+      ` · video ${profile.label}`
   },
 
   setLifecycle(state, text) {
+    this.lifecycle = state
     this.el.dataset.lifecycle = state
     this.say(text)
   },
@@ -1249,30 +1541,25 @@ export const CallSession = {
   },
 
   sendMediaState() {
-    if (!this.pc || this.pc.connectionState === "closed") return
+    if (this.peers.size === 0) return
     const audio = this.localStream?.getAudioTracks()[0]
     const video = this.localStream?.getVideoTracks()[0]
-    this.sendSignal({
+    this.broadcastSignal({
       kind: "media_state",
       audio: Boolean(audio && audio.enabled && audio.readyState === "live"),
       video: Boolean(this.screenTrack || (video && video.enabled && video.readyState === "live")),
     })
   },
 
-  setRemoteMediaState(next) {
+  setPeerMediaState(peer, next) {
+    peer.mediaState = peer.mediaState || {audio: true, video: true}
     for (const kind of ["audio", "video"]) {
-      if (typeof next[kind] === "boolean") this.remoteMediaState[kind] = next[kind]
+      if (typeof next[kind] === "boolean") peer.mediaState[kind] = next[kind]
     }
 
-    for (const [role, active] of [
-      ["peer-muted", this.remoteMediaState.audio],
-      ["peer-camera-off", this.remoteMediaState.video],
-    ]) {
-      const badge = this.el.querySelector(`[data-role=${role}]`)
-      if (!badge) continue
-      badge.classList.toggle("hidden", active)
-      badge.classList.toggle("inline-flex", !active)
-    }
+    const entry = this.rosterEntry(peer.id)
+    if (entry) this.updateTile(entry)
+    this.updatePeerBadges()
   },
 
   async requestWakeLock() {
@@ -1302,25 +1589,25 @@ export const CallSession = {
     this.noticeTimer = setTimeout(() => this.noticeEl.classList.add("hidden"), 5_000)
   },
 
-  setupChatChannel(channel) {
-    if (this.chatChannel && this.chatChannel !== channel) this.chatChannel.close()
-    this.chatChannel = channel
+  // ------------------------------------------------------------- call chat
+
+  setupChatChannel(channel, peer) {
     channel.binaryType = "arraybuffer"
     channel.bufferedAmountLowThreshold = 256 * 1024
 
     channel.onopen = () => {
-      if (this.chatStatus) this.chatStatus.textContent = "Direct · encrypted"
+      this.updateChatStatus()
       this.updateChatComposer()
       this.youtube?.channelStateChanged()
     }
     channel.onclose = () => {
-      if (this.chatStatus) this.chatStatus.textContent = "Chat disconnected"
+      this.updateChatStatus()
       this.updateChatComposer()
       this.youtube?.channelStateChanged()
     }
-    channel.onerror = () => this.showChatError("The direct chat connection was interrupted.")
+    channel.onerror = () => this.showChatError("A direct chat connection was interrupted.")
     channel.onmessage = (event) => {
-      this.handleChatData(event.data).catch(() =>
+      this.handleChatData(event.data, peer).catch(() =>
         this.showChatError("A call chat item could not be received.")
       )
     }
@@ -1328,7 +1615,26 @@ export const CallSession = {
     if (channel.readyState === "open") channel.onopen()
   },
 
-  async handleChatData(data) {
+  openChatChannels() {
+    return [...this.peers.values()].filter((peer) => peer.chatReady())
+  },
+
+  chatReady() {
+    return this.openChatChannels().length > 0
+  },
+
+  updateChatStatus() {
+    if (!this.chatStatus) return
+    const open = this.openChatChannels().length
+    this.chatStatus.textContent =
+      open === 0
+        ? "Chat disconnected"
+        : this.peers.size > 1
+          ? `Direct · encrypted · ${open}/${this.peers.size}`
+          : "Direct · encrypted"
+  },
+
+  async handleChatData(data, peer) {
     if (typeof data === "string") {
       let payload
       try {
@@ -1336,7 +1642,7 @@ export const CallSession = {
       } catch {
         return
       }
-      return this.handleChatPayload(payload)
+      return this.handleChatPayload(payload, peer)
     }
 
     const buffer = data instanceof Blob ? await data.arrayBuffer() : data
@@ -1344,12 +1650,12 @@ export const CallSession = {
 
     const bytes = new Uint8Array(buffer)
     const id = new TextDecoder().decode(bytes.slice(0, CHAT_FILE_ID_BYTES))
-    const transfer = this.incomingChatFiles.get(id)
+    const transfer = this.incomingChatFiles.get(this.transferKey(peer, id))
     if (!transfer) return
 
     const chunk = bytes.slice(CHAT_FILE_ID_BYTES)
     if (transfer.received + chunk.byteLength > transfer.size) {
-      this.incomingChatFiles.delete(id)
+      this.incomingChatFiles.delete(this.transferKey(peer, id))
       return this.showChatError("An incoming file exceeded its announced size.")
     }
 
@@ -1361,14 +1667,20 @@ export const CallSession = {
     }
   },
 
-  handleChatPayload(payload) {
+  // Transfer ids are chosen by the sender, so two peers sending at once must
+  // not be able to collide with — or overwrite — each other's transfer.
+  transferKey(peer, id) {
+    return `${peer.id} ${id}`
+  },
+
+  handleChatPayload(payload, peer) {
     if (!payload || typeof payload !== "object") return
-    if (this.youtube?.handlePayload(payload)) return
+    if (this.youtube?.handlePayload(payload, peer)) return
 
     if (payload.kind === "chat_text" && typeof payload.text === "string") {
       const text = payload.text.slice(0, 4000)
       if (!text.trim()) return
-      this.renderChatText(text, false)
+      this.renderChatText(text, false, peer.name)
       this.markChatActivity()
     } else if (payload.kind === "chat_file_start") {
       const size = Number(payload.size)
@@ -1379,10 +1691,10 @@ export const CallSession = {
         size < 0 ||
         size > CHAT_FILE_LIMIT
       ) {
-        return this.showChatError("The other person offered an unsupported file.")
+        return this.showChatError(`${peer.name} offered an unsupported file.`)
       }
 
-      this.incomingChatFiles.set(payload.id, {
+      this.incomingChatFiles.set(this.transferKey(peer, payload.id), {
         name: this.safeChatFileName(payload.name),
         type: typeof payload.type === "string" ? payload.type.slice(0, 120) : "",
         size,
@@ -1390,9 +1702,10 @@ export const CallSession = {
         chunks: [],
       })
     } else if (payload.kind === "chat_file_end" && typeof payload.id === "string") {
-      const transfer = this.incomingChatFiles.get(payload.id)
+      const key = this.transferKey(peer, payload.id)
+      const transfer = this.incomingChatFiles.get(key)
       if (!transfer) return
-      this.incomingChatFiles.delete(payload.id)
+      this.incomingChatFiles.delete(key)
 
       if (transfer.received !== transfer.size) {
         return this.showChatError(`Could not receive all of ${transfer.name}.`)
@@ -1401,9 +1714,9 @@ export const CallSession = {
       const blob = new Blob(transfer.chunks, {type: transfer.type || "application/octet-stream"})
       const url = URL.createObjectURL(blob)
       this.chatObjectUrls.push(url)
-      this.renderChatFile(transfer.name, transfer.size, url, false)
+      this.renderChatFile(transfer.name, transfer.size, url, false, peer.name)
       this.markChatActivity()
-      if (this.chatStatus) this.chatStatus.textContent = "Direct · encrypted"
+      this.updateChatStatus()
     }
   },
 
@@ -1539,12 +1852,11 @@ export const CallSession = {
     const send = this.el.querySelector("[data-role=send-chat]")
     if (!send) return
     const hasContent = Boolean(this.chatInput?.value.trim()) || this.chatFiles.length > 0
-    const connected = this.chatChannel?.readyState === "open"
-    send.disabled = !hasContent || !connected || this.chatSending
+    send.disabled = !hasContent || !this.chatReady() || this.chatSending
   },
 
   async sendChat() {
-    if (this.chatSending || this.chatChannel?.readyState !== "open") {
+    if (this.chatSending || !this.chatReady()) {
       return this.showChatError("Call chat will be ready when the peer connection is established.")
     }
 
@@ -1570,7 +1882,7 @@ export const CallSession = {
         this.chatFiles = this.chatFiles.filter((candidate) => candidate !== file)
         this.renderPendingChatFiles()
       }
-      if (this.chatStatus) this.chatStatus.textContent = "Direct · encrypted"
+      this.updateChatStatus()
     } catch (err) {
       this.showChatError(err.message || "Could not send that call chat item.")
     } finally {
@@ -1579,9 +1891,13 @@ export const CallSession = {
     }
   },
 
+  // Chat and files fan out over every open pair channel — there is no server
+  // copy to relay them, so each peer is sent its own.
   sendChatJson(payload) {
-    if (this.chatChannel?.readyState !== "open") throw new Error("Call chat disconnected.")
-    this.chatChannel.send(JSON.stringify(payload))
+    const open = this.openChatChannels()
+    if (open.length === 0) throw new Error("Call chat disconnected.")
+    const message = JSON.stringify(payload)
+    for (const peer of open) peer.chatChannel.send(message)
   },
 
   async sendChatFile(file) {
@@ -1604,38 +1920,54 @@ export const CallSession = {
       const frame = new Uint8Array(CHAT_FILE_ID_BYTES + chunk.byteLength)
       frame.set(idBytes, 0)
       frame.set(chunk, CHAT_FILE_ID_BYTES)
-      this.chatChannel.send(frame.buffer)
+      for (const peer of this.openChatChannels()) peer.chatChannel.send(frame.buffer)
     }
     this.sendChatJson({kind: "chat_file_end", id})
   },
 
+  // The slowest leg sets the pace: sending the next chunk before every
+  // channel has drained would grow one peer's buffer without bound.
   waitForChatBuffer() {
-    if (this.chatChannel?.readyState !== "open") {
+    const open = this.openChatChannels()
+    if (open.length === 0) {
       return Promise.reject(new Error("Call chat disconnected during the file transfer."))
     }
-    if (this.chatChannel.bufferedAmount <= 512 * 1024) return Promise.resolve()
 
-    return new Promise((resolve, reject) => {
-      const channel = this.chatChannel
-      const ready = () => {
-        cleanup()
-        resolve()
-      }
-      const closed = () => {
-        cleanup()
-        reject(new Error("Call chat disconnected during the file transfer."))
-      }
-      const cleanup = () => {
-        channel.removeEventListener("bufferedamountlow", ready)
-        channel.removeEventListener("close", closed)
-      }
-      channel.addEventListener("bufferedamountlow", ready, {once: true})
-      channel.addEventListener("close", closed, {once: true})
-    })
+    const congested = open.filter((peer) => peer.chatChannel.bufferedAmount > 512 * 1024)
+    if (congested.length === 0) return Promise.resolve()
+
+    return Promise.all(
+      congested.map(
+        (peer) =>
+          new Promise((resolve, reject) => {
+            const channel = peer.chatChannel
+            const ready = () => {
+              cleanup()
+              resolve()
+            }
+            const closed = () => {
+              cleanup()
+              // One peer dropping mid-transfer must not fail the whole send
+              // when others are still receiving it.
+              if (this.openChatChannels().length === 0) {
+                reject(new Error("Call chat disconnected during the file transfer."))
+              } else {
+                resolve()
+              }
+            }
+            const cleanup = () => {
+              channel.removeEventListener("bufferedamountlow", ready)
+              channel.removeEventListener("close", closed)
+            }
+            channel.addEventListener("bufferedamountlow", ready, {once: true})
+            channel.addEventListener("close", closed, {once: true})
+          })
+      )
+    )
   },
 
-  renderChatText(text, own) {
-    const bubble = this.chatBubble(own)
+  renderChatText(text, own, senderName) {
+    const bubble = this.chatBubble(own, senderName)
     const body = document.createElement("p")
     body.className = "whitespace-pre-wrap break-words text-sm"
 
@@ -1656,8 +1988,8 @@ export const CallSession = {
     this.appendChatBubble(bubble)
   },
 
-  renderChatFile(name, size, url, own) {
-    const bubble = this.chatBubble(own)
+  renderChatFile(name, size, url, own, senderName) {
+    const bubble = this.chatBubble(own, senderName)
     const link = document.createElement("a")
     link.href = url
     link.download = name
@@ -1667,11 +1999,20 @@ export const CallSession = {
     this.appendChatBubble(bubble)
   },
 
-  chatBubble(own) {
+  chatBubble(own, senderName) {
     const bubble = document.createElement("div")
     bubble.className = own
       ? "ml-8 self-end rounded-2xl rounded-br-md bg-primary px-3 py-2 text-primary-content shadow-sm"
       : "mr-8 self-start rounded-2xl rounded-bl-md bg-base-200 px-3 py-2 shadow-sm"
+
+    // With one other person every incoming bubble is obviously theirs; with
+    // two, an unattributed message is ambiguous.
+    if (!own && senderName && this.roster.length > 1) {
+      const author = document.createElement("p")
+      author.className = "mb-0.5 text-xs font-semibold opacity-60"
+      author.textContent = senderName
+      bubble.appendChild(author)
+    }
     return bubble
   },
 
@@ -1710,25 +2051,38 @@ export const CallSession = {
     error.classList.add("hidden")
   },
 
-  setRemoteShareState(sharing) {
+  // -------------------------------------------------------- viewing the mesh
+
+  setPeerShareState(peer, sharing) {
     if (sharing && this.youtube?.active) this.youtube.stopShare()
-    this.remoteSharing = sharing
+    const wasSharing = this.sharingPeerId
+
+    if (sharing) this.sharingPeerId = peer.id
+    else if (this.sharingPeerId === peer.id) this.sharingPeerId = null
+    if (wasSharing === this.sharingPeerId) return
 
     if (this.remoteShareStatus) {
-      this.remoteShareStatus.classList.toggle("hidden", !sharing)
-      this.remoteShareStatus.classList.toggle("inline-flex", sharing)
+      this.remoteShareStatus.classList.toggle("hidden", !this.sharingPeerId)
+      this.remoteShareStatus.classList.toggle("inline-flex", Boolean(this.sharingPeerId))
     }
 
     const popout = this.el.querySelector("[data-role=popout-share]")
-    if (popout) popout.classList.toggle("hidden", !sharing)
+    if (popout) popout.classList.toggle("hidden", !this.sharingPeerId)
+
+    // A shared screen takes the lead tile, so re-render before announcing it.
+    this.renderTiles()
 
     if (sharing) {
       this.setRemoteFit("contain")
-      this.showCallNotice("The other person started sharing their screen.")
+      this.showCallNotice(`${peer.name} started sharing their screen.`)
     } else {
       this.closeSharePopout()
       this.showCallNotice("Screen sharing stopped.")
     }
+  },
+
+  remoteSharing() {
+    return Boolean(this.sharingPeerId)
   },
 
   toggleRemoteFit() {
@@ -1737,9 +2091,9 @@ export const CallSession = {
 
   setRemoteFit(mode) {
     this.remoteFitMode = mode
-    if (this.remoteVideo) {
-      this.remoteVideo.classList.toggle("object-contain", mode === "contain")
-      this.remoteVideo.classList.toggle("object-cover", mode === "cover")
+    for (const tile of this.tiles.values()) {
+      tile.video.classList.toggle("object-contain", mode === "contain")
+      tile.video.classList.toggle("object-cover", mode === "cover")
     }
 
     const label = this.el.querySelector("[data-role=fit-label]")
@@ -1773,17 +2127,18 @@ export const CallSession = {
   },
 
   async togglePictureInPicture() {
-    if (!this.remoteVideo || !document.pictureInPictureEnabled) return
+    const video = this.primaryVideo()
+    if (!video || !document.pictureInPictureEnabled) return
 
     try {
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture()
       } else {
-        if (!this.remoteVideo.srcObject) {
+        if (!video.srcObject) {
           return this.showCallNotice("Picture in picture is available once the call connects.")
         }
-        await this.remoteVideo.play()
-        await this.remoteVideo.requestPictureInPicture()
+        await video.play()
+        await video.requestPictureInPicture()
       }
     } catch (err) {
       this.showCallNotice(`Picture in picture is unavailable: ${err.message}`)
@@ -1793,16 +2148,15 @@ export const CallSession = {
   updatePictureInPictureUi() {
     const label = this.el.querySelector("[data-role=pip-label]")
     if (label) {
-      label.textContent =
-        document.pictureInPictureElement === this.remoteVideo
-          ? "Exit picture in picture"
-          : "Picture in picture"
+      label.textContent = document.pictureInPictureElement
+        ? "Exit picture in picture"
+        : "Picture in picture"
     }
   },
 
   openSharePopout() {
-    if (!this.remoteSharing) {
-      return this.showCallNotice("The pop-out is available while the other person is sharing.")
+    if (!this.remoteSharing()) {
+      return this.showCallNotice("The pop-out is available while someone else is sharing.")
     }
 
     if (this.popoutWindow && !this.popoutWindow.closed) {
@@ -1827,7 +2181,7 @@ export const CallSession = {
     video.playsInline = true
     video.muted = true
     video.style.cssText = "width:100%;height:100%;object-fit:contain;background:#050505;"
-    video.srcObject = this.remoteVideo && this.remoteVideo.srcObject
+    video.srcObject = this.tiles.get(this.sharingPeerId)?.video.srcObject || null
     popup.document.body.appendChild(video)
 
     this.popoutWindow = popup
@@ -1844,11 +2198,6 @@ export const CallSession = {
     this.popoutWindow = null
     this.popoutVideo = null
     if (popup && !popup.closed) popup.close()
-  },
-
-  sendSignal(payload) {
-    const sealed = sealFor(this.peerKey, payload, this.mySecret)
-    this.pushEvent("signal", sealed)
   },
 
   setupControls() {
@@ -1897,20 +2246,21 @@ export const CallSession = {
     if (fullscreen && (this.el.requestFullscreen || this.el.webkitRequestFullscreen)) {
       fullscreen.classList.remove("hidden")
       fullscreen.addEventListener("click", () => this.toggleFullscreen())
-      this.remoteVideo.addEventListener("dblclick", () => this.toggleFullscreen())
+      // Delegated so every tile, including ones added later, responds.
+      this.remoteTiles?.addEventListener("dblclick", () => this.toggleFullscreen())
       this.fullscreenChangeHandler = () => this.updateFullscreenUi()
       document.addEventListener("fullscreenchange", this.fullscreenChangeHandler)
       document.addEventListener("webkitfullscreenchange", this.fullscreenChangeHandler)
     }
 
     const pip = this.el.querySelector("[data-role=toggle-pip]")
-    if (pip && document.pictureInPictureEnabled && this.remoteVideo.requestPictureInPicture) {
+    if (pip && document.pictureInPictureEnabled && this.remoteVideo?.requestPictureInPicture) {
       pip.classList.remove("hidden")
       pip.addEventListener("click", () => this.togglePictureInPicture())
-      this.remoteVideo.addEventListener("enterpictureinpicture", () =>
+      this.remoteTiles?.addEventListener("enterpictureinpicture", () =>
         this.updatePictureInPictureUi()
       )
-      this.remoteVideo.addEventListener("leavepictureinpicture", () =>
+      this.remoteTiles?.addEventListener("leavepictureinpicture", () =>
         this.updatePictureInPictureUi()
       )
     }

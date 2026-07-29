@@ -163,12 +163,18 @@ cannot be recalled by the server.
 
 ### Calls and YouTube watch parties
 
-Start a 1:1 call from an accepted contact or conversation. Both participants
-can choose devices before joining, mute audio/video, share a screen, exchange
-ephemeral direct chat/files, or share a synchronized YouTube video. If a brief
-network or page interruption cannot recover automatically, the original
-caller can send a fresh invitation. Veejr warns before in-app navigation that
-would close an active call.
+Start a call from an accepted contact or conversation. Everyone can choose
+devices before joining, mute audio/video, share a screen, exchange ephemeral
+direct chat/files, or share a synchronized YouTube video. If a brief network or
+page interruption cannot recover automatically, the original caller can send a
+fresh invitation. Veejr warns before in-app navigation that would close an
+active call.
+
+A call holds up to three people. Whoever started it can use **Add someone** to
+ring another accepted contact on the same instance; each participant gets their
+own video tile, and the call continues when one of three leaves. Media travels
+directly between every pair, so video caps at the Balanced profile once a third
+person joins. Guest and federated calls remain one-to-one.
 
 Use **Calls** to schedule a persistent one-to-one call. Calendar entries start
 as compact person-and-time rows and expand to show reminders, shared notes,
