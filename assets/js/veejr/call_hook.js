@@ -194,6 +194,7 @@ export const CallSession = {
     this.restartAttempts = 0
     this.maxRestartAttempts = 2
     this.restartInProgress = false
+    this.renegotiateTimer = null
     this.previousInbound = null
     this.videoProfileIndex = 0
     this.goodQualitySamples = 0
@@ -742,21 +743,39 @@ export const CallSession = {
     let stream
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({video: true})
-    } catch {
+    } catch (err) {
+      // Dismissing the picker is not an error, but an operating system or
+      // policy that blocks capture rejects the same way — and staying silent
+      // there leaves the sharer believing their screen is on its way while
+      // the other side keeps seeing the camera.
+      if (/by system/iu.test(err.message || "")) {
+        return this.showError(
+          "Your system is blocking screen capture. Allow screen recording for this browser" +
+            " in your system settings, restart the browser, and try again."
+        )
+      }
+      if (err.name !== "NotAllowedError" && err.name !== "AbortError") {
+        return this.showError(`Could not start screen sharing: ${err.message}`)
+      }
       return // picker dismissed — not an error
     }
 
     try {
       const track = stream.getVideoTracks()[0]
+      if (!track) throw new Error("the browser returned no screen video track")
       track.contentHint = "detail"
       this.screenTrack = track
       track.addEventListener("ended", () => this.stopScreenShare())
       await sender.replaceTrack(track)
+      // A sender that silently kept the camera track would leave the sharer
+      // looking at their own screen while the peer sees no change at all.
+      if (sender.track !== track) throw new Error("the outgoing video track did not switch")
       await this.applyScreenShareProfile(sender)
       if (this.localVideo) this.localVideo.srcObject = stream
       this.setShareUi(true)
       this.sendSignal({kind: "share_state", sharing: true})
       this.sendMediaState()
+      this.requestRenegotiation()
     } catch (err) {
       this.screenTrack = null
       stream.getTracks().forEach((t) => t.stop())
@@ -787,6 +806,7 @@ export const CallSession = {
     this.setShareUi(false)
     this.sendSignal({kind: "share_state", sharing: false})
     this.sendMediaState()
+    this.requestRenegotiation()
   },
 
   // While sharing, the camera controls would silently fight the screen
@@ -923,6 +943,8 @@ export const CallSession = {
         }
       } else if (payload.kind === "restart_request" && this.role === "caller") {
         await this.restartConnection()
+      } else if (payload.kind === "renegotiate_request" && this.role === "caller") {
+        await this.renegotiate()
       } else if (payload.kind === "share_state") {
         this.setRemoteShareState(payload.sharing === true)
       } else if (payload.kind === "media_state") {
@@ -942,8 +964,10 @@ export const CallSession = {
   clearRecoveryTimers() {
     clearTimeout(this.disconnectTimer)
     clearTimeout(this.restartTimer)
+    clearTimeout(this.renegotiateTimer)
     this.disconnectTimer = null
     this.restartTimer = null
+    this.renegotiateTimer = null
   },
 
   async requestIceRecovery() {
@@ -1004,6 +1028,40 @@ export const CallSession = {
 
     clearTimeout(this.restartTimer)
     this.restartTimer = setTimeout(() => this.requestIceRecovery(), 8_000)
+  },
+
+  // Replacing a sender's track needs no new SDP, but a receiver can keep
+  // decoding the old stream and sit on a frozen frame — the swapped-in screen
+  // never appears. One negotiation round resets the far-side decoder. Offers
+  // stay owned by the caller for the same reason ICE restarts are: a single
+  // author can never collide with the other side's offer, so a sharing callee
+  // asks rather than offering.
+  requestRenegotiation() {
+    if (this.role === "caller") return this.renegotiate()
+    this.sendSignal({kind: "renegotiate_request"})
+  },
+
+  async renegotiate(attempt = 0) {
+    if (!this.pc || this.pc.connectionState === "closed") return
+
+    // A reconnect owns the session while it runs, and its offer already
+    // refreshes the decoder — wait it out instead of colliding with it.
+    if (this.restartInProgress || this.pc.signalingState !== "stable") {
+      if (attempt >= 3) return
+      clearTimeout(this.renegotiateTimer)
+      this.renegotiateTimer = setTimeout(() => this.renegotiate(attempt + 1), 1_000)
+      return
+    }
+
+    try {
+      const offer = await this.pc.createOffer()
+      await this.pc.setLocalDescription(offer)
+      this.sendSignal({kind: "offer", sdp: this.pc.localDescription.sdp})
+    } catch (err) {
+      // The new track is already on the sender, so the call itself is fine;
+      // only the far side's decoder refresh was missed.
+      this.showCallNotice(`Could not refresh the video stream: ${err.message}`)
+    }
   },
 
   startQualityMonitoring() {

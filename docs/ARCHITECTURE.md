@@ -291,7 +291,9 @@ consent, lifecycle, presence, and signaling relay:
   connection closes; they are not envelopes or history.
 - Video capture begins at up to 720p/30fps. Browser WebRTC statistics drive
   HD/Balanced/Data saver sender profiles, with audio prioritized during
-  degradation. Screen capture uses a separate profile.
+  degradation. Screen capture uses a separate profile, and starting or stopping
+  it renegotiates the session once so the receiver decodes the swapped track
+  instead of holding the previous frame.
 - Calls attempt two ICE restarts after a connection failure. Call-page
   presence has a 25-second server grace so LiveView reconnects do not end a
   call. If recovery fails, the original caller may create a fresh call ID and

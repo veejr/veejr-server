@@ -126,6 +126,13 @@ state, and recovery status. Video starts at up to 720p/30fps and can move
 between HD, Balanced, and Data saver profiles while preserving audio priority.
 Screen sharing uses a separate screen-oriented profile.
 
+Starting or stopping a screen share swaps the outgoing video track in place and
+then negotiates the session once more. The extra round is what makes the new
+picture appear on the other side: some receivers otherwise keep decoding the
+previous stream and hold a frozen frame. Offers for that round are always
+authored by the original caller, so they cannot collide with an ICE restart or
+with the other participant.
+
 ### Interruption, reconnect, and re-invite
 
 Veejr attempts up to two WebRTC ICE restarts after an interrupted peer
