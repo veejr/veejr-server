@@ -38,11 +38,20 @@ defmodule VeejrWeb.MessagesLiveTest do
              "#messages-workspace[phx-hook='ChatTheme'][data-chat-theme='classic']"
            )
 
-    assert has_element?(view, "#chat-theme-picker[aria-label='Chat appearance']")
-    assert has_element?(view, "#chat-theme-classic[data-chat-theme-option='classic']")
-    assert has_element?(view, "#chat-theme-salon[data-chat-theme-option='salon']")
-    assert has_element?(view, "#chat-theme-party[data-chat-theme-option='party']")
-    assert has_element?(view, "#chat-theme-comic[data-chat-theme-option='comic']")
+    assert has_element?(
+             view,
+             "#chat-theme-picker[aria-label='Chat appearance'] .chat-theme-picker-label",
+             "Appearance"
+           )
+
+    assert has_element?(
+             view,
+             "#chat-theme-classic[data-chat-theme-option='classic'] .chat-theme-swatch"
+           )
+
+    assert has_element?(view, "#chat-theme-salon[data-chat-theme-option='salon']", "Salon")
+    assert has_element?(view, "#chat-theme-party[data-chat-theme-option='party']", "Party")
+    assert has_element?(view, "#chat-theme-comic[data-chat-theme-option='comic']", "Comic")
 
     assert has_element?(
              view,

@@ -105,7 +105,7 @@ defmodule VeejrWeb.Layouts do
         <nav
           id="primary-navigation-links"
           aria-label="Primary navigation"
-          class="dropdown-content z-50 mt-2 w-60 rounded-2xl border border-base-300 bg-base-100 p-2 shadow-xl"
+          class="app-menu-surface dropdown-content z-50 mt-2 w-72 rounded-2xl border p-2"
         >
           <ul class="menu gap-1 p-0">
             <li class="menu-title px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55">
@@ -304,65 +304,101 @@ defmodule VeejrWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div id="theme-choices" class="grid grid-cols-2 gap-1" aria-label="Theme choices">
+    <div id="theme-choices" class="grid gap-1.5" aria-label="Theme choices">
       <button
         id="theme-system"
         type="button"
-        class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition hover:bg-base-200 [[data-theme-source=system]_&]:bg-primary/10 [[data-theme-source=system]_&]:text-primary"
+        class="theme-choice"
         phx-click={
           JS.dispatch("phx:set-theme")
           |> JS.remove_attribute("open", to: "#primary-navigation-menu")
         }
         data-phx-theme="system"
+        aria-pressed="false"
         title="Match system light or dark"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4" />
-        <span>System</span>
+        <span class="theme-choice-preview">
+          <.icon name="hero-computer-desktop-micro" class="size-4" />
+        </span>
+        <span class="min-w-0 flex-1 text-left">
+          <span class="theme-choice-name">System</span>
+          <span class="theme-choice-description">Follow this device</span>
+        </span>
+        <span class="theme-choice-check" aria-hidden="true">
+          <.icon name="hero-check-micro" class="size-4" />
+        </span>
       </button>
 
       <button
         id="theme-light"
         type="button"
-        class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition hover:bg-base-200 [[data-theme=light]_&]:bg-primary/10 [[data-theme=light]_&]:text-primary"
+        class="theme-choice"
         phx-click={
           JS.dispatch("phx:set-theme")
           |> JS.remove_attribute("open", to: "#primary-navigation-menu")
         }
         data-phx-theme="light"
+        aria-pressed="false"
         title="Light"
       >
-        <.icon name="hero-sun-micro" class="size-4" />
-        <span>Light</span>
+        <span class="theme-choice-preview">
+          <.icon name="hero-sun-micro" class="size-4" />
+        </span>
+        <span class="min-w-0 flex-1 text-left">
+          <span class="theme-choice-name">Light</span>
+          <span class="theme-choice-description">Bright and neutral</span>
+        </span>
+        <span class="theme-choice-check" aria-hidden="true">
+          <.icon name="hero-check-micro" class="size-4" />
+        </span>
       </button>
 
       <button
         id="theme-dark"
         type="button"
-        class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition hover:bg-base-200 [[data-theme=dark]_&]:bg-primary/10 [[data-theme=dark]_&]:text-primary"
+        class="theme-choice"
         phx-click={
           JS.dispatch("phx:set-theme")
           |> JS.remove_attribute("open", to: "#primary-navigation-menu")
         }
         data-phx-theme="dark"
+        aria-pressed="false"
         title="Dark"
       >
-        <.icon name="hero-moon-micro" class="size-4" />
-        <span>Dark</span>
+        <span class="theme-choice-preview">
+          <.icon name="hero-moon-micro" class="size-4" />
+        </span>
+        <span class="min-w-0 flex-1 text-left">
+          <span class="theme-choice-name">Dark</span>
+          <span class="theme-choice-description">Low-light contrast</span>
+        </span>
+        <span class="theme-choice-check" aria-hidden="true">
+          <.icon name="hero-check-micro" class="size-4" />
+        </span>
       </button>
 
       <button
         id="theme-artdeco"
         type="button"
-        class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition hover:bg-base-200 [[data-theme=artdeco]_&]:bg-primary/10 [[data-theme=artdeco]_&]:text-primary"
+        class="theme-choice"
         phx-click={
           JS.dispatch("phx:set-theme")
           |> JS.remove_attribute("open", to: "#primary-navigation-menu")
         }
         data-phx-theme="artdeco"
+        aria-pressed="false"
         title="Art Deco"
       >
-        <.icon name="hero-sparkles-micro" class="size-4" />
-        <span>Art Deco</span>
+        <span class="theme-choice-preview">
+          <.icon name="hero-sparkles-micro" class="size-4" />
+        </span>
+        <span class="min-w-0 flex-1 text-left">
+          <span class="theme-choice-name">Art Deco</span>
+          <span class="theme-choice-description">Black, cream and gold</span>
+        </span>
+        <span class="theme-choice-check" aria-hidden="true">
+          <.icon name="hero-check-micro" class="size-4" />
+        </span>
       </button>
     </div>
     """

@@ -30,7 +30,7 @@ defmodule VeejrWeb.MessagingComponents do
       <form
         id={@form_id}
         phx-submit={@submit_event}
-        class="dropdown-content z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-base-300 bg-base-100 p-3 shadow-xl"
+        class="app-menu-surface dropdown-content z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-lg border p-3"
       >
         <div class="max-h-80 space-y-4 overflow-y-auto pr-1">
           <fieldset :if={@conversations != []}>
@@ -258,7 +258,7 @@ defmodule VeejrWeb.MessagingComponents do
         </div>
         <div
           tabindex="0"
-          class="dropdown-content z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 shadow sm:w-80"
+          class="app-menu-surface dropdown-content z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-box border p-3 sm:w-80"
         >
           <div class="space-y-3">
             <div>
