@@ -21,520 +21,529 @@ defmodule VeejrWeb.ContactsLive do
         data-contacts-theme="classic"
         class="contacts-workspace space-y-6"
       >
-      <.header>
-        Contacts
-        <:subtitle>
-          Conversations, friends, and groups in one place. Your address:
-          <code>{Social.Address.full(@current_scope.user)}</code>
-        </:subtitle>
-        <:actions>
-          <select
-            id="contacts-theme-select"
-            data-contacts-theme-select
-            aria-label="Contacts appearance"
-            class="select select-sm w-auto"
-          >
-            <optgroup :for={{group, options} <- theme_options()} label={group}>
-              <option :for={{value, label} <- options} value={value}>{label}</option>
-            </optgroup>
-          </select>
-          <.link navigate={~p"/invites/new"} class="btn btn-outline btn-sm">
-            <.icon name="hero-qr-code" class="size-4" /> Invite person
-          </.link>
-          <.conversation_builder
-            id="conversation-builder"
-            form_id="conversation-builder-form"
-            conversations={@conversations}
-            friends={@friends}
-            groups={@groups}
-          />
-        </:actions>
-      </.header>
+        <.header>
+          Contacts
+          <:subtitle>
+            Conversations, friends, and groups in one place. Your address:
+            <code>{Social.Address.full(@current_scope.user)}</code>
+          </:subtitle>
+          <:actions>
+            <label class="contacts-theme-control">
+              <span class="contacts-theme-control-label">
+                <.icon name="hero-swatch" class="size-4" /> Appearance
+              </span>
+              <select
+                id="contacts-theme-select"
+                data-contacts-theme-select
+                aria-label="Contacts appearance"
+                class="contacts-theme-select select select-sm"
+              >
+                <optgroup :for={{group, options} <- theme_options()} label={group}>
+                  <option :for={{value, label} <- options} value={value}>{label}</option>
+                </optgroup>
+              </select>
+            </label>
+            <.link navigate={~p"/invites/new"} class="btn btn-outline btn-sm">
+              <.icon name="hero-qr-code" class="size-4" /> Invite person
+            </.link>
+            <.conversation_builder
+              id="conversation-builder"
+              form_id="conversation-builder-form"
+              conversations={@conversations}
+              friends={@friends}
+              groups={@groups}
+            />
+          </:actions>
+        </.header>
 
-      <section
-        :if={@invitation_acceptances != []}
-        id="invitation-acceptances"
-        class="rounded-lg border border-success/30 bg-success/10 p-4"
-      >
-        <h2 class="text-sm font-semibold">Someone you invited has joined</h2>
-        <ul class="mt-2 space-y-2">
-          <li
-            :for={invitation <- @invitation_acceptances}
-            class="flex items-center justify-between gap-3 rounded-lg bg-base-100 px-3 py-2"
-          >
-            <span class="text-sm">
-              <strong>
-                {invitation.accepted_by.display_name || "@#{invitation.accepted_by.username}"}
-              </strong>
-              joined this instance and is now your friend.
-            </span>
-            <button
-              phx-click="dismiss_invitation_acceptance"
-              phx-value-id={invitation.id}
-              class="btn btn-ghost btn-xs"
-              aria-label="Dismiss joined notification"
+        <section
+          :if={@invitation_acceptances != []}
+          id="invitation-acceptances"
+          class="rounded-lg border border-success/30 bg-success/10 p-4"
+        >
+          <h2 class="text-sm font-semibold">Someone you invited has joined</h2>
+          <ul class="mt-2 space-y-2">
+            <li
+              :for={invitation <- @invitation_acceptances}
+              class="flex items-center justify-between gap-3 rounded-lg bg-base-100 px-3 py-2"
             >
-              <.icon name="hero-x-mark" class="size-4" />
-            </button>
-          </li>
-        </ul>
-      </section>
-
-      <section :if={@pending != []} class="rounded-lg border border-primary/20 bg-primary/10 p-4">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-sm font-semibold text-base-content">
-              Waiting for you
-              <span class="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-content">
-                {length(@pending)}
+              <span class="text-sm">
+                <strong>
+                  {invitation.accepted_by.display_name || "@#{invitation.accepted_by.username}"}
+                </strong>
+                joined this instance and is now your friend.
               </span>
-            </h2>
-            <p class="text-xs opacity-70">Encrypted items need your approval.</p>
-          </div>
-          <.link navigate={~p"/messages"} class="btn btn-outline btn-sm">Messages</.link>
-        </div>
-        <ul class="mt-3 grid gap-2 lg:grid-cols-2">
-          <li
-            :for={notif <- @pending}
-            class="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-base-100 px-3 py-2"
-          >
-            <span class="min-w-0 text-sm text-base-content">
-              <span class="font-medium">
-                {Veejr.Social.Address.handle(notif.envelope.sender)}
-              </span>
-              sent an encrypted {notif.envelope.kind}
-              <span class="text-xs opacity-70">
-                - {Calendar.strftime(notif.inserted_at, "%b %d, %H:%M")} UTC
-              </span>
-            </span>
-            <span class="flex shrink-0 gap-2">
               <button
-                phx-click="request_notification"
-                phx-value-id={notif.id}
-                class="btn btn-primary btn-xs"
-              >
-                Request
-              </button>
-              <button
-                phx-click="decline_notification"
-                phx-value-id={notif.id}
+                phx-click="dismiss_invitation_acceptance"
+                phx-value-id={invitation.id}
                 class="btn btn-ghost btn-xs"
+                aria-label="Dismiss joined notification"
               >
-                Decline
+                <.icon name="hero-x-mark" class="size-4" />
               </button>
-            </span>
-          </li>
-        </ul>
-      </section>
+            </li>
+          </ul>
+        </section>
 
-      <div class="space-y-4">
-        <details open class="contacts-section collapse collapse-arrow rounded-lg border border-base-300 bg-base-100">
-          <summary class="collapse-title">
-            <div class="flex items-center justify-between gap-3 pr-6">
-              <div>
-                <h2 class="text-lg font-semibold">Conversations</h2>
-                <p class="text-sm opacity-70">Pick a thread to continue it in Messages.</p>
-              </div>
-              <span class="badge badge-outline">{length(@conversations)}</span>
+        <section :if={@pending != []} class="rounded-lg border border-primary/20 bg-primary/10 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-semibold text-base-content">
+                Waiting for you
+                <span class="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-content">
+                  {length(@pending)}
+                </span>
+              </h2>
+              <p class="text-xs opacity-70">Encrypted items need your approval.</p>
             </div>
-          </summary>
-          <div class="collapse-content">
-            <p :if={@conversations == []} class="mt-4 text-sm opacity-60">
-              No conversations yet.
-            </p>
+            <.link navigate={~p"/messages"} class="btn btn-outline btn-sm">Messages</.link>
+          </div>
+          <ul class="mt-3 grid gap-2 lg:grid-cols-2">
+            <li
+              :for={notif <- @pending}
+              class="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-base-100 px-3 py-2"
+            >
+              <span class="min-w-0 text-sm text-base-content">
+                <span class="font-medium">
+                  {Veejr.Social.Address.handle(notif.envelope.sender)}
+                </span>
+                sent an encrypted {notif.envelope.kind}
+                <span class="text-xs opacity-70">
+                  - {Calendar.strftime(notif.inserted_at, "%b %d, %H:%M")} UTC
+                </span>
+              </span>
+              <span class="flex shrink-0 gap-2">
+                <button
+                  phx-click="request_notification"
+                  phx-value-id={notif.id}
+                  class="btn btn-primary btn-xs"
+                >
+                  Request
+                </button>
+                <button
+                  phx-click="decline_notification"
+                  phx-value-id={notif.id}
+                  class="btn btn-ghost btn-xs"
+                >
+                  Decline
+                </button>
+              </span>
+            </li>
+          </ul>
+        </section>
 
-            <%!-- Mount point for the Orbit appearance. The hook reads the list
+        <div class="space-y-4">
+          <details
+            open
+            class="contacts-section collapse collapse-arrow rounded-lg border border-base-300 bg-base-100"
+          >
+            <summary class="collapse-title">
+              <div class="flex items-center justify-between gap-3 pr-6">
+                <div>
+                  <h2 class="text-lg font-semibold">Conversations</h2>
+                  <p class="text-sm opacity-70">Pick a thread to continue it in Messages.</p>
+                </div>
+                <span class="badge badge-outline">{length(@conversations)}</span>
+              </div>
+            </summary>
+            <div class="collapse-content">
+              <p :if={@conversations == []} class="mt-4 text-sm opacity-60">
+                No conversations yet.
+              </p>
+
+              <%!-- Mount point for the Orbit appearance. The hook reads the list
                   below rather than taking its own copy of the data, so it keeps
                   working with client-side decrypted previews. Empty and ignored
                   server-side; the hook owns everything inside it. --%>
-            <div
-              :if={@conversations != []}
-              id="contacts-orbit"
-              phx-hook="ContactsOrbit"
-              phx-update="ignore"
-              data-three-src={~p"/vendor/three.min.js"}
-              class="contacts-orbit"
-            >
-            </div>
-
-            <ul class="contacts-conversation-list mt-4 divide-y divide-base-300">
-              <li
-                :for={conversation <- @conversations}
-                data-unread={conversation.unread_count > 0}
-                class={[
-                  "flex items-center gap-2 rounded-lg px-2 py-2 transition hover:bg-base-200",
-                  conversation.unread_count > 0 && "conversation-unread"
-                ]}
+              <div
+                :if={@conversations != []}
+                id="contacts-orbit"
+                phx-hook="ContactsOrbit"
+                phx-update="ignore"
+                data-three-src={~p"/vendor/three.min.js"}
+                class="contacts-orbit"
               >
-                <.user_avatar
-                  :if={conversation.avatar_user}
-                  id={"conversation-avatar-#{conversation.key}"}
-                  user={conversation.avatar_user}
-                  class="size-10 text-sm"
-                  on_click="open_profile"
-                  data-avatar-texture-url={avatar_texture_url(conversation.avatar_user)}
-                />
-                <span
-                  :if={!conversation.avatar_user}
-                  class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
-                >
-                  <.icon name="hero-user-group" class="size-5" />
-                </span>
-                <.link
-                  id={"open-conversation-#{conversation.key}"}
-                  navigate={~p"/messages?conversation=#{conversation.key}"}
-                  class="flex min-w-0 flex-1 items-center justify-between gap-3 py-1"
-                >
-                  <div class="min-w-0">
-                    <p class="truncate font-medium">
-                      {conversation_title(conversation)}
-                    </p>
-                    <p
-                      id={"conversation-preview-#{conversation.key}"}
-                      phx-hook="ConversationPreview"
-                      phx-update="ignore"
-                      data-user-id={@current_scope.user.id}
-                      data-peer-key={
-                        Veejr.Messaging.peer_key(
-                          conversation.latest,
-                          @current_scope.user
-                        )
-                      }
-                      data-ciphertext={conversation.latest.ciphertext}
-                      data-nonce={conversation.latest.nonce}
-                      data-kind={conversation.latest.kind}
-                      class="mt-0.5 truncate text-sm opacity-80"
-                    >
-                      <span class="loading loading-dots loading-xs"></span>
-                    </p>
-                    <p class="text-xs opacity-70">
-                      {conversation.message_count} messages · latest {Calendar.strftime(
-                        conversation.latest.inserted_at,
-                        "%b %d, %H:%M"
-                      )} UTC
-                    </p>
-                  </div>
-                  <span class="ml-auto shrink-0 text-sm font-medium text-primary">Open</span>
-                </.link>
-                <.auto_open_control
-                  :if={conversation.policy_id}
-                  subject_type="conversation"
-                  subject_id={conversation.policy_id}
-                  policies={@delivery_policies}
-                  compact
-                />
-              </li>
-            </ul>
-          </div>
-        </details>
+              </div>
 
-        <details class="contacts-section collapse collapse-arrow rounded-lg border border-base-300 bg-base-100">
-          <summary class="collapse-title">
-            <div class="flex items-center justify-between gap-3 pr-6">
-              <h2 class="text-lg font-semibold">Friends</h2>
-              <span class="badge badge-outline">{length(@friends)}</span>
-            </div>
-          </summary>
-          <div class="collapse-content">
-            <section :if={@key_changes != []} class="rounded-lg border border-warning/50 p-3">
-              <h3 class="font-semibold text-warning">Key changes need confirmation</h3>
-              <ul class="mt-2 space-y-2">
+              <ul class="contacts-conversation-list mt-4 divide-y divide-base-300">
                 <li
-                  :for={friend <- @key_changes}
-                  class="flex items-center justify-between gap-3 text-sm"
+                  :for={conversation <- @conversations}
+                  data-unread={conversation.unread_count > 0}
+                  class={[
+                    "flex items-center gap-2 rounded-lg px-2 py-2 transition hover:bg-base-200",
+                    conversation.unread_count > 0 && "conversation-unread"
+                  ]}
                 >
-                  <span class="min-w-0">
-                    <span class="font-medium">{friend.display_name || friend.username}</span>
-                    <span class="opacity-60">{Social.Address.handle(friend)}</span>
-                  </span>
-                  <button
-                    phx-click="confirm_key"
-                    phx-value-id={friend.id}
-                    data-confirm="Accept this friend's new encryption key? Messages you send will be encrypted to it."
-                    class="btn btn-warning btn-xs"
+                  <.user_avatar
+                    :if={conversation.avatar_user}
+                    id={"conversation-avatar-#{conversation.key}"}
+                    user={conversation.avatar_user}
+                    class="size-10 text-sm"
+                    on_click="open_profile"
+                    data-avatar-texture-url={avatar_texture_url(conversation.avatar_user)}
+                  />
+                  <span
+                    :if={!conversation.avatar_user}
+                    class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
                   >
-                    Accept key
-                  </button>
-                </li>
-              </ul>
-            </section>
-
-            <section :if={@incoming != []} class="mt-4">
-              <h3 class="text-sm font-semibold uppercase tracking-wide opacity-70">
-                Incoming requests
-              </h3>
-              <ul class="mt-2 space-y-2">
-                <li
-                  :for={req <- @incoming}
-                  class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3"
-                >
-                  <span class="flex min-w-0 items-center gap-3">
-                    <.user_avatar
-                      id={"request-avatar-#{req.requester.id}"}
-                      user={req.requester}
-                      class="size-9 text-xs"
-                      on_click="open_profile"
-                    />
-                    <span>
-                      <span class="block font-medium">{req.requester.display_name ||
-                        req.requester.username}</span>
-                      <span class="block opacity-60">{Social.Address.handle(req.requester)}</span>
-                    </span>
+                    <.icon name="hero-user-group" class="size-5" />
                   </span>
-                  <span class="flex gap-2">
-                    <button phx-click="accept" phx-value-id={req.id} class="btn btn-primary btn-xs">
-                      Accept
-                    </button>
-                    <button phx-click="decline" phx-value-id={req.id} class="btn btn-ghost btn-xs">
-                      Decline
-                    </button>
-                  </span>
+                  <.link
+                    id={"open-conversation-#{conversation.key}"}
+                    navigate={~p"/messages?conversation=#{conversation.key}"}
+                    class="flex min-w-0 flex-1 items-center justify-between gap-3 py-1"
+                  >
+                    <div class="min-w-0">
+                      <p class="truncate font-medium">
+                        {conversation_title(conversation)}
+                      </p>
+                      <p
+                        id={"conversation-preview-#{conversation.key}"}
+                        phx-hook="ConversationPreview"
+                        phx-update="ignore"
+                        data-user-id={@current_scope.user.id}
+                        data-peer-key={
+                          Veejr.Messaging.peer_key(
+                            conversation.latest,
+                            @current_scope.user
+                          )
+                        }
+                        data-ciphertext={conversation.latest.ciphertext}
+                        data-nonce={conversation.latest.nonce}
+                        data-kind={conversation.latest.kind}
+                        class="mt-0.5 truncate text-sm opacity-80"
+                      >
+                        <span class="loading loading-dots loading-xs"></span>
+                      </p>
+                      <p class="text-xs opacity-70">
+                        {conversation.message_count} messages · latest {Calendar.strftime(
+                          conversation.latest.inserted_at,
+                          "%b %d, %H:%M"
+                        )} UTC
+                      </p>
+                    </div>
+                    <span class="ml-auto shrink-0 text-sm font-medium text-primary">Open</span>
+                  </.link>
+                  <.auto_open_control
+                    :if={conversation.policy_id}
+                    subject_type="conversation"
+                    subject_id={conversation.policy_id}
+                    policies={@delivery_policies}
+                    compact
+                  />
                 </li>
               </ul>
-            </section>
+            </div>
+          </details>
 
-            <section :if={@outgoing != []} class="mt-4">
-              <h3 class="text-sm font-semibold uppercase tracking-wide opacity-70">Waiting on</h3>
-              <ul class="mt-2 space-y-1">
-                <li :for={req <- @outgoing} class="text-sm opacity-70">
-                  {Social.Address.handle(req.addressee)} - request sent
-                </li>
-              </ul>
-            </section>
-
-            <p :if={@friends == []} class="mt-4 text-sm opacity-60">
-              No friends yet. Add someone below to start sharing.
-            </p>
-
-            <ul class="mt-4 space-y-2">
-              <li
-                :for={friend <- @friends}
-                class="rounded-lg border border-base-300 p-3"
-              >
-                <div class="flex items-start justify-between gap-3">
-                  <span class="flex min-w-0 items-center gap-3">
-                    <.user_avatar
-                      id={"friend-avatar-#{friend.id}"}
-                      user={friend}
-                      class="size-12 text-sm"
-                      on_click="open_profile"
-                    />
+          <details class="contacts-section collapse collapse-arrow rounded-lg border border-base-300 bg-base-100">
+            <summary class="collapse-title">
+              <div class="flex items-center justify-between gap-3 pr-6">
+                <h2 class="text-lg font-semibold">Friends</h2>
+                <span class="badge badge-outline">{length(@friends)}</span>
+              </div>
+            </summary>
+            <div class="collapse-content">
+              <section :if={@key_changes != []} class="rounded-lg border border-warning/50 p-3">
+                <h3 class="font-semibold text-warning">Key changes need confirmation</h3>
+                <ul class="mt-2 space-y-2">
+                  <li
+                    :for={friend <- @key_changes}
+                    class="flex items-center justify-between gap-3 text-sm"
+                  >
                     <span class="min-w-0">
-                      <span class="block truncate font-medium">{friend.display_name || friend.username}</span>
-                      <span class="text-sm opacity-60">{Social.Address.handle(friend)}</span>
-                      <span :if={friend.host} class="badge badge-info badge-sm ml-2">remote</span>
-                      <span :if={!friend.public_key} class="badge badge-warning badge-sm ml-2">
-                        no keys yet
+                      <span class="font-medium">{friend.display_name || friend.username}</span>
+                      <span class="opacity-60">{Social.Address.handle(friend)}</span>
+                    </span>
+                    <button
+                      phx-click="confirm_key"
+                      phx-value-id={friend.id}
+                      data-confirm="Accept this friend's new encryption key? Messages you send will be encrypted to it."
+                      class="btn btn-warning btn-xs"
+                    >
+                      Accept key
+                    </button>
+                  </li>
+                </ul>
+              </section>
+
+              <section :if={@incoming != []} class="mt-4">
+                <h3 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+                  Incoming requests
+                </h3>
+                <ul class="mt-2 space-y-2">
+                  <li
+                    :for={req <- @incoming}
+                    class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3"
+                  >
+                    <span class="flex min-w-0 items-center gap-3">
+                      <.user_avatar
+                        id={"request-avatar-#{req.requester.id}"}
+                        user={req.requester}
+                        class="size-9 text-xs"
+                        on_click="open_profile"
+                      />
+                      <span>
+                        <span class="block font-medium">{req.requester.display_name ||
+                          req.requester.username}</span>
+                        <span class="block opacity-60">{Social.Address.handle(req.requester)}</span>
                       </span>
                     </span>
-                  </span>
-                  <span class="flex shrink-0 gap-2">
-                    <.link
-                      navigate={~p"/messages?friend_id=#{friend.id}"}
-                      class="btn btn-primary btn-sm"
-                    >
-                      Message
-                    </.link>
-                    <button
-                      phx-click="remove"
-                      phx-value-id={friend.id}
-                      data-confirm="Remove this friend? They will also be removed from your groups."
-                      class="btn btn-ghost btn-sm"
-                    >
-                      Remove
-                    </button>
-                  </span>
-                </div>
+                    <span class="flex gap-2">
+                      <button phx-click="accept" phx-value-id={req.id} class="btn btn-primary btn-xs">
+                        Accept
+                      </button>
+                      <button phx-click="decline" phx-value-id={req.id} class="btn btn-ghost btn-xs">
+                        Decline
+                      </button>
+                    </span>
+                  </li>
+                </ul>
+              </section>
 
-                <details class="collapse collapse-arrow mt-3 rounded-lg border border-base-300 bg-base-200">
-                  <summary class="collapse-title min-h-0 px-3 py-2 text-sm font-medium">
-                    Personal info & notes
-                  </summary>
-                  <div class="collapse-content px-3 pb-3">
-                    <div class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-base-300 bg-base-100 p-3">
-                      <div>
-                        <p class="text-sm font-medium">Automatically open messages</p>
-                        <p class="text-xs opacity-60">
-                          Default to skipping the approval step for this contact.
-                        </p>
-                      </div>
-                      <.auto_open_control
-                        subject_type="contact"
-                        subject_id={friend.id}
-                        policies={@delivery_policies}
+              <section :if={@outgoing != []} class="mt-4">
+                <h3 class="text-sm font-semibold uppercase tracking-wide opacity-70">Waiting on</h3>
+                <ul class="mt-2 space-y-1">
+                  <li :for={req <- @outgoing} class="text-sm opacity-70">
+                    {Social.Address.handle(req.addressee)} - request sent
+                  </li>
+                </ul>
+              </section>
+
+              <p :if={@friends == []} class="mt-4 text-sm opacity-60">
+                No friends yet. Add someone below to start sharing.
+              </p>
+
+              <ul class="mt-4 space-y-2">
+                <li
+                  :for={friend <- @friends}
+                  class="rounded-lg border border-base-300 p-3"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <span class="flex min-w-0 items-center gap-3">
+                      <.user_avatar
+                        id={"friend-avatar-#{friend.id}"}
+                        user={friend}
+                        class="size-12 text-sm"
+                        on_click="open_profile"
                       />
-                    </div>
-                    <form phx-submit="save_note">
-                      <input type="hidden" name="contact_id" value={friend.id} />
-                      <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
-                        Personal notes
-                      </label>
-                      <textarea
-                        name="body"
-                        rows="3"
-                        maxlength="4000"
-                        class="textarea textarea-bordered mt-1 w-full resize-y text-sm"
-                        placeholder="Private notes about this contact"
-                      >{Map.get(@contact_notes, friend.id, "")}</textarea>
-                      <div class="mt-2 flex justify-end">
-                        <button type="submit" class="btn btn-sm">Save note</button>
-                      </div>
-                    </form>
+                      <span class="min-w-0">
+                        <span class="block truncate font-medium">{friend.display_name ||
+                          friend.username}</span>
+                        <span class="text-sm opacity-60">{Social.Address.handle(friend)}</span>
+                        <span :if={friend.host} class="badge badge-info badge-sm ml-2">remote</span>
+                        <span :if={!friend.public_key} class="badge badge-warning badge-sm ml-2">
+                          no keys yet
+                        </span>
+                      </span>
+                    </span>
+                    <span class="flex shrink-0 gap-2">
+                      <.link
+                        navigate={~p"/messages?friend_id=#{friend.id}"}
+                        class="btn btn-primary btn-sm"
+                      >
+                        Message
+                      </.link>
+                      <button
+                        phx-click="remove"
+                        phx-value-id={friend.id}
+                        data-confirm="Remove this friend? They will also be removed from your groups."
+                        class="btn btn-ghost btn-sm"
+                      >
+                        Remove
+                      </button>
+                    </span>
                   </div>
-                </details>
-              </li>
-            </ul>
-          </div>
-        </details>
 
-        <details class="contacts-section collapse collapse-arrow rounded-lg border border-base-300 bg-base-100">
-          <summary class="collapse-title">
-            <div class="flex items-center justify-between gap-3 pr-6">
-              <h2 class="text-lg font-semibold">Groups</h2>
-              <span class="badge badge-outline">{length(@groups)}</span>
+                  <details class="collapse collapse-arrow mt-3 rounded-lg border border-base-300 bg-base-200">
+                    <summary class="collapse-title min-h-0 px-3 py-2 text-sm font-medium">
+                      Personal info & notes
+                    </summary>
+                    <div class="collapse-content px-3 pb-3">
+                      <div class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-base-300 bg-base-100 p-3">
+                        <div>
+                          <p class="text-sm font-medium">Automatically open messages</p>
+                          <p class="text-xs opacity-60">
+                            Default to skipping the approval step for this contact.
+                          </p>
+                        </div>
+                        <.auto_open_control
+                          subject_type="contact"
+                          subject_id={friend.id}
+                          policies={@delivery_policies}
+                        />
+                      </div>
+                      <form phx-submit="save_note">
+                        <input type="hidden" name="contact_id" value={friend.id} />
+                        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                          Personal notes
+                        </label>
+                        <textarea
+                          name="body"
+                          rows="3"
+                          maxlength="4000"
+                          class="textarea textarea-bordered mt-1 w-full resize-y text-sm"
+                          placeholder="Private notes about this contact"
+                        >{Map.get(@contact_notes, friend.id, "")}</textarea>
+                        <div class="mt-2 flex justify-end">
+                          <button type="submit" class="btn btn-sm">Save note</button>
+                        </div>
+                      </form>
+                    </div>
+                  </details>
+                </li>
+              </ul>
             </div>
-          </summary>
-          <div class="collapse-content">
-            <form phx-submit="create_group" class="flex flex-col gap-2 sm:flex-row">
+          </details>
+
+          <details class="contacts-section collapse collapse-arrow rounded-lg border border-base-300 bg-base-100">
+            <summary class="collapse-title">
+              <div class="flex items-center justify-between gap-3 pr-6">
+                <h2 class="text-lg font-semibold">Groups</h2>
+                <span class="badge badge-outline">{length(@groups)}</span>
+              </div>
+            </summary>
+            <div class="collapse-content">
+              <form phx-submit="create_group" class="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  name="name"
+                  placeholder="new group name"
+                  class="input flex-1"
+                  autocomplete="off"
+                  required
+                />
+                <button type="submit" class="btn btn-primary">Create</button>
+              </form>
+
+              <p :if={@groups == []} class="mt-4 text-sm opacity-60">
+                No groups yet.
+              </p>
+
+              <div class="mt-4 space-y-4">
+                <section :for={group <- @groups} class="rounded-lg border border-base-300 p-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <h3 class="truncate font-semibold">{group.name}</h3>
+                      <p class="text-sm opacity-60">{length(group.members)} members</p>
+                    </div>
+                    <span class="flex shrink-0 gap-2">
+                      <.link
+                        navigate={~p"/messages?group_id=#{group.id}"}
+                        class="btn btn-primary btn-sm"
+                      >
+                        Message
+                      </.link>
+                      <button
+                        phx-click="delete_group"
+                        phx-value-id={group.id}
+                        data-confirm={"Delete group \"#{group.name}\"? Friends stay friends."}
+                        class="btn btn-ghost btn-sm"
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  </div>
+
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <span :for={member <- group.members} class="badge badge-outline h-8 gap-1 pl-1">
+                      <.user_avatar
+                        user={member}
+                        class="size-6 text-[0.6rem]"
+                        ring={false}
+                        on_click="open_profile"
+                      />
+                      {member.display_name || member.username}
+                      <button
+                        phx-click="remove_member"
+                        phx-value-group={group.id}
+                        phx-value-user={member.id}
+                        class="ml-1 opacity-60 hover:opacity-100"
+                        aria-label="remove from group"
+                      >
+                        x
+                      </button>
+                    </span>
+                    <span :if={group.members == []} class="text-sm opacity-60">No members yet.</span>
+                  </div>
+
+                  <details class="collapse collapse-arrow mt-3 rounded-lg border border-base-300 bg-base-200">
+                    <summary class="collapse-title min-h-0 px-3 py-2 text-sm font-medium">
+                      Personal info & notes
+                    </summary>
+                    <div class="collapse-content px-3 pb-3">
+                      <div class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-base-300 bg-base-100 p-3">
+                        <div>
+                          <p class="text-sm font-medium">Automatically open messages</p>
+                          <p class="text-xs opacity-60">
+                            Let members skip approval unless a stricter setting overrides it.
+                          </p>
+                        </div>
+                        <.auto_open_control
+                          subject_type="group"
+                          subject_id={group.id}
+                          policies={@delivery_policies}
+                        />
+                      </div>
+                      <form phx-submit="save_group_note">
+                        <input type="hidden" name="group_id" value={group.id} />
+                        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                          Personal notes
+                        </label>
+                        <textarea
+                          name="body"
+                          rows="3"
+                          maxlength="4000"
+                          class="textarea textarea-bordered mt-1 w-full resize-y text-sm"
+                          placeholder="Private notes about this group"
+                        >{Map.get(@group_notes, group.id, "")}</textarea>
+                        <div class="mt-2 flex justify-end">
+                          <button type="submit" class="btn btn-sm">Save note</button>
+                        </div>
+                      </form>
+                    </div>
+                  </details>
+
+                  <form
+                    :if={addable_friends(@friends, group) != []}
+                    phx-submit="add_member"
+                    class="mt-3 flex gap-2"
+                  >
+                    <input type="hidden" name="group" value={group.id} />
+                    <select name="user" class="select select-sm flex-1">
+                      <option :for={friend <- addable_friends(@friends, group)} value={friend.id}>
+                        {friend.display_name || friend.username} (@{friend.username})
+                      </option>
+                    </select>
+                    <button type="submit" class="btn btn-sm">Add</button>
+                  </form>
+                </section>
+              </div>
+            </div>
+          </details>
+
+          <section class="rounded-lg border border-base-300 bg-base-100 p-4">
+            <h2 class="text-lg font-semibold">Add Friend</h2>
+            <p class="text-sm opacity-70">Use a local username or user@host from another instance.</p>
+            <form phx-submit="add_friend" class="mt-4 flex flex-col gap-2 sm:flex-row">
               <input
                 type="text"
-                name="name"
-                placeholder="new group name"
+                name="username"
+                value={@add_username}
+                placeholder="username or user@host"
                 class="input flex-1"
                 autocomplete="off"
-                required
               />
-              <button type="submit" class="btn btn-primary">Create</button>
+              <button type="submit" class="btn btn-primary">Send request</button>
             </form>
+          </section>
+        </div>
 
-            <p :if={@groups == []} class="mt-4 text-sm opacity-60">
-              No groups yet.
-            </p>
-
-            <div class="mt-4 space-y-4">
-              <section :for={group <- @groups} class="rounded-lg border border-base-300 p-3">
-                <div class="flex items-center justify-between gap-3">
-                  <div class="min-w-0">
-                    <h3 class="truncate font-semibold">{group.name}</h3>
-                    <p class="text-sm opacity-60">{length(group.members)} members</p>
-                  </div>
-                  <span class="flex shrink-0 gap-2">
-                    <.link
-                      navigate={~p"/messages?group_id=#{group.id}"}
-                      class="btn btn-primary btn-sm"
-                    >
-                      Message
-                    </.link>
-                    <button
-                      phx-click="delete_group"
-                      phx-value-id={group.id}
-                      data-confirm={"Delete group \"#{group.name}\"? Friends stay friends."}
-                      class="btn btn-ghost btn-sm"
-                    >
-                      Delete
-                    </button>
-                  </span>
-                </div>
-
-                <div class="mt-3 flex flex-wrap gap-2">
-                  <span :for={member <- group.members} class="badge badge-outline h-8 gap-1 pl-1">
-                    <.user_avatar
-                      user={member}
-                      class="size-6 text-[0.6rem]"
-                      ring={false}
-                      on_click="open_profile"
-                    />
-                    {member.display_name || member.username}
-                    <button
-                      phx-click="remove_member"
-                      phx-value-group={group.id}
-                      phx-value-user={member.id}
-                      class="ml-1 opacity-60 hover:opacity-100"
-                      aria-label="remove from group"
-                    >
-                      x
-                    </button>
-                  </span>
-                  <span :if={group.members == []} class="text-sm opacity-60">No members yet.</span>
-                </div>
-
-                <details class="collapse collapse-arrow mt-3 rounded-lg border border-base-300 bg-base-200">
-                  <summary class="collapse-title min-h-0 px-3 py-2 text-sm font-medium">
-                    Personal info & notes
-                  </summary>
-                  <div class="collapse-content px-3 pb-3">
-                    <div class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-base-300 bg-base-100 p-3">
-                      <div>
-                        <p class="text-sm font-medium">Automatically open messages</p>
-                        <p class="text-xs opacity-60">
-                          Let members skip approval unless a stricter setting overrides it.
-                        </p>
-                      </div>
-                      <.auto_open_control
-                        subject_type="group"
-                        subject_id={group.id}
-                        policies={@delivery_policies}
-                      />
-                    </div>
-                    <form phx-submit="save_group_note">
-                      <input type="hidden" name="group_id" value={group.id} />
-                      <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
-                        Personal notes
-                      </label>
-                      <textarea
-                        name="body"
-                        rows="3"
-                        maxlength="4000"
-                        class="textarea textarea-bordered mt-1 w-full resize-y text-sm"
-                        placeholder="Private notes about this group"
-                      >{Map.get(@group_notes, group.id, "")}</textarea>
-                      <div class="mt-2 flex justify-end">
-                        <button type="submit" class="btn btn-sm">Save note</button>
-                      </div>
-                    </form>
-                  </div>
-                </details>
-
-                <form
-                  :if={addable_friends(@friends, group) != []}
-                  phx-submit="add_member"
-                  class="mt-3 flex gap-2"
-                >
-                  <input type="hidden" name="group" value={group.id} />
-                  <select name="user" class="select select-sm flex-1">
-                    <option :for={friend <- addable_friends(@friends, group)} value={friend.id}>
-                      {friend.display_name || friend.username} (@{friend.username})
-                    </option>
-                  </select>
-                  <button type="submit" class="btn btn-sm">Add</button>
-                </form>
-              </section>
-            </div>
-          </div>
-        </details>
-
-        <section class="rounded-lg border border-base-300 bg-base-100 p-4">
-          <h2 class="text-lg font-semibold">Add Friend</h2>
-          <p class="text-sm opacity-70">Use a local username or user@host from another instance.</p>
-          <form phx-submit="add_friend" class="mt-4 flex flex-col gap-2 sm:flex-row">
-            <input
-              type="text"
-              name="username"
-              value={@add_username}
-              placeholder="username or user@host"
-              class="input flex-1"
-              autocomplete="off"
-            />
-            <button type="submit" class="btn btn-primary">Send request</button>
-          </form>
-        </section>
-      </div>
-
-      <.profile_dialog
-        user={@selected_profile}
-        note={profile_note(@contact_notes, @selected_profile)}
-        editable={profile_editable?(@friends, @selected_profile)}
-      />
+        <.profile_dialog
+          user={@selected_profile}
+          note={profile_note(@contact_notes, @selected_profile)}
+          editable={profile_editable?(@friends, @selected_profile)}
+        />
       </div>
     </Layouts.app>
     """

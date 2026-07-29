@@ -79,10 +79,11 @@ defmodule VeejrWeb.ContactsLiveTest do
     assert has_element?(view, "#primary-navigation-links a[href='/history']", "History")
     assert has_element?(view, "#primary-navigation-links a[href='/watch']", "Watch")
     assert has_element?(view, "#primary-navigation-themes", "Themes")
+    assert has_element?(view, "#primary-navigation-links.app-menu-surface")
 
     assert has_element?(
              view,
-             "#primary-navigation-links #theme-system[data-phx-theme='system']",
+             "#primary-navigation-links #theme-system.theme-choice[data-phx-theme='system'][aria-pressed='false']",
              "System"
            )
 
@@ -106,6 +107,17 @@ defmodule VeejrWeb.ContactsLiveTest do
 
     refute has_element?(view, "header > div #theme-choices")
     refute has_element?(view, "header > nav")
+  end
+
+  test "labels the contacts appearance control and keeps its dropdown themeable", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/contacts")
+
+    assert has_element?(view, "label.contacts-theme-control", "Appearance")
+
+    assert has_element?(
+             view,
+             "label.contacts-theme-control #contacts-theme-select.contacts-theme-select[data-contacts-theme-select]"
+           )
   end
 
   test "shows a friend's uploaded image", %{conn: conn, friend: friend} do

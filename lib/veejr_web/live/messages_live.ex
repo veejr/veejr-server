@@ -42,45 +42,52 @@ defmodule VeejrWeb.MessagesLive do
             <div class="flex flex-wrap items-center gap-2">
               <div
                 id="chat-theme-picker"
-                class="chat-theme-picker flex items-center gap-1 rounded-full border border-base-300 bg-base-200 p-1"
+                class="chat-theme-picker flex flex-wrap items-center gap-1 rounded-2xl border border-base-300 bg-base-200 p-1.5"
                 role="group"
                 aria-label="Chat appearance"
               >
+                <span class="chat-theme-picker-label">
+                  <.icon name="hero-swatch" class="size-4" /> Appearance
+                </span>
                 <button
                   id="chat-theme-classic"
                   type="button"
                   data-chat-theme-option="classic"
                   aria-pressed="true"
-                  class="chat-theme-option rounded-full px-3 py-1.5 text-xs font-medium transition"
+                  class="chat-theme-option"
                 >
-                  Classic
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>Classic</span>
                 </button>
                 <button
                   id="chat-theme-salon"
                   type="button"
                   data-chat-theme-option="salon"
                   aria-pressed="false"
-                  class="chat-theme-option rounded-full px-3 py-1.5 text-xs font-medium transition"
+                  class="chat-theme-option"
                 >
-                  Salon
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>Salon</span>
                 </button>
                 <button
                   id="chat-theme-party"
                   type="button"
                   data-chat-theme-option="party"
                   aria-pressed="false"
-                  class="chat-theme-option rounded-full px-3 py-1.5 text-xs font-medium transition"
+                  class="chat-theme-option"
                 >
-                  Party
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>Party</span>
                 </button>
                 <button
                   id="chat-theme-comic"
                   type="button"
                   data-chat-theme-option="comic"
                   aria-pressed="false"
-                  class="chat-theme-option rounded-full px-3 py-1.5 text-xs font-medium transition"
+                  class="chat-theme-option"
                 >
-                  Comic
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>Comic</span>
                 </button>
               </div>
               <.link
@@ -765,7 +772,7 @@ defmodule VeejrWeb.MessagesLive do
               :if={!@selected_conversation && !@self_notes}
               class="flex flex-1 flex-col justify-end"
             >
-              <div class="mx-auto max-w-xl px-6 py-12 text-center">
+              <div class="messages-empty-state mx-auto max-w-xl px-6 py-12 text-center">
                 <.user_avatar
                   :if={selected_recipient_user(@selected_recipient)}
                   id="selected-recipient-avatar"
