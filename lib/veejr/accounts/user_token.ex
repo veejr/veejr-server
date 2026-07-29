@@ -17,6 +17,8 @@ defmodule Veejr.Accounts.UserToken do
     field :context, :string
     field :sent_to, :string
     field :authenticated_at, :utc_datetime
+    field :device_name, :string
+    field :last_used_at, :utc_datetime
     belongs_to :user, Veejr.Accounts.User
 
     timestamps(type: :utc_datetime, updated_at: false)
@@ -41,10 +43,19 @@ defmodule Veejr.Accounts.UserToken do
   and devices in the UI and allow users to explicitly expire any
   session they deem invalid.
   """
-  def build_session_token(user) do
+  def build_session_token(user, attrs \\ %{}) do
     token = :crypto.strong_rand_bytes(@rand_size)
     dt = user.authenticated_at || DateTime.utc_now(:second)
-    {token, %UserToken{token: token, context: "session", user_id: user.id, authenticated_at: dt}}
+
+    {token,
+     %UserToken{
+       token: token,
+       context: "session",
+       user_id: user.id,
+       authenticated_at: dt,
+       device_name: attrs[:device_name] || attrs["device_name"],
+       last_used_at: attrs[:last_used_at] || attrs["last_used_at"] || dt
+     }}
   end
 
   @doc """

@@ -217,6 +217,33 @@ defmodule VeejrWeb.MessagesLive do
                 New
               </button>
             </div>
+            <div
+              id="conversation-bulk-actions"
+              class="mb-3 flex items-center gap-1 rounded-xl bg-base-200 px-2 py-1.5"
+            >
+              <span class="mr-auto text-xs opacity-70">
+                {MapSet.size(@bulk_selected_conversations)} selected
+              </span>
+              <button
+                id="bulk-mark-conversations-read"
+                type="button"
+                phx-click="bulk_mark_read"
+                disabled={MapSet.size(@bulk_selected_conversations) == 0}
+                class="btn btn-ghost btn-xs"
+              >
+                <.icon name="hero-check" class="size-3.5" /> Read
+              </button>
+              <button
+                id="bulk-archive-conversations"
+                type="button"
+                phx-click="bulk_archive_conversations"
+                disabled={MapSet.size(@bulk_selected_conversations) == 0}
+                data-confirm="Archive the selected conversations?"
+                class="btn btn-ghost btn-xs"
+              >
+                <.icon name="hero-archive-box" class="size-3.5" /> Archive
+              </button>
+            </div>
             <p :if={@conversations == []} class="px-2 py-6 text-sm opacity-70">
               No conversations yet.
             </p>
@@ -231,6 +258,15 @@ defmodule VeejrWeb.MessagesLive do
                     "text-base-content hover:bg-base-200"
                 ]}
               >
+                <input
+                  id={"select-conversation-#{conv.key}"}
+                  type="checkbox"
+                  aria-label={"Select #{conversation_title(conv)}"}
+                  checked={MapSet.member?(@bulk_selected_conversations, conv.key)}
+                  phx-click="toggle_conversation_selection"
+                  phx-value-key={conv.key}
+                  class="checkbox checkbox-xs shrink-0"
+                />
                 <.user_avatar
                   :if={conv.avatar_user}
                   id={"rail-conversation-avatar-#{conv.key}"}
@@ -719,6 +755,7 @@ defmodule VeejrWeb.MessagesLive do
                   show_recipients={false}
                   selected_friend_ids={selected_friend_ids(@selected_conversation)}
                   selected_self={selected_self?(@selected_conversation)}
+                  draft_key={@selected_conversation.key}
                   submit_label={composer_submit_label(@selected_conversation)}
                 />
               </section>
@@ -761,6 +798,12 @@ defmodule VeejrWeb.MessagesLive do
                   selected_self={selected_recipient_self?(@selected_recipient)}
                   selected_friend_ids={selected_recipient_friend_ids(@selected_recipient)}
                   selected_group_ids={selected_recipient_group_ids(@selected_recipient)}
+                  draft_key={
+                    if(is_nil(@selected_recipient),
+                      do: "self-notes-new",
+                      else: "new-#{selected_recipient_title(@selected_recipient)}"
+                    )
+                  }
                   text_placeholder={
                     if(is_nil(@selected_recipient), do: "Take a note…", else: "Write a message…")
                   }
@@ -794,7 +837,8 @@ defmodule VeejrWeb.MessagesLive do
        message_limit: @message_page_size,
        self_note_limit: 50,
        self_notes: false,
-       self_note_envelopes: []
+       self_note_envelopes: [],
+       bulk_selected_conversations: MapSet.new()
      )
      |> refresh()}
   end
@@ -890,6 +934,53 @@ defmodule VeejrWeb.MessagesLive do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not archive that conversation.")}
+    end
+  end
+
+  def handle_event("toggle_conversation_selection", %{"key" => key}, socket) do
+    visible? = Enum.any?(socket.assigns.conversations, &(&1.key == key))
+
+    selected =
+      cond do
+        not visible? ->
+          socket.assigns.bulk_selected_conversations
+
+        MapSet.member?(socket.assigns.bulk_selected_conversations, key) ->
+          MapSet.delete(socket.assigns.bulk_selected_conversations, key)
+
+        true ->
+          MapSet.put(socket.assigns.bulk_selected_conversations, key)
+      end
+
+    {:noreply, assign(socket, :bulk_selected_conversations, selected)}
+  end
+
+  def handle_event("bulk_mark_read", _params, socket) do
+    keys = MapSet.to_list(socket.assigns.bulk_selected_conversations)
+
+    case Messaging.mark_conversations_read(socket.assigns.current_scope.user, keys) do
+      {:ok, count} ->
+        {:noreply,
+         socket
+         |> assign(:bulk_selected_conversations, MapSet.new())
+         |> put_flash(:info, "Marked #{count} encrypted item(s) read.")
+         |> refresh()}
+    end
+  end
+
+  def handle_event("bulk_archive_conversations", _params, socket) do
+    keys = MapSet.to_list(socket.assigns.bulk_selected_conversations)
+
+    case Messaging.archive_conversations(socket.assigns.current_scope.user, keys) do
+      {:ok, archives} ->
+        {:noreply,
+         socket
+         |> assign(:bulk_selected_conversations, MapSet.new())
+         |> put_flash(:info, "Archived #{length(archives)} conversation(s).")
+         |> push_patch(to: ~p"/messages", replace: true)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not archive those conversations.")}
     end
   end
 

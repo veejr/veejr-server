@@ -378,6 +378,42 @@ defmodule Veejr.AccountsTest do
       assert user_token.authenticated_at == user.authenticated_at
       assert DateTime.compare(user_token.inserted_at, user.authenticated_at) == :gt
     end
+
+    test "records and manages browser and Android device sessions", %{user: user} do
+      token =
+        Accounts.generate_user_session_token(user, %{
+          device_name: "Firefox on Linux",
+          last_used_at: ~U[2026-07-28 20:00:00Z]
+        })
+
+      web_id = Accounts.user_session_id(token)
+
+      {:ok, android, _tokens} =
+        Accounts.create_api_device_session(user, %{
+          "device_name" => "Personal phone",
+          "platform" => "android",
+          "app_version" => "1.2.3"
+        })
+
+      scope = Accounts.Scope.for_user(user)
+      sessions = Accounts.list_device_sessions(scope, web_id)
+
+      assert Enum.any?(
+               sessions,
+               &(&1.kind == "web" and &1.name == "Firefox on Linux" and &1.current)
+             )
+
+      assert Enum.any?(
+               sessions,
+               &(&1.kind == "android" and &1.id == android.id and &1.name == "Personal phone")
+             )
+
+      assert {:error, :current_session} =
+               Accounts.revoke_device_session(scope, "web", web_id, web_id)
+
+      assert :ok = Accounts.revoke_device_session(scope, "android", android.id, web_id)
+      refute Enum.any?(Accounts.list_device_sessions(scope, web_id), &(&1.kind == "android"))
+    end
   end
 
   describe "get_user_by_session_token/1" do

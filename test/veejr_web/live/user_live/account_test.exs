@@ -56,6 +56,32 @@ defmodule VeejrWeb.UserLive.AccountTest do
     assert has_element?(view, "#account-fcm-status", "Not registered")
   end
 
+  test "lists and revokes an Android device session", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, android, _tokens} =
+      Accounts.create_api_device_session(user, %{
+        "device_name" => "Travel phone",
+        "platform" => "android",
+        "app_version" => "2.0"
+      })
+
+    {:ok, view, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/account")
+
+    assert has_element?(view, "#account-device-sessions")
+    assert has_element?(view, "#device-session-list li", "Current")
+    assert has_element?(view, "#device-session-android-#{android.id}", "Travel phone")
+
+    view
+    |> element("#revoke-device-session-android-#{android.id}")
+    |> render_click()
+
+    refute has_element?(view, "#device-session-android-#{android.id}")
+  end
+
   test "reports an ordinary member role", %{conn: conn} do
     _admin = user_fixture()
     member = user_fixture()

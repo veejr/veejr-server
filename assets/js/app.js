@@ -42,6 +42,41 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {...colocatedHooks, ...veejrHooks, CallSession, YouTubeWatch, WatchVoice},
 })
 
+let connectionStatusTimer
+const setConnectionStatus = (state) => {
+  clearTimeout(connectionStatusTimer)
+  const banner = document.querySelector("#connection-status")
+  if (!banner) return
+
+  if (state === "connected") {
+    banner.classList.add("hidden")
+    banner.classList.remove("flex")
+    return
+  }
+
+  connectionStatusTimer = setTimeout(() => {
+    const text = banner.querySelector("[data-role='connection-status-text']")
+    if (text) {
+      text.textContent =
+        state === "offline"
+          ? "You are offline. Drafts remain encrypted on this device."
+          : "Reconnecting… changes will continue when the connection returns."
+    }
+    banner.classList.remove("hidden")
+    banner.classList.add("flex")
+  }, state === "offline" ? 0 : 600)
+}
+
+window.addEventListener("offline", () => setConnectionStatus("offline"))
+window.addEventListener("online", () => setConnectionStatus("reconnecting"))
+liveSocket.socket.onOpen(() => setConnectionStatus("connected"))
+liveSocket.socket.onError(() =>
+  setConnectionStatus(navigator.onLine ? "reconnecting" : "offline")
+)
+liveSocket.socket.onClose(() =>
+  setConnectionStatus(navigator.onLine ? "reconnecting" : "offline")
+)
+
 // Incoming-call banners can appear on any authenticated page.
 installRingBanner()
 installCallScheduleNotifications()

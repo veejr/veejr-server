@@ -1,6 +1,6 @@
 # Notes to yourself — Keep-style board specification
 
-**Status:** implemented web baseline plus forward-looking requirements (v0.3.54)
+**Status:** implemented web baseline plus forward-looking requirements (v0.3.55)
 **Audience:** Phoenix/LiveView, web client, Android, API, QA, and security reviewers  
 **Primary surface:** the existing **Notes to yourself** self-conversation in `/messages`
 

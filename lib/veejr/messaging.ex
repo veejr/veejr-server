@@ -881,6 +881,37 @@ defmodule Veejr.Messaging do
     :ok
   end
 
+  @doc "Marks accepted incoming items in the selected conversations as read."
+  def mark_conversations_read(%User{id: id}, thread_keys) when is_list(thread_keys) do
+    keys = thread_keys |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.take(100)
+    now = DateTime.utc_now(:second)
+
+    {count, _} =
+      from(e in Envelope,
+        left_join: n in assoc(e, :notification),
+        where:
+          e.recipient_id == ^id and e.sender_id != ^id and e.thread_key in ^keys and
+            n.state == "accepted" and is_nil(e.read_at)
+      )
+      |> Repo.update_all(set: [read_at: now])
+
+    {:ok, count}
+  end
+
+  @doc "Archives several owner-visible conversation instances as one operation."
+  def archive_conversations(%User{} = user, thread_keys) when is_list(thread_keys) do
+    keys = thread_keys |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.take(100)
+
+    Repo.transaction(fn ->
+      Enum.map(keys, fn key ->
+        case archive_conversation(user, key) do
+          {:ok, archive} -> archive
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+    end)
+  end
+
   @doc """
   The newest page of one conversation's envelopes — all kinds, returned
   oldest-first for display. `:limit` bounds the page; older rows load by
@@ -1214,7 +1245,7 @@ defmodule Veejr.Messaging do
   @doc """
   Metadata the browser needs to re-encrypt a sent batch edit.
   """
-  def editable_batch(%User{id: user_id}, public_id) when is_binary(public_id) do
+  def editable_batch(%User{id: user_id} = user, public_id) when is_binary(public_id) do
     with %Envelope{} = envelope <- Repo.get_by(Envelope, public_id: public_id, sender_id: user_id) do
       copies =
         from(e in Envelope,
@@ -1231,7 +1262,18 @@ defmodule Veejr.Messaging do
         )
         |> Repo.all()
 
-      {:ok, %{batch_id: envelope.batch_id, copies: copies}}
+      {:ok,
+       %{
+         batch_id: envelope.batch_id,
+         copies: copies,
+         current: %{
+           public_id: envelope.public_id,
+           ciphertext: envelope.ciphertext,
+           nonce: envelope.nonce,
+           peer_key: peer_key(envelope, user),
+           updated_at: DateTime.to_iso8601(envelope.updated_at)
+         }
+       }}
     else
       nil -> {:error, :not_found}
     end

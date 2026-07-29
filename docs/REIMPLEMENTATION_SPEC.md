@@ -1,7 +1,7 @@
 # Veejr reimplementation specification
 
 Status: normative baseline for a compatible reimplementation  
-Baseline: veejr-server v0.3.54 (release tag `v0.3.54`) and client protocol v1
+Baseline: veejr-server v0.3.55 (release tag `v0.3.55`) and client protocol v1
 Date: 2026-07-26
 
 ## 1. Purpose

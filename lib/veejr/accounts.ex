@@ -530,8 +530,8 @@ defmodule Veejr.Accounts do
   @doc """
   Generates a session token.
   """
-  def generate_user_session_token(user) do
-    {token, user_token} = UserToken.build_session_token(user)
+  def generate_user_session_token(user, attrs \\ %{}) do
+    {token, user_token} = UserToken.build_session_token(user, attrs)
     Repo.insert!(user_token)
     token
   end
@@ -643,6 +643,105 @@ defmodule Veejr.Accounts do
     :ok
   end
 
+  def user_session_id(token) when is_binary(token) do
+    from(session in UserToken,
+      where: session.token == ^token and session.context == "session",
+      select: session.id
+    )
+    |> Repo.one()
+  end
+
+  def user_session_id(_token), do: nil
+
+  def touch_user_session_token(token) when is_binary(token) do
+    cutoff = DateTime.add(DateTime.utc_now(:second), -5, :minute)
+
+    from(session in UserToken,
+      where:
+        session.token == ^token and session.context == "session" and
+          (is_nil(session.last_used_at) or session.last_used_at < ^cutoff)
+    )
+    |> Repo.update_all(set: [last_used_at: DateTime.utc_now(:second)])
+
+    :ok
+  end
+
+  def list_device_sessions(%Scope{user: %User{id: user_id}}, current_web_session_id \\ nil) do
+    web =
+      from(session in UserToken,
+        where: session.user_id == ^user_id and session.context == "session",
+        order_by: [desc: session.last_used_at, desc: session.inserted_at]
+      )
+      |> Repo.all()
+      |> Enum.map(fn session ->
+        %{
+          id: session.id,
+          kind: "web",
+          name: session.device_name || "Web browser",
+          platform: "Browser",
+          app_version: nil,
+          inserted_at: session.inserted_at,
+          last_used_at: session.last_used_at || session.inserted_at,
+          current: session.id == current_web_session_id
+        }
+      end)
+
+    android =
+      from(session in ApiDeviceSession,
+        where: session.user_id == ^user_id,
+        order_by: [desc: session.last_used_at, desc: session.inserted_at]
+      )
+      |> Repo.all()
+      |> Enum.map(fn session ->
+        %{
+          id: session.id,
+          kind: "android",
+          name: session.device_name,
+          platform: "Android",
+          app_version: session.app_version,
+          inserted_at: session.inserted_at,
+          last_used_at: session.last_used_at,
+          current: false
+        }
+      end)
+
+    web ++ android
+  end
+
+  def revoke_device_session(
+        %Scope{user: %User{id: user_id}},
+        "web",
+        session_id,
+        current_web_session_id
+      ) do
+    with {:ok, id} <- parse_positive_id(session_id),
+         false <- id == current_web_session_id do
+      {count, _} =
+        from(session in UserToken,
+          where:
+            session.id == ^id and session.user_id == ^user_id and
+              session.context == "session"
+        )
+        |> Repo.delete_all()
+
+      if count == 1, do: :ok, else: {:error, :not_found}
+    else
+      true -> {:error, :current_session}
+      :error -> {:error, :not_found}
+    end
+  end
+
+  def revoke_device_session(%Scope{} = scope, "android", session_id, _current_web_session_id) do
+    with {:ok, id} <- parse_positive_id(session_id) do
+      delete_api_device_session(scope, id)
+    else
+      :error -> {:error, :not_found}
+    end
+  end
+
+  def revoke_device_session(_scope, _kind, _session_id, _current_web_session_id),
+    do: {:error, :not_found}
+
   ## Native API device sessions
 
   def create_api_device_session(%User{} = user, attrs) when is_map(attrs) do
@@ -744,6 +843,17 @@ defmodule Veejr.Accounts do
     |> String.trim()
     |> String.downcase()
   end
+
+  defp parse_positive_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+
+  defp parse_positive_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed, ""} when parsed > 0 -> {:ok, parsed}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_id(_id), do: :error
 
   defp revoke_reused_refresh_token(token_hash) do
     case Repo.get_by(ApiRefreshTokenHistory, token_hash: token_hash) do

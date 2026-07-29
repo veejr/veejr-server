@@ -80,6 +80,8 @@ defmodule VeejrWeb.UserAuth do
   def fetch_current_scope_for_user(conn, _opts) do
     with {token, conn} <- ensure_user_token(conn),
          {user, token_inserted_at} <- Accounts.get_user_by_session_token(token) do
+      :ok = Accounts.touch_user_session_token(token)
+
       conn
       |> assign(:current_scope, Scope.for_user(user))
       |> maybe_reissue_user_session_token(user, token_inserted_at)
@@ -122,7 +124,12 @@ defmodule VeejrWeb.UserAuth do
   # function will clear the session to avoid fixation attacks. See the
   # renew_session function to customize this behaviour.
   defp create_or_extend_session(conn, user, params) do
-    token = Accounts.generate_user_session_token(user)
+    token =
+      Accounts.generate_user_session_token(user, %{
+        device_name: session_device_name(conn),
+        last_used_at: DateTime.utc_now(:second)
+      })
+
     remember_me = get_session(conn, :user_remember_me)
 
     conn
@@ -280,7 +287,8 @@ defmodule VeejrWeb.UserAuth do
   defp path_from_uri(_uri), do: ~p"/users/settings"
 
   defp mount_current_scope(socket, session) do
-    Phoenix.Component.assign_new(socket, :current_scope, fn ->
+    socket
+    |> Phoenix.Component.assign_new(:current_scope, fn ->
       {user, _} =
         if user_token = session["user_token"] do
           Accounts.get_user_by_session_token(user_token)
@@ -288,6 +296,34 @@ defmodule VeejrWeb.UserAuth do
 
       Scope.for_user(user)
     end)
+    |> Phoenix.Component.assign_new(:current_session_id, fn ->
+      Accounts.user_session_id(session["user_token"])
+    end)
+  end
+
+  defp session_device_name(conn) do
+    user_agent = conn |> get_req_header("user-agent") |> List.first() || ""
+
+    browser =
+      cond do
+        String.contains?(user_agent, "Edg/") -> "Edge"
+        String.contains?(user_agent, "Firefox/") -> "Firefox"
+        String.contains?(user_agent, "Chrome/") -> "Chrome"
+        String.contains?(user_agent, "Safari/") -> "Safari"
+        true -> "Web browser"
+      end
+
+    platform =
+      cond do
+        String.contains?(user_agent, "Android") -> "Android"
+        String.contains?(user_agent, ["iPhone", "iPad"]) -> "iOS"
+        String.contains?(user_agent, "Windows") -> "Windows"
+        String.contains?(user_agent, "Mac OS") -> "macOS"
+        String.contains?(user_agent, "Linux") -> "Linux"
+        true -> nil
+      end
+
+    if platform, do: "#{browser} on #{platform}", else: browser
   end
 
   @doc "Returns the path to redirect to after log in."

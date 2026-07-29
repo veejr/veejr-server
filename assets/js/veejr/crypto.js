@@ -111,6 +111,27 @@ export function decryptBlob(cipherBytes, keyB64, nonceB64) {
   return nacl.secretbox.open(cipherBytes, fromB64(nonceB64), fromB64(keyB64))
 }
 
+// Encrypts small browser-local JSON documents, such as message drafts, with
+// the unlocked identity secret. Persisted values remain opaque while locked.
+export function sealLocal(payload, secretKey) {
+  const nonce = crypto.getRandomValues(new Uint8Array(nacl.secretbox.nonceLength))
+  const ciphertext = nacl.secretbox(te.encode(JSON.stringify(payload)), nonce, secretKey)
+  return {ciphertext: toB64(ciphertext), nonce: toB64(nonce)}
+}
+
+export function openLocal(value, secretKey) {
+  try {
+    const plain = nacl.secretbox.open(
+      fromB64(value.ciphertext),
+      fromB64(value.nonce),
+      secretKey
+    )
+    return plain ? JSON.parse(td.decode(plain)) : null
+  } catch {
+    return null
+  }
+}
+
 // --- Session key cache -------------------------------------------------
 //
 // The unlocked secret key lives in sessionStorage only: it survives page

@@ -228,6 +228,43 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#message-composer [data-role='video-facing-toggle']")
     assert has_element?(view, "#message-composer [data-role='video-status'][aria-live='polite']")
     assert has_element?(view, "#message-composer [data-role='video-preview']")
+    assert has_element?(view, "#connection-status[role='status'][aria-live='polite']")
+  end
+
+  test "renders encrypted draft, reply, expiry, and bulk-action affordances", %{
+    conn: conn,
+    user: user
+  } do
+    friend = user_fixture()
+    {:ok, request} = Social.send_friend_request(user, friend.username)
+    {:ok, _friendship} = Social.accept_friend_request(friend, request.id)
+
+    {:ok, batch_id, []} =
+      Messaging.send_batch(user, "message", [
+        %{"recipient_id" => friend.id, "ciphertext" => "friend", "nonce" => "nonce-1"},
+        %{"recipient_id" => user.id, "ciphertext" => "self", "nonce" => "nonce-2"}
+      ])
+
+    envelope =
+      Repo.get_by!(Veejr.Messaging.Envelope, batch_id: batch_id, recipient_id: user.id)
+
+    key = envelope.thread_key
+    {:ok, view, _html} = live(conn, "/messages?conversation=#{key}")
+
+    assert has_element?(view, "#message-composer[data-draft-key='#{key}']")
+    assert has_element?(view, "#message-composer [data-role='draft-status'][aria-live='polite']")
+    assert has_element?(view, "#message-composer [data-role='reply-preview']")
+    assert has_element?(view, "#message-composer [data-role='expiry-summary']")
+    assert has_element?(view, "#message-shell-#{envelope.public_id} [data-role='reply-message']")
+    assert has_element?(view, "#conversation-bulk-actions", "0 selected")
+
+    view
+    |> element("#select-conversation-#{key}")
+    |> render_click()
+
+    assert has_element?(view, "#conversation-bulk-actions", "1 selected")
+    assert has_element?(view, "#bulk-mark-conversations-read:not([disabled])")
+    assert has_element?(view, "#bulk-archive-conversations:not([disabled])")
   end
 
   test "opens a new conversation with multiple recipients preselected", %{

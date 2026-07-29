@@ -77,6 +77,15 @@ defmodule VeejrWeb.Layouts do
 
   def app(assigns) do
     ~H"""
+    <div
+      id="connection-status"
+      role="status"
+      aria-live="polite"
+      class="fixed inset-x-0 top-0 z-[100] hidden items-center justify-center gap-2 bg-warning px-4 py-2 text-center text-sm font-medium text-warning-content shadow-lg"
+    >
+      <.icon name="hero-signal-slash" class="size-4" />
+      <span data-role="connection-status-text">Connection interrupted</span>
+    </div>
     <header class="sticky top-0 z-40 flex min-h-16 flex-wrap items-center gap-2 border-b border-base-300 bg-base-100/95 px-4 py-2 shadow-sm backdrop-blur sm:flex-nowrap sm:px-6 lg:px-8">
       <details
         :if={@current_scope}
@@ -157,6 +166,15 @@ defmodule VeejrWeb.Layouts do
                 <.icon name="hero-play-circle" class="size-4" /> Watch
               </.link>
             </li>
+            <li
+              id="primary-navigation-themes"
+              class="menu-title mt-2 border-t border-base-300 px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55"
+            >
+              Themes
+            </li>
+            <li class="px-1 pb-1">
+              <.theme_toggle />
+            </li>
           </ul>
         </nav>
         <script :type={Phoenix.LiveView.ColocatedHook} name=".NavigationMenu">
@@ -192,7 +210,6 @@ defmodule VeejrWeb.Layouts do
       </.link>
       <div class="ml-auto shrink-0">
         <ul class="flex px-1 space-x-2 items-center">
-          <li><.theme_toggle /></li>
           <%= if @current_scope do %>
             <li>
               <.link
@@ -280,51 +297,72 @@ defmodule VeejrWeb.Layouts do
   end
 
   @doc """
-  Theme picker for the themes defined in app.css: the Classic family
-  (system-following light/dark, the app's original look) plus the Art Deco
-  theme from the design handoff.
+  Labeled theme choices for the hamburger navigation. The options cover the
+  Classic family (system-following light/dark) plus the Art Deco theme.
 
   See <head> in root.html.heex which applies the theme before page load.
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/4 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/4 [[data-theme=dark]_&]:left-2/4 [[data-theme=artdeco]_&]:left-3/4 [[data-theme-source=system]_&]:!left-0 transition-[left]" />
-
+    <div id="theme-choices" class="grid grid-cols-2 gap-1" aria-label="Theme choices">
       <button
-        class="flex p-2 cursor-pointer w-1/4"
-        phx-click={JS.dispatch("phx:set-theme")}
+        id="theme-system"
+        type="button"
+        class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition hover:bg-base-200 [[data-theme-source=system]_&]:bg-primary/10 [[data-theme-source=system]_&]:text-primary"
+        phx-click={
+          JS.dispatch("phx:set-theme")
+          |> JS.remove_attribute("open", to: "#primary-navigation-menu")
+        }
         data-phx-theme="system"
         title="Match system light or dark"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-computer-desktop-micro" class="size-4" />
+        <span>System</span>
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/4"
-        phx-click={JS.dispatch("phx:set-theme")}
+        id="theme-light"
+        type="button"
+        class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition hover:bg-base-200 [[data-theme=light]_&]:bg-primary/10 [[data-theme=light]_&]:text-primary"
+        phx-click={
+          JS.dispatch("phx:set-theme")
+          |> JS.remove_attribute("open", to: "#primary-navigation-menu")
+        }
         data-phx-theme="light"
         title="Light"
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-sun-micro" class="size-4" />
+        <span>Light</span>
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/4"
-        phx-click={JS.dispatch("phx:set-theme")}
+        id="theme-dark"
+        type="button"
+        class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition hover:bg-base-200 [[data-theme=dark]_&]:bg-primary/10 [[data-theme=dark]_&]:text-primary"
+        phx-click={
+          JS.dispatch("phx:set-theme")
+          |> JS.remove_attribute("open", to: "#primary-navigation-menu")
+        }
         data-phx-theme="dark"
         title="Dark"
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-moon-micro" class="size-4" />
+        <span>Dark</span>
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/4"
-        phx-click={JS.dispatch("phx:set-theme")}
+        id="theme-artdeco"
+        type="button"
+        class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition hover:bg-base-200 [[data-theme=artdeco]_&]:bg-primary/10 [[data-theme=artdeco]_&]:text-primary"
+        phx-click={
+          JS.dispatch("phx:set-theme")
+          |> JS.remove_attribute("open", to: "#primary-navigation-menu")
+        }
         data-phx-theme="artdeco"
         title="Art Deco"
       >
-        <.icon name="hero-sparkles-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-sparkles-micro" class="size-4" />
+        <span>Art Deco</span>
       </button>
     </div>
     """

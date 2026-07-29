@@ -178,6 +178,67 @@ defmodule VeejrWeb.UserLive.Account do
         </.link>
       </section>
 
+      <section
+        id="account-device-sessions"
+        class="rounded-2xl border border-base-300/70 bg-base-200/40 p-5"
+      >
+        <div class="mb-4 flex items-center gap-3">
+          <span class="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <.icon name="hero-device-phone-mobile" class="size-5" />
+          </span>
+          <div>
+            <h2 class="font-semibold">Signed-in devices</h2>
+            <p class="text-sm text-base-content/60">
+              Review browser and Android sessions and revoke devices you no longer use.
+            </p>
+          </div>
+        </div>
+
+        <ul id="device-session-list" class="space-y-2">
+          <li
+            :for={session <- @device_sessions}
+            id={"device-session-#{session.kind}-#{session.id}"}
+            class="flex flex-wrap items-center gap-3 rounded-xl bg-base-100/80 px-3 py-3"
+          >
+            <span class="flex size-9 items-center justify-center rounded-full bg-base-200">
+              <.icon
+                name={
+                  if(session.kind == "android",
+                    do: "hero-device-phone-mobile",
+                    else: "hero-computer-desktop"
+                  )
+                }
+                class="size-4"
+              />
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium">
+                {session.name}
+                <span :if={session.current} class="badge badge-primary badge-xs ml-1">Current</span>
+              </p>
+              <p class="text-xs opacity-60">
+                {session.platform}{if(session.app_version, do: " · #{session.app_version}")} · active {Calendar.strftime(
+                  session.last_used_at,
+                  "%b %d, %Y · %H:%M UTC"
+                )}
+              </p>
+            </div>
+            <button
+              :if={!session.current}
+              id={"revoke-device-session-#{session.kind}-#{session.id}"}
+              type="button"
+              phx-click="revoke_device_session"
+              phx-value-kind={session.kind}
+              phx-value-id={session.id}
+              data-confirm="Sign this device out?"
+              class="btn btn-ghost btn-sm text-error"
+            >
+              Revoke
+            </button>
+          </li>
+        </ul>
+      </section>
+
       <section class="rounded-2xl border border-base-300/70 bg-base-200/40 p-5">
         <div class="flex items-center gap-3">
           <span class="flex size-9 items-center justify-center rounded-full bg-base-100 text-base-content/70">
@@ -203,7 +264,40 @@ defmodule VeejrWeb.UserLive.Account do
      assign(socket,
        page_title: "Account",
        instance_admin: Veejr.Accounts.instance_admin?(user),
-       fcm_device_count: Push.android_registration_count(user)
+       fcm_device_count: Push.android_registration_count(user),
+       device_sessions:
+         Veejr.Accounts.list_device_sessions(
+           socket.assigns.current_scope,
+           socket.assigns.current_session_id
+         )
      )}
+  end
+
+  @impl true
+  def handle_event("revoke_device_session", %{"kind" => kind, "id" => id}, socket) do
+    case Veejr.Accounts.revoke_device_session(
+           socket.assigns.current_scope,
+           kind,
+           id,
+           socket.assigns.current_session_id
+         ) do
+      :ok ->
+        {:noreply,
+         socket
+         |> assign(
+           :device_sessions,
+           Veejr.Accounts.list_device_sessions(
+             socket.assigns.current_scope,
+             socket.assigns.current_session_id
+           )
+         )
+         |> put_flash(:info, "Device signed out.")}
+
+      {:error, :current_session} ->
+        {:noreply, put_flash(socket, :error, "Use Log out to end this browser session.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "That device session was not found.")}
+    end
   end
 end

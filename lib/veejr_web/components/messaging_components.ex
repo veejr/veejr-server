@@ -133,6 +133,7 @@ defmodule VeejrWeb.MessagingComponents do
   attr :surface, :string, default: "card"
   attr :show_text, :boolean, default: true
   attr :show_files, :boolean, default: true
+  attr :draft_key, :string, default: nil
 
   attr :text_placeholder, :string,
     default: "Write something… it is encrypted before it leaves this browser."
@@ -160,6 +161,7 @@ defmodule VeejrWeb.MessagingComponents do
       data-my-key={@user.public_key}
       data-kind={@kind}
       data-payload={@payload}
+      data-draft-key={@draft_key}
       class={[
         "space-y-3",
         @surface == "messages" &&
@@ -169,6 +171,24 @@ defmodule VeejrWeb.MessagingComponents do
       ]}
     >
       <p data-role="error" class="hidden text-error text-sm"></p>
+      <div
+        :if={@kind == "message"}
+        data-role="reply-preview"
+        class="hidden flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-3 py-2"
+      >
+        <div class="min-w-0 flex-1 border-l-2 border-primary pl-3">
+          <p data-role="reply-from" class="truncate text-xs font-semibold text-primary"></p>
+          <p data-role="reply-text" class="truncate text-xs opacity-70"></p>
+        </div>
+        <button
+          type="button"
+          data-role="cancel-reply"
+          aria-label="Cancel reply"
+          class="rounded-full p-1 transition hover:bg-base-300"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
       <div
         :if={@kind != "self_note"}
         data-role="message-options"
@@ -201,6 +221,9 @@ defmodule VeejrWeb.MessagingComponents do
             />
           </label>
         </div>
+        <p data-role="expiry-summary" class="mt-3 text-xs leading-5 opacity-70">
+          No expiry or display limit. Limits cannot revoke content a recipient has already saved.
+        </p>
       </div>
 
       <input
@@ -566,6 +589,7 @@ defmodule VeejrWeb.MessagingComponents do
         class="px-2 text-[0.7rem] opacity-50"
       >
         Enter to send · Shift+Enter for a new line
+        <span data-role="draft-status" class="hidden" aria-live="polite"></span>
       </p>
 
       <div
@@ -646,8 +670,9 @@ defmodule VeejrWeb.MessagingComponents do
     ~H"""
     <div
       id={"message-shell-#{@envelope.public_id}"}
-      phx-hook={if(@mine, do: "MessageBubble", else: nil)}
+      phx-hook="MessageBubble"
       data-message-mine={to_string(@mine)}
+      data-message-sender={Veejr.Social.Address.handle(@envelope.sender)}
       class={["flex", @mine && "justify-end", !@mine && "items-start gap-2"]}
     >
       <.user_avatar
@@ -727,6 +752,15 @@ defmodule VeejrWeb.MessagingComponents do
             <.icon name="hero-eye" class="inline size-3.5" /> {@envelope.max_displays -
               @envelope.display_count}
           </span>
+          <button
+            type="button"
+            data-role="reply-message"
+            title="Reply"
+            aria-label="Reply"
+            class="ml-1 rounded-full p-1 transition hover:bg-base-300 hover:opacity-100"
+          >
+            <.icon name="hero-arrow-uturn-left" class="size-3.5" />
+          </button>
           <button
             :if={@mine}
             type="button"

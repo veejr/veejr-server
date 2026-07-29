@@ -78,6 +78,33 @@ defmodule VeejrWeb.ContactsLiveTest do
     assert has_element?(view, "#primary-navigation-links a[href='/map']", "Map")
     assert has_element?(view, "#primary-navigation-links a[href='/history']", "History")
     assert has_element?(view, "#primary-navigation-links a[href='/watch']", "Watch")
+    assert has_element?(view, "#primary-navigation-themes", "Themes")
+
+    assert has_element?(
+             view,
+             "#primary-navigation-links #theme-system[data-phx-theme='system']",
+             "System"
+           )
+
+    assert has_element?(
+             view,
+             "#primary-navigation-links #theme-light[data-phx-theme='light']",
+             "Light"
+           )
+
+    assert has_element?(
+             view,
+             "#primary-navigation-links #theme-dark[data-phx-theme='dark']",
+             "Dark"
+           )
+
+    assert has_element?(
+             view,
+             "#primary-navigation-links #theme-artdeco[data-phx-theme='artdeco']",
+             "Art Deco"
+           )
+
+    refute has_element?(view, "header > div #theme-choices")
     refute has_element?(view, "header > nav")
   end
 

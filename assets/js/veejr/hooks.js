@@ -16,6 +16,8 @@ import {
   openFrom,
   encryptBlob,
   decryptBlob,
+  sealLocal,
+  openLocal,
 } from "./crypto.js"
 import {ensureLeaflet} from "./map_hook.js"
 import {unzipSync, strFromU8} from "../../vendor/fflate.js"
@@ -2232,6 +2234,27 @@ export const Composer = {
     this.recordedVideo = []
     this.videoFacingMode = "user"
     this.textEl = this.el.querySelector("[data-role=text]")
+    this.restoreDraft()
+
+    this.onDraftInput = () => {
+      clearTimeout(this.draftTimer)
+      this.draftTimer = setTimeout(() => this.saveDraft(), 250)
+    }
+    this.el.addEventListener("input", this.onDraftInput)
+    this.el.addEventListener("change", this.onDraftInput)
+
+    this.onReplyMessage = ({detail}) => {
+      if (!detail?.publicId || this.el.dataset.kind !== "message") return
+      this.replyTo = {
+        id: detail.publicId,
+        from: String(detail.from || ""),
+        text: String(detail.text || "").slice(0, 500),
+      }
+      this.renderReplyPreview()
+      this.saveDraft()
+      this.textEl?.focus()
+    }
+    window.addEventListener("veejr:reply-message", this.onReplyMessage)
 
     this.onTextKeydown = (e) => {
       if (e.key !== "Enter" || e.shiftKey || e.isComposing) return
@@ -2293,6 +2316,13 @@ export const Composer = {
       if (discardVideo && this.el.contains(discardVideo)) {
         e.preventDefault()
         this.discardVideo(parseInt(discardVideo.dataset.index))
+        return
+      }
+
+      const cancelReply = e.target.closest("[data-role=cancel-reply]")
+      if (cancelReply && this.el.contains(cancelReply)) {
+        e.preventDefault()
+        this.clearReply()
       }
     }
 
@@ -2338,6 +2368,7 @@ export const Composer = {
   },
 
   destroyed() {
+    clearTimeout(this.draftTimer)
     clearTimeout(this.videoDurationTimer)
     if (this.mediaRecorder && this.mediaRecorder.state === "recording") this.mediaRecorder.stop()
     this.stopMediaTracks()
@@ -2345,9 +2376,114 @@ export const Composer = {
     if (this.onDocumentClick) document.removeEventListener("click", this.onDocumentClick)
     if (this.onDocumentKeydown) document.removeEventListener("keydown", this.onDocumentKeydown)
     if (this.textEl) this.textEl.removeEventListener("keydown", this.onTextKeydown)
+    if (this.onDraftInput) {
+      this.el.removeEventListener("input", this.onDraftInput)
+      this.el.removeEventListener("change", this.onDraftInput)
+    }
+    if (this.onReplyMessage) window.removeEventListener("veejr:reply-message", this.onReplyMessage)
     if (this.emojiMenu && this.emojiMenu.parentElement === document.body) this.emojiMenu.remove()
     this.recordedAudio.forEach((entry) => URL.revokeObjectURL(entry.url))
     this.recordedVideo.forEach((entry) => URL.revokeObjectURL(entry.url))
+  },
+
+  draftStorageKey() {
+    const {userId, kind, draftKey} = this.el.dataset
+    const context = draftKey || `${window.location.pathname}${window.location.search}`
+    return `veejr:draft:${userId}:${kind}:${context}`
+  },
+
+  restoreDraft() {
+    const secret = getSecretKey(this.el.dataset.userId)
+    if (!secret) return
+
+    try {
+      const stored = JSON.parse(localStorage.getItem(this.draftStorageKey()) || "null")
+      const draft = stored && openLocal(stored, secret)
+      if (!draft) return
+
+      const text = this.el.querySelector("[data-role=text]")
+      const ttl = this.el.querySelector("[data-role=ttl]")
+      const displays = this.el.querySelector("[data-role=max-displays]")
+      if (text && typeof draft.text === "string") text.value = draft.text
+      if (ttl && typeof draft.ttl === "string") ttl.value = draft.ttl
+      if (displays && typeof draft.maxDisplays === "string") displays.value = draft.maxDisplays
+      if (draft.replyTo?.id) this.replyTo = draft.replyTo
+      this.renderReplyPreview()
+      this.renderExpirySummary()
+      this.setDraftStatus("Draft restored")
+    } catch {
+      localStorage.removeItem(this.draftStorageKey())
+    }
+  },
+
+  saveDraft() {
+    const secret = getSecretKey(this.el.dataset.userId)
+    if (!secret) return
+
+    const text = this.el.querySelector("[data-role=text]")?.value || ""
+    const ttl = this.el.querySelector("[data-role=ttl]")?.value || ""
+    const maxDisplays = this.el.querySelector("[data-role=max-displays]")?.value || ""
+    const hasDraft = text.trim() || ttl || maxDisplays || this.replyTo
+
+    if (!hasDraft) {
+      this.clearDraft()
+      return
+    }
+
+    localStorage.setItem(
+      this.draftStorageKey(),
+      JSON.stringify(
+        sealLocal({v: 1, text, ttl, maxDisplays, replyTo: this.replyTo || null}, secret)
+      )
+    )
+    this.setDraftStatus("Draft saved on this device")
+    this.renderExpirySummary()
+  },
+
+  clearDraft() {
+    localStorage.removeItem(this.draftStorageKey())
+    this.setDraftStatus("")
+  },
+
+  setDraftStatus(message) {
+    const status = this.el.querySelector("[data-role=draft-status]")
+    if (!status) return
+    status.textContent = message
+    status.classList.toggle("hidden", !message)
+  },
+
+  renderReplyPreview() {
+    const preview = this.el.querySelector("[data-role=reply-preview]")
+    if (!preview) return
+    preview.classList.toggle("hidden", !this.replyTo)
+    const from = preview.querySelector("[data-role=reply-from]")
+    const text = preview.querySelector("[data-role=reply-text]")
+    if (from) from.textContent = this.replyTo?.from ? `Replying to ${this.replyTo.from}` : "Replying"
+    if (text) text.textContent = this.replyTo?.text || "Encrypted message"
+  },
+
+  clearReply() {
+    this.replyTo = null
+    this.renderReplyPreview()
+    this.saveDraft()
+  },
+
+  renderExpirySummary() {
+    const summary = this.el.querySelector("[data-role=expiry-summary]")
+    if (!summary) return
+    const ttl = parseInt(this.el.querySelector("[data-role=ttl]")?.value || "", 10)
+    const displays = parseInt(this.el.querySelector("[data-role=max-displays]")?.value || "", 10)
+    const parts = []
+    if (Number.isInteger(ttl) && ttl > 0) {
+      const label = this.el.querySelector("[data-role=ttl]")?.selectedOptions?.[0]?.textContent
+      parts.push(`expires after ${label?.toLowerCase() || "the selected time"}`)
+    }
+    if (Number.isInteger(displays) && displays > 0) {
+      parts.push(`${displays} display${displays === 1 ? "" : "s"} per copy`)
+    }
+    summary.textContent = parts.length
+      ? `This message ${parts.join(" and ")}. A recipient may still save what they see.`
+      : "No expiry or display limit. Limits cannot revoke content a recipient has already saved."
   },
 
   setEmojiMenuOpen(open) {
@@ -2796,7 +2932,16 @@ export const Composer = {
       const to = recipients.map((r) => r.handle || `@${r.username}`)
       const payload = kind === "self_note"
         ? noteDocument({body: text, attachments})
-        : {v: 1, kind, text, attachments, to, sent_at: new Date().toISOString(), ...extra}
+        : {
+            v: 1,
+            kind,
+            text,
+            attachments,
+            to,
+            sent_at: new Date().toISOString(),
+            ...(this.replyTo ? {reply_to: this.replyTo} : {}),
+            ...extra,
+          }
       const ttl = parseInt(form.querySelector("[data-role=ttl]")?.value || "", 10)
       const maxDisplays = parseInt(form.querySelector("[data-role=max-displays]")?.value || "", 10)
       const messageOptions = {}
@@ -2824,6 +2969,8 @@ export const Composer = {
       await this.pushWithReply("send_batch", {kind, envelopes, ...messageOptions})
 
       form.reset()
+      this.clearReply()
+      this.clearDraft()
       this.clearAudioRecordings()
       this.clearVideoRecordings()
       const err = form.querySelector("[data-role=error]")
@@ -2890,6 +3037,20 @@ export const Decrypt = {
 
     this.el.veejrPayload = payload
     this.recordDisplay()
+
+    if (payload.reply_to && typeof payload.reply_to === "object") {
+      const quote = document.createElement("blockquote")
+      quote.className =
+        "mb-2 rounded-lg border-l-2 border-current/40 bg-black/5 px-3 py-2 text-xs opacity-80"
+      const from = document.createElement("strong")
+      from.className = "block truncate"
+      from.textContent = payload.reply_to.from || "Earlier message"
+      const excerpt = document.createElement("span")
+      excerpt.className = "block whitespace-pre-wrap"
+      excerpt.textContent = payload.reply_to.text || "Encrypted message"
+      quote.append(from, excerpt)
+      this.el.appendChild(quote)
+    }
 
     if (kind === "note" && payload.title) {
       const h = document.createElement("p")
@@ -3225,11 +3386,30 @@ export const ConversationPreview = {
 export const MessageBubble = {
   mounted() {
     const edit = this.el.querySelector("[data-role=edit-message]")
-    if (!edit) return
+    if (edit) {
+      edit.addEventListener("click", () => {
+        this.openEditor().catch((err) => window.alert(err.message))
+      })
+    }
 
-    edit.addEventListener("click", () => {
-      this.openEditor().catch((err) => window.alert(err.message))
-    })
+    const reply = this.el.querySelector("[data-role=reply-message]")
+    if (reply) {
+      reply.addEventListener("click", () => {
+        const decryptEl = this.el.querySelector("[phx-hook='Decrypt'], [data-peer-key]")
+        const payload = decryptEl?.veejrPayload
+        if (!payload) return window.alert("Unlock this message before replying.")
+
+        window.dispatchEvent(
+          new CustomEvent("veejr:reply-message", {
+            detail: {
+              publicId: decryptEl.dataset.publicId,
+              from: this.el.dataset.messageSender,
+              text: payload.text || payload.title || "Encrypted message",
+            },
+          })
+        )
+      })
+    }
   },
 
   async openEditor() {
@@ -3241,10 +3421,6 @@ export const MessageBubble = {
     const decryptEl = this.el.querySelector("[phx-hook='Decrypt'], [data-peer-key]")
     const payload = decryptEl && decryptEl.veejrPayload
     if (!payload) throw new Error("Unlock this message before editing it.")
-    if (payload.attachments && payload.attachments.length > 0) {
-      throw new Error("Messages with attachments cannot be edited yet.")
-    }
-
     const publicId = decryptEl.dataset.publicId
     const {copies} = await pushWithReply(this, "prepare_edit", {id: publicId})
     const textarea = document.createElement("textarea")
@@ -3290,7 +3466,11 @@ export const MessageBubble = {
           public_id: copy.public_id,
           ...sealFor(copy.public_key, nextPayload, mySecret),
         }))
-        await pushWithReply(this, "edit_batch", {id: publicId, envelopes})
+        await pushWithReply(this, "edit_batch", {
+          id: publicId,
+          envelopes,
+          attachment_ids: (payload.attachments || []).map((attachment) => attachment.id),
+        })
         decryptEl.dataset.ciphertext = envelopes.find((entry) => entry.public_id === publicId)?.ciphertext || decryptEl.dataset.ciphertext
         decryptEl.dataset.nonce = envelopes.find((entry) => entry.public_id === publicId)?.nonce || decryptEl.dataset.nonce
         decryptEl.veejrPayload = nextPayload
@@ -3339,6 +3519,105 @@ function noteDocument(payload = {}) {
     settings: {move_checked_to_bottom: !!payload.settings?.move_checked_to_bottom},
     legacy_message_id: payload.legacy_message_id || null,
   }
+}
+
+function mergeNoteDocuments(local, remote) {
+  const checklist = [...(remote.checklist || []), ...(local.checklist || [])]
+    .filter((item, index, all) =>
+      all.findIndex((candidate) =>
+        String(candidate.text || "").trim().toLowerCase() ===
+          String(item.text || "").trim().toLowerCase()
+      ) === index
+    )
+  const attachments = [...(remote.attachments || []), ...(local.attachments || [])]
+    .filter((item, index, all) =>
+      all.findIndex((candidate) => candidate.id === item.id) === index
+    )
+  const remoteBody = String(remote.body || "").trim()
+  const localBody = String(local.body || "").trim()
+  const body =
+    remoteBody && localBody && remoteBody !== localBody
+      ? `${remoteBody}\n\n--- Merged from this device ---\n\n${localBody}`
+      : localBody || remoteBody
+
+  return noteDocument({
+    ...remote,
+    ...local,
+    title: local.title || remote.title,
+    body,
+    labels: [...new Set([...(remote.labels || []), ...(local.labels || [])])].slice(0, 10),
+    checklist,
+    attachments,
+    updated_at: new Date().toISOString(),
+  })
+}
+
+function resolveNoteConflict(local, remote) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog")
+    dialog.className = "modal"
+
+    const panel = document.createElement("div")
+    panel.className = "modal-box max-w-3xl"
+    const title = document.createElement("h3")
+    title.className = "text-lg font-semibold"
+    title.textContent = "This note changed on another device"
+    const help = document.createElement("p")
+    help.className = "mt-1 text-sm opacity-70"
+    help.textContent = "Compare both encrypted versions. Nothing shown here is sent to the server."
+
+    const comparison = document.createElement("div")
+    comparison.className = "mt-4 grid gap-3 sm:grid-cols-2"
+    ;[["Latest saved version", remote], ["Your unsaved version", local]].forEach(([label, note]) => {
+      const card = document.createElement("section")
+      card.className = "min-w-0 rounded-xl border border-base-300 bg-base-200/60 p-3"
+      const heading = document.createElement("h4")
+      heading.className = "text-xs font-semibold uppercase tracking-wide opacity-60"
+      heading.textContent = label
+      const noteTitle = document.createElement("p")
+      noteTitle.className = "mt-2 truncate font-medium"
+      noteTitle.textContent = note.title || "Untitled note"
+      const body = document.createElement("p")
+      body.className = "mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-sm"
+      body.textContent = note.body || "(No body text)"
+      const details = document.createElement("p")
+      details.className = "mt-2 text-xs opacity-60"
+      details.textContent =
+        `${(note.checklist || []).length} checklist item(s) · ` +
+        `${(note.attachments || []).length} attachment(s)`
+      card.append(heading, noteTitle, body, details)
+      comparison.appendChild(card)
+    })
+
+    const actions = document.createElement("div")
+    actions.className = "modal-action flex-wrap"
+    const choice = (label, value, classes) => {
+      const button = document.createElement("button")
+      button.type = "button"
+      button.className = classes
+      button.textContent = label
+      button.addEventListener("click", () => {
+        dialog.close()
+        dialog.remove()
+        resolve(value)
+      })
+      actions.appendChild(button)
+    }
+    choice("Use latest", "latest", "btn btn-ghost")
+    choice("Merge both", "merge", "btn btn-outline")
+    choice("Keep mine", "local", "btn btn-primary")
+
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault()
+      dialog.close()
+      dialog.remove()
+      resolve("latest")
+    })
+    panel.append(title, help, comparison, actions)
+    dialog.appendChild(panel)
+    document.body.appendChild(dialog)
+    dialog.showModal()
+  })
 }
 
 function normalizeNoteSearch(value) {
@@ -4146,16 +4425,40 @@ export const SelfNotesBoard = {
       const secret = getSecretKey(element.dataset.userId)
       if (!secret) throw new Error("Unlock your keys before saving a note.")
       const {copies} = await pushWithReply(this, "prepare_edit", {id: element.dataset.publicId})
-      const envelopes = copies.map((copy) => ({public_id: copy.public_id, ...sealFor(copy.public_key, note, secret)}))
+      let envelopes = copies.map((copy) => ({public_id: copy.public_id, ...sealFor(copy.public_key, note, secret)}))
       try {
         await pushWithReply(this, "edit_batch", {id: element.dataset.publicId, envelopes, attachment_ids: note.attachments.map((attachment) => attachment.id), expected_updated_at: element.dataset.updatedAt})
       } catch (error) {
         if (!error.reply?.stale) throw error
-        if (!window.confirm("This note changed on another device. Press OK to keep your version, or Cancel to load the latest version.")) {
+
+        const latestBatch = await pushWithReply(this, "prepare_edit", {
+          id: element.dataset.publicId,
+        })
+        const latest = openFrom(
+          latestBatch.current.ciphertext,
+          latestBatch.current.nonce,
+          latestBatch.current.peer_key,
+          secret
+        )
+        if (!latest) throw new Error("The latest note version could not be decrypted.")
+
+        const resolution = await resolveNoteConflict(note, latest)
+        if (resolution === "latest") {
           window.location.reload()
           return
         }
-        await pushWithReply(this, "edit_batch", {id: element.dataset.publicId, envelopes, attachment_ids: note.attachments.map((attachment) => attachment.id)})
+
+        const resolved = resolution === "merge" ? mergeNoteDocuments(note, latest) : note
+        const resolvedEnvelopes = latestBatch.copies.map((copy) => ({
+          public_id: copy.public_id,
+          ...sealFor(copy.public_key, resolved, secret),
+        }))
+        envelopes = resolvedEnvelopes
+        await pushWithReply(this, "edit_batch", {
+          id: element.dataset.publicId,
+          envelopes: resolvedEnvelopes,
+          attachment_ids: resolved.attachments.map((attachment) => attachment.id),
+        })
       }
       const current = envelopes.find((entry) => entry.public_id === element.dataset.publicId)
       if (current) {

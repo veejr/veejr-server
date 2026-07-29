@@ -98,6 +98,31 @@ defmodule Veejr.MessagingArchiveTest do
              envelopes |> Enum.take(-2) |> Enum.map(& &1.public_id)
   end
 
+  test "bulk read and archive stay scoped to the owner" do
+    user = user_fixture()
+    other = user_fixture()
+    {:ok, request} = Veejr.Social.send_friend_request(other, user.username)
+    {:ok, _friendship} = Veejr.Social.accept_friend_request(user, request.id)
+
+    {:ok, batch_id, []} =
+      Messaging.send_batch(other, "message", [
+        %{"recipient_id" => user.id, "ciphertext" => "incoming", "nonce" => "nonce"}
+      ])
+
+    [notification] = Messaging.list_pending_notifications(user)
+    assert {:ok, _} = Messaging.accept_notification(user, notification.id)
+
+    envelope = Veejr.Repo.get_by!(Envelope, batch_id: batch_id, recipient_id: user.id)
+    key = envelope.thread_key
+
+    assert {:ok, 1} = Messaging.mark_conversations_read(user, [key])
+    assert Veejr.Repo.get!(Envelope, envelope.id).read_at
+
+    assert {:ok, [archive]} = Messaging.archive_conversations(user, [key])
+    assert archive.archived
+    assert Messaging.list_conversation_summaries(other) == []
+  end
+
   defp self_message(user, ciphertext), do: self_envelope(user, "message", ciphertext)
 
   defp self_envelope(user, kind, ciphertext) do
