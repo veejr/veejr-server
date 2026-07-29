@@ -24,6 +24,8 @@ defmodule Veejr.Application do
       {Veejr.Calls.Reminders, []},
       # Periodic cleanup (abandoned attachment uploads, stale calls).
       {Veejr.Janitor, []},
+      # In-memory request budgets for auth, directory, upload, and federation.
+      {Veejr.RateLimiter, []},
       # Live presence of call participants (which tabs sit on a call page),
       # so brief socket reconnects don't hang calls up.
       {Registry, keys: :duplicate, name: Veejr.CallRegistry},

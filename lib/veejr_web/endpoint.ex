@@ -11,9 +11,14 @@ defmodule VeejrWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # :peer_data and :x_headers let LiveView-driven flows (registration and
+  # browser magic-link requests, which never hit a controller) resolve the
+  # client address for rate limiting. See Veejr.RemoteIp.
+  @connect_info [session: @session_options, peer_data: true, x_headers: true]
+
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: @connect_info],
+    longpoll: [connect_info: @connect_info]
 
   # Serve at "/" the static files from "priv/static" directory.
   #

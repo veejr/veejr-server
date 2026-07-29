@@ -21,6 +21,11 @@ bind_ip =
     host -> {host, 443, "https"}
   end
 
+# LiveDashboard and the live-reload iframe need script and connect sources the
+# application itself does not, so development observes the policy instead of
+# enforcing it. Production enforces; see VeejrWeb.ContentSecurityPolicy.
+config :veejr, :csp_report_only, true
+
 # Configure your database
 config :veejr, Veejr.Repo,
   database: Path.expand("../#{System.get_env("VEEJR_DB") || "veejr_dev.db"}", __DIR__),

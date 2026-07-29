@@ -96,6 +96,21 @@ defmodule VeejrWeb.UserLive.Registration do
 
   @impl true
   def handle_event("save", %{"user" => user_params}, socket) do
+    # Registration is LiveView-only, so it is budgeted here rather than in the
+    # router. Applied to the completed submission, not "validate", so live form
+    # feedback stays unthrottled.
+    case Veejr.RateLimiter.check(:registration, socket.assigns.client_ip) do
+      :ok -> do_register(socket, user_params)
+      {:error, retry_after} -> {:noreply, registration_throttled(socket, retry_after)}
+    end
+  end
+
+  def handle_event("validate", %{"user" => user_params}, socket) do
+    changeset = Accounts.change_user_registration(%User{}, user_params, validate_unique: false)
+    {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+  end
+
+  defp do_register(socket, user_params) do
     case Accounts.register_user(user_params, socket.assigns.invite) do
       {:ok, user} ->
         {:ok, _} =
@@ -129,9 +144,12 @@ defmodule VeejrWeb.UserLive.Registration do
     end
   end
 
-  def handle_event("validate", %{"user" => user_params}, socket) do
-    changeset = Accounts.change_user_registration(%User{}, user_params, validate_unique: false)
-    {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+  defp registration_throttled(socket, retry_after) do
+    put_flash(
+      socket,
+      :error,
+      "Too many registration attempts. Try again in #{retry_after} seconds."
+    )
   end
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do

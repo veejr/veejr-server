@@ -24,6 +24,21 @@ config :veejr, :call_reminder_interval_ms, :never
 # presence and end_call are exercised directly.
 config :veejr, :call_grace_ms, :never
 
+# Every test request arrives from 127.0.0.1 and would share one bucket, so
+# the budgets are raised out of the way here. Tests that exercise limiting set
+# their own limits via Veejr.RateLimiter.check/4, or override a bucket for the
+# duration of one test. The limiter itself stays enabled so the plugs, the
+# router wiring, and the LiveView call sites are all exercised normally.
+config :veejr, :rate_limits,
+  enabled: true,
+  login: {1_000_000, :timer.minutes(1)},
+  magic_link: {1_000_000, :timer.minutes(1)},
+  registration: {1_000_000, :timer.minutes(1)},
+  directory: {1_000_000, :timer.minutes(1)},
+  invitation: {1_000_000, :timer.minutes(1)},
+  upload: {1_000_000, :timer.minutes(1)},
+  federation: {1_000_000, :timer.minutes(1)}
+
 # No spontaneous Web Push sends from tests; Veejr.Push.notify/1 is called directly.
 config :veejr, :push_enabled, false
 config :veejr, :push_req_options, plug: {Req.Test, Veejr.PushStub}

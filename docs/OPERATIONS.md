@@ -513,6 +513,65 @@ in Firebase and remove the old Docker secret.
 - Use `docker service ps veej_fable --no-trunc` to inspect scheduling errors.
 - Configure standalone Caddy/Postfix containers with `--restart unless-stopped`.
 
+## Rate limits
+
+Login, magic-link, registration, directory, invitation, upload, and federation
+endpoints carry per-client request budgets (`Veejr.RateLimiter`). A rejected
+request gets `429` with a `Retry-After` header, and the documented
+`rate_limited` error code on JSON surfaces.
+
+Defaults live in `config/config.exs` as `{max_requests, window_ms}` and are
+sized so an ordinary person never reaches one:
+
+| Bucket | Default |
+| --- | --- |
+| `login` | 10 per minute |
+| `magic_link` | 5 per 5 minutes |
+| `registration` | 5 per hour |
+| `directory` | 60 per minute |
+| `invitation` | 20 per hour |
+| `upload` | 60 per minute |
+| `federation` | 120 per minute |
+
+Counters are in memory, per node, and cleared by a restart. Operators who
+already rate limit at the proxy can set `enabled: false`.
+
+**Client addresses behind the proxy.** Budgets are keyed on the client address,
+which behind Caddy has to come from `x-forwarded-for` rather than the peer
+address — otherwise every request shares one bucket and the first burst locks
+the instance out. `x-forwarded-for` is only believed when the immediate peer is
+itself a configured proxy (`:trusted_proxies`, defaulting to loopback and
+private ranges), and the chain is read right to left so a client cannot spoof
+its address by prepending entries. If you front the app from a proxy on a
+public address, add that address to `:trusted_proxies` or every client will
+appear to be the proxy.
+
+Federation requests bucket on the calling instance authority when present, so
+one noisy peer does not exhaust the budget for peers sharing an address.
+
+## Content-Security-Policy
+
+Browser responses carry a policy that pins scripts and network destinations to
+the instance's own origin (`VeejrWeb.ContentSecurityPolicy`). This does not
+defend against a fully compromised server — one that can rewrite `app.js` can
+rewrite the header too — but it removes the ability of a partial compromise
+(an injection, a bad dependency) to run inline script or ship a captured key to
+an off-origin endpoint.
+
+The inline theme bootstrap in the root layout is authorized by a per-response
+nonce, not `'unsafe-inline'`.
+
+Set `config :veejr, :csp_report_only, true` to emit
+`Content-Security-Policy-Report-Only` instead of the enforcing header. The
+policy is then reported in browser consoles but never blocks, which is the safe
+way to check a change before enforcing it. Development defaults to report-only
+because LiveDashboard and the live-reload iframe need sources the application
+does not; production enforces.
+
+If a new feature needs an external origin (a new embed host, a third-party
+endpoint), the policy must be widened in the same change or the feature will
+fail in production while working in development.
+
 ## Security checklist
 
 - Expose only Caddy's public HTTP/HTTPS ports.
