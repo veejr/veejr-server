@@ -671,7 +671,8 @@ defmodule VeejrWeb.CallLive do
     end
 
     {:ok,
-     assign(socket,
+     socket
+     |> assign(
        page_title: "Call",
        call: call,
        role: role,
@@ -680,18 +681,79 @@ defmodule VeejrWeb.CallLive do
        layout_scope: socket.assigns.current_scope,
        is_guest: false,
        allow_reinvite: true,
+       can_add_participant: call.caller_id == user.id,
        return_to: return_to(params, call, user),
        ice_servers: Jason.encode!(Veejr.Calls.IceConfig.servers())
-     )}
+     )
+     |> refresh_peers()}
+  end
+
+  # The mesh needs every other participant's identity key to seal signaling
+  # pairwise, so the peer list is an assign the hook reads rather than
+  # something it can ask for.
+  defp refresh_peers(socket) do
+    call = socket.assigns.call
+    me = socket.assigns.actor
+
+    peers =
+      case me do
+        %{id: user_id} when is_integer(user_id) ->
+          call
+          |> Calls.peer_participants(user_id)
+          |> Enum.map(fn participant ->
+            %{
+              id: participant.user_id,
+              name:
+                participant.user.display_name || Veejr.Social.Address.handle(participant.user),
+              public_key: participant.user.public_key,
+              state: participant.state
+            }
+          end)
+
+        _ ->
+          []
+      end
+
+    assign(socket,
+      peers: peers,
+      addable_friends: addable_friends(socket, call, peers)
+    )
+  end
+
+  defp addable_friends(socket, call, peers) do
+    if socket.assigns[:can_add_participant] and length(peers) + 1 < Calls.max_participants() do
+      taken = MapSet.new(Enum.map(peers, & &1.id))
+
+      socket.assigns.actor
+      |> Veejr.Social.list_friends()
+      |> Enum.filter(
+        &(is_nil(&1.host) and not MapSet.member?(taken, &1.id) and &1.id != call.caller_id)
+      )
+    else
+      []
+    end
   end
 
   @impl true
-  def handle_event("signal", %{"ciphertext" => ciphertext, "nonce" => nonce}, socket) do
+  def handle_event("signal", %{"ciphertext" => ciphertext, "nonce" => nonce} = params, socket) do
     user = socket.assigns.current_scope.user
+    target = parse_target(params["target"])
 
-    case Calls.signal(user, socket.assigns.call.public_id, ciphertext, nonce) do
+    case Calls.signal(user, socket.assigns.call.public_id, ciphertext, nonce, target) do
       :ok -> {:noreply, socket}
       {:error, _} -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("add_participant", %{"id" => invitee_id}, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Calls.add_participant(user, socket.assigns.call.public_id, invitee_id) do
+      {:ok, _call} ->
+        {:noreply, socket |> refresh_peers() |> put_flash(:info, "Ringing them now.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, add_participant_error(reason))}
     end
   end
 
@@ -736,15 +798,48 @@ defmodule VeejrWeb.CallLive do
   end
 
   @impl true
-  def handle_info({:call_peer_joined, _id}, socket) do
-    {:noreply, push_event(socket, "call:peer_joined", %{})}
-  end
+  def handle_info({:call_peer_joined, _id, participant_id}, socket) do
+    me = socket.assigns.current_scope.user.id
 
-  def handle_info({:call_signal, _id, from_id, ciphertext, nonce}, socket) do
-    if from_id == socket.assigns.current_scope.user.id do
+    if participant_id == me do
       {:noreply, socket}
     else
-      {:noreply, push_event(socket, "call:signal", %{ciphertext: ciphertext, nonce: nonce})}
+      {:noreply,
+       socket
+       |> refresh_peers()
+       |> push_event("call:peer_joined", %{peer: participant_id})}
+    end
+  end
+
+  def handle_info({:call_participants_changed, _id}, socket) do
+    {:noreply, refresh_peers(socket)}
+  end
+
+  def handle_info({:call_participant_left, _id, departed_id}, socket) do
+    if departed_id == socket.assigns.current_scope.user.id do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> refresh_peers()
+       |> push_event("call:peer_left", %{peer: departed_id})}
+    end
+  end
+
+  def handle_info({:call_signal, _id, from_id, target_id, ciphertext, nonce}, socket) do
+    me = socket.assigns.current_scope.user.id
+
+    # Deliver only what is addressed to us. Without this filter a third
+    # participant would receive the other two's offers and try to apply them.
+    if from_id == me or target_id not in [:any, me] do
+      {:noreply, socket}
+    else
+      {:noreply,
+       push_event(socket, "call:signal", %{
+         ciphertext: ciphertext,
+         nonce: nonce,
+         from: from_id
+       })}
     end
   end
 
@@ -779,6 +874,26 @@ defmodule VeejrWeb.CallLive do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp parse_target(nil), do: nil
+  defp parse_target(id) when is_integer(id), do: id
+
+  defp parse_target(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed, ""} -> parsed
+      _ -> nil
+    end
+  end
+
+  defp parse_target(_), do: nil
+
+  defp add_participant_error(:not_caller), do: "Only whoever started the call can add someone."
+  defp add_participant_error(:not_a_friend), do: "You can only add an accepted friend."
+  defp add_participant_error(:remote_participant), do: "Group calls are limited to this instance."
+  defp add_participant_error(:already_participating), do: "They are already on this call."
+  defp add_participant_error(:call_full), do: "This call is already full."
+  defp add_participant_error({:bad_state, _}), do: "That call is no longer active."
+  defp add_participant_error(_), do: "Could not add them to the call."
 
   defp return_to(params, call, user) do
     fallback = conversation_path(call, user)

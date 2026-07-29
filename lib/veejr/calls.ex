@@ -21,7 +21,7 @@ defmodule Veejr.Calls do
   require Logger
 
   alias Veejr.Accounts.User
-  alias Veejr.Calls.{Call, Notifier, ScheduledCall}
+  alias Veejr.Calls.{Call, CallParticipant, Notifier, ScheduledCall}
   alias Veejr.GuestConferences
   alias Veejr.GuestConferences.GuestCall
   alias Veejr.GuestConferences.GuestConference
@@ -84,6 +84,11 @@ defmodule Veejr.Calls do
         callee_id: callee.id,
         state: "ringing"
       })
+
+    # The caller is present from the moment they dial; the first invitee is
+    # ringing. Everything after this reads membership from these rows.
+    put_participant(call, caller.id, role: "caller", state: "joined", joined_at: now())
+    put_participant(call, callee.id, role: "invitee", state: "ringing")
 
     call = %{call | caller: caller, callee: callee}
 
@@ -162,9 +167,17 @@ defmodule Veejr.Calls do
   @doc "Fetches a call by public id, only for its participants."
   def get_call(%User{id: user_id}, public_id) when is_binary(public_id) do
     case Repo.get_by(Call, public_id: public_id) do
-      %Call{caller_id: ^user_id} = call -> {:ok, preload_call(call)}
-      %Call{callee_id: ^user_id} = call -> {:ok, preload_call(call)}
-      _ -> {:error, :not_found}
+      nil ->
+        {:error, :not_found}
+
+      %Call{} = call ->
+        # Membership, not the legacy caller/callee pair: a third participant
+        # is authorised by their participant row alone.
+        if participant(call, user_id) do
+          {:ok, preload_call(call)}
+        else
+          {:error, :not_found}
+        end
     end
   end
 
@@ -183,16 +196,121 @@ defmodule Veejr.Calls do
     end
   end
 
-  @doc "Returns the newest unanswered call for a local callee, if one exists."
+  @doc """
+  Returns the newest call ringing this user, if one exists.
+
+  Keyed on the participant row rather than `callee_id` so someone added to an
+  already-accepted call is rung the same way the first invitee was.
+  """
   def pending_ring(%User{id: user_id}) do
     from(c in Call,
-      where: c.callee_id == ^user_id and c.state == "ringing",
+      join: p in CallParticipant,
+      on: p.call_id == c.id,
+      where:
+        p.user_id == ^user_id and p.state == "ringing" and c.state in ["ringing", "accepted"],
       order_by: [desc: c.inserted_at],
       limit: 1,
       preload: [:caller, :callee]
     )
     |> Repo.one()
   end
+
+  ## Participants
+
+  @doc "Lists a call's participants, newest membership last, with users preloaded."
+  def participants(%Call{id: call_id}) do
+    from(p in CallParticipant,
+      where: p.call_id == ^call_id,
+      order_by: [asc: p.inserted_at, asc: p.id],
+      preload: [:user]
+    )
+    |> Repo.all()
+  end
+
+  @doc "The participants a given user should hold a peer connection to."
+  def peer_participants(%Call{} = call, user_id) do
+    call
+    |> participants()
+    |> Enum.filter(&(&1.user_id != user_id and &1.state in CallParticipant.active_states()))
+  end
+
+  @doc "One participant row, or nil."
+  def participant(%Call{id: call_id}, user_id) do
+    Repo.get_by(CallParticipant, call_id: call_id, user_id: user_id)
+  end
+
+  @doc """
+  Adds another local friend to an accepted call and rings them.
+
+  Only the caller may add: with three people the question "who let them in?"
+  needs one answer, and the host is the least surprising one. Remote users are
+  refused because federated call invites are strictly 1:1.
+  """
+  def add_participant(%User{id: user_id} = caller, public_id, invitee_id) do
+    with {:ok, %Call{caller_id: ^user_id} = call} <- get_call(caller, public_id),
+         {:ok, invitee_id} <- parse_id(invitee_id),
+         %User{} = invitee <- Repo.get(User, invitee_id) || {:error, :not_found} do
+      cond do
+        call.state not in ["ringing", "accepted"] ->
+          {:error, {:bad_state, call.state}}
+
+        not is_nil(invitee.host) ->
+          {:error, :remote_participant}
+
+        invitee.id == caller.id ->
+          {:error, :self}
+
+        not Social.friends?(caller.id, invitee.id) ->
+          {:error, :not_a_friend}
+
+        match?(
+          %CallParticipant{state: state} when state in ["ringing", "joined"],
+          participant(call, invitee.id)
+        ) ->
+          {:error, :already_participating}
+
+        length(active_participants(call)) >= max_participants() ->
+          {:error, :call_full}
+
+        true ->
+          put_participant(call, invitee.id, role: "invitee", state: "ringing")
+          call = preload_call(call)
+          ring_local(call, invitee)
+          broadcast(call, {:call_participants_changed, call.public_id})
+          {:ok, call}
+      end
+    else
+      {:ok, %Call{}} -> {:error, :not_caller}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "The number of people a single call may hold, mesh upload being quadratic."
+  def max_participants, do: Application.get_env(:veejr, :max_call_participants, 3)
+
+  defp active_participants(%Call{} = call) do
+    call
+    |> participants()
+    |> Enum.filter(&(&1.state in CallParticipant.active_states()))
+  end
+
+  defp put_participant(%Call{id: call_id}, user_id, attrs) do
+    attrs = Map.new(attrs)
+
+    case Repo.get_by(CallParticipant, call_id: call_id, user_id: user_id) do
+      nil ->
+        %CallParticipant{call_id: call_id, user_id: user_id}
+        |> Ecto.Changeset.change(attrs)
+        |> Repo.insert!()
+
+      %CallParticipant{} = existing ->
+        existing
+        |> Ecto.Changeset.change(attrs)
+        |> Repo.update!()
+    end
+  end
+
+  defp now, do: DateTime.utc_now(:second)
 
   ## Scheduled calls
 
@@ -547,9 +665,16 @@ defmodule Veejr.Calls do
   negotiation — the caller never sends an offer into the void.
   """
   def join_call(%User{id: user_id} = user, public_id) do
-    with {:ok, %Call{callee_id: ^user_id, state: "ringing"} = call} <- get_call(user, public_id) do
-      call = set_state(call, "accepted")
-      broadcast(call, {:call_peer_joined, call.public_id})
+    with {:ok, %Call{} = call} <- get_call(user, public_id),
+         %CallParticipant{state: "ringing"} <- participant(call, user_id) do
+      put_participant(call, user_id, state: "joined", joined_at: now())
+
+      # The call itself flips to accepted on the first join and stays there
+      # while later participants come and go.
+      call = if call.state == "ringing", do: set_state(call, "accepted"), else: call
+
+      broadcast(call, {:call_peer_joined, call.public_id, user_id})
+      broadcast(call, {:call_participants_changed, call.public_id})
 
       relay_to_remote_peer(call, user, fn authority ->
         Veejr.Federation.deliver_call_update(authority, call, "joined")
@@ -558,6 +683,8 @@ defmodule Veejr.Calls do
       {:ok, call}
     else
       {:ok, %Call{} = call} -> {:error, {:bad_state, call.state}}
+      %CallParticipant{state: state} -> {:error, {:bad_state, state}}
+      nil -> {:error, :not_found}
       error -> error
     end
   end
@@ -569,9 +696,9 @@ defmodule Veejr.Calls do
   mobile reconnect or full-page reload.
   """
   def rejoin_call(%User{id: user_id} = user, public_id) do
-    with {:ok, %Call{callee_id: ^user_id, state: "accepted"} = call} <-
-           get_call(user, public_id) do
-      broadcast(call, {:call_peer_joined, call.public_id})
+    with {:ok, %Call{state: "accepted"} = call} <- get_call(user, public_id),
+         %CallParticipant{state: "joined"} <- participant(call, user_id) do
+      broadcast(call, {:call_peer_joined, call.public_id, user_id})
 
       relay_to_remote_peer(call, user, fn authority ->
         Veejr.Federation.deliver_call_update(authority, call, "joined")
@@ -580,6 +707,8 @@ defmodule Veejr.Calls do
       {:ok, call}
     else
       {:ok, %Call{} = call} -> {:error, {:bad_state, call.state}}
+      %CallParticipant{state: state} -> {:error, {:bad_state, state}}
+      nil -> {:error, :not_found}
       error -> error
     end
   end
@@ -588,7 +717,9 @@ defmodule Veejr.Calls do
   def join_guest_call(%GuestConference{} = conference) do
     with {:ok, %GuestCall{state: "ringing"} = call} <- get_guest_call(conference) do
       call = set_guest_state(call, "accepted")
-      broadcast(call, {:call_peer_joined, call.public_id})
+      # Guest calls are always exactly two people, so the guest's arrival is
+      # announced without a participant id; the host holds one peer.
+      broadcast(call, {:call_peer_joined, call.public_id, :guest})
       {:ok, call}
     else
       {:ok, %GuestCall{} = call} -> {:error, {:bad_state, call.state}}
@@ -602,19 +733,55 @@ defmodule Veejr.Calls do
   @doc "Declines a ringing call and optionally sends the caller the non-content busy outcome."
   def decline_call(%User{id: user_id} = user, public_id, reason)
       when reason in ["declined", "busy"] do
-    with {:ok, %Call{callee_id: ^user_id, state: "ringing"} = call} <- get_call(user, public_id) do
-      call = set_state(call, "declined")
-      broadcast(call, {:call_ended, call.public_id, reason})
-      notify_ring_cancelled(call)
+    with {:ok, %Call{} = call} <- get_call(user, public_id),
+         %CallParticipant{state: "ringing"} <- participant(call, user_id) do
+      put_participant(call, user_id, state: reason_state(reason), left_at: now())
+      notify_ring_cancelled(call, user_id)
 
       relay_to_remote_peer(call, user, fn authority ->
         Veejr.Federation.deliver_call_update(authority, call, reason)
       end)
 
-      {:ok, call}
+      # One invitee declining only ends the call when it leaves too few people
+      # to talk to. In a 1:1 that is always; in a 3-way the other two continue.
+      {:ok, settle(call, reason)}
     else
       {:ok, %Call{}} -> {:error, :not_ringing}
+      %CallParticipant{} -> {:error, :not_ringing}
+      nil -> {:error, :not_found}
       error -> error
+    end
+  end
+
+  defp reason_state("busy"), do: "busy"
+  defp reason_state(_), do: "declined"
+
+  # Ends the call when fewer than two participants can still be in it,
+  # otherwise leaves it running and tells the remaining pages who changed.
+  defp settle(%Call{} = call, reason) do
+    call = preload_call(call)
+    remaining = active_participants(call)
+
+    if length(remaining) < 2 do
+      final =
+        cond do
+          reason in ["declined", "busy"] and call.state == "ringing" -> "declined"
+          call.state == "ringing" -> "missed"
+          true -> "ended"
+        end
+
+      ended = set_state(call, final)
+      Enum.each(remaining, &put_participant(call, &1.user_id, state: "left", left_at: now()))
+
+      broadcast(
+        ended,
+        {:call_ended, ended.public_id, if(final == "declined", do: reason, else: final)}
+      )
+
+      ended
+    else
+      broadcast(call, {:call_participants_changed, call.public_id})
+      call
     end
   end
 
@@ -623,8 +790,17 @@ defmodule Veejr.Calls do
     with {:ok, %Call{caller_id: ^user_id, state: "ringing"} = call} <-
            get_call(user, public_id) do
       call = set_state(call, "cancelled")
-      broadcast(call, {:call_ended, call.public_id, "cancelled"})
+
+      # Clear the ring banners *before* marking anyone left: the notify step
+      # looks for participants still in "ringing", so reordering these two
+      # silently stops stale banners from being dismissed.
       notify_ring_cancelled(call)
+
+      Enum.each(active_participants(call), fn participant ->
+        put_participant(call, participant.user_id, state: "left", left_at: now())
+      end)
+
+      broadcast(call, {:call_ended, call.public_id, "cancelled"})
 
       relay_to_remote_peer(call, user, fn authority ->
         Veejr.Federation.deliver_call_update(authority, call, "cancelled")
@@ -637,17 +813,30 @@ defmodule Veejr.Calls do
     end
   end
 
-  @doc "Ends a call from either side: hang-up, or cancel while still ringing."
-  def end_call(%User{} = user, public_id) do
+  @doc """
+  Leaves a call: hang-up, or cancel while still ringing.
+
+  With more than two people this is a departure rather than an ending — the
+  call only ends once fewer than two participants remain.
+  """
+  def end_call(%User{id: user_id} = user, public_id) do
     with {:ok, %Call{} = call} <- get_call(user, public_id) do
       if call.state in ["ringing", "accepted"] do
-        final = if call.state == "ringing", do: "missed", else: "ended"
-        call = set_state(call, final)
-        broadcast(call, {:call_ended, call.public_id, final})
+        put_participant(call, user_id, state: "left", left_at: now())
 
         relay_to_remote_peer(call, user, fn authority ->
           Veejr.Federation.deliver_call_update(authority, call, "ended")
         end)
+
+        case settle(call, "left") do
+          %Call{state: state} when state in ["ringing", "accepted"] ->
+            # Others are still talking; tell them who left so their meshes
+            # can drop that peer connection.
+            broadcast(call, {:call_participant_left, call.public_id, user_id})
+
+          _ended ->
+            :ok
+        end
       end
 
       :ok
@@ -696,16 +885,23 @@ defmodule Veejr.Calls do
   end
 
   @doc """
-  Relays one sealed signaling payload (offer/answer/ICE) to the peer. The
+  Relays one sealed signaling payload (offer/answer/ICE) to one peer. The
   payload is `nacl.box` ciphertext produced in the sender's browser — the
   server cannot read or alter it. Remote peers get it over the signed
   federation channel, in the background so a slow peer instance never
   blocks the sender's socket.
+
+  `target_user_id` addresses the payload. It matters beyond tidiness: with
+  three people on a call, an unaddressed broadcast means everyone receives
+  everyone else's offers with no way to tell which pairing a given SDP
+  belongs to. `nil` means "the other side", which is what a 1:1 or a
+  federated call always means.
   """
-  def signal(%User{id: user_id} = user, public_id, ciphertext, nonce)
+  def signal(%User{id: user_id} = user, public_id, ciphertext, nonce, target_user_id \\ nil)
       when is_binary(ciphertext) and is_binary(nonce) do
     with {:ok, %Call{state: "accepted"} = call} <- get_call(user, public_id) do
-      broadcast(call, {:call_signal, call.public_id, user_id, ciphertext, nonce})
+      target = target_user_id || implicit_target(call, user_id)
+      broadcast(call, {:call_signal, call.public_id, user_id, target, ciphertext, nonce})
 
       relay_to_remote_peer(call, user, fn authority ->
         Task.Supervisor.start_child(Veejr.TaskSupervisor, fn ->
@@ -722,13 +918,24 @@ defmodule Veejr.Calls do
     end
   end
 
+  # A 1:1 call has exactly one possible recipient, so older clients that send
+  # no target still route correctly.
+  defp implicit_target(%Call{} = call, sender_id) do
+    case peer_participants(call, sender_id) do
+      [%CallParticipant{user_id: target}] -> target
+      _ -> nil
+    end
+  end
+
   @doc "Relays one sealed signaling payload from an authorized temporary guest."
   def signal_guest(%GuestConference{id: conference_id} = conference, ciphertext, nonce)
       when is_binary(ciphertext) and is_binary(nonce) do
     with {:ok, %GuestCall{state: "accepted"} = call} <- get_guest_call(conference) do
+      # Guest calls are always exactly two people, so :any addresses "the
+      # other side" without needing a participant id.
       broadcast(
         call,
-        {:call_signal, call.public_id, {:guest, conference_id}, ciphertext, nonce}
+        {:call_signal, call.public_id, {:guest, conference_id}, :any, ciphertext, nonce}
       )
 
       :ok
@@ -747,7 +954,7 @@ defmodule Veejr.Calls do
       when is_binary(ciphertext) and is_binary(nonce) do
     with {:ok, %GuestCall{state: "accepted"} = call} <-
            get_guest_call_for_host(host, public_id) do
-      broadcast(call, {:call_signal, call.public_id, host.id, ciphertext, nonce})
+      broadcast(call, {:call_signal, call.public_id, host.id, :any, ciphertext, nonce})
       :ok
     else
       {:ok, %GuestCall{} = call} -> {:error, {:bad_state, call.state}}
@@ -778,6 +985,12 @@ defmodule Veejr.Calls do
             callee_id: local_callee.id,
             state: "ringing"
           })
+
+        # The mirror row gets participants too, so authorisation and peer
+        # lookup work the same way on both sides. Federated calls stay 1:1 —
+        # add_participant/3 refuses remote users.
+        put_participant(call, remote_caller.id, role: "caller", state: "joined", joined_at: now())
+        put_participant(call, local_callee.id, role: "invitee", state: "ringing")
 
         ring_local(%{call | caller: remote_caller, callee: local_callee}, local_callee)
         {:ok, :created}
@@ -835,7 +1048,8 @@ defmodule Veejr.Calls do
     with {:ok, %Call{state: "accepted"} = call} <-
            remote_party_call(public_id, verified_authority) do
       remote = if call.caller.host, do: call.caller, else: call.callee
-      broadcast(call, {:call_signal, call.public_id, remote.id, ciphertext, nonce})
+      # Federated calls are strictly 1:1, so the local side is the only target.
+      broadcast(call, {:call_signal, call.public_id, remote.id, :any, ciphertext, nonce})
       {:ok, :relayed}
     else
       {:ok, %Call{}} -> {:error, :bad_request}
@@ -977,15 +1191,29 @@ defmodule Veejr.Calls do
     end
   end
 
-  defp notify_ring_cancelled(%Call{callee: %User{host: nil, id: callee_id}} = call) do
+  # Clears stale ring banners. Without a user id every still-ringing local
+  # participant is cleared (the whole call went away); with one, just that
+  # person's own banner.
+  defp notify_ring_cancelled(%Call{} = call), do: notify_ring_cancelled(call, :all)
+
+  defp notify_ring_cancelled(%Call{} = call, :all) do
+    call
+    |> participants()
+    |> Enum.filter(&(&1.state == "ringing" and is_nil(&1.user.host)))
+    |> Enum.each(&clear_ring(call, &1.user_id))
+  end
+
+  defp notify_ring_cancelled(%Call{} = call, user_id) when is_integer(user_id) do
+    clear_ring(call, user_id)
+  end
+
+  defp clear_ring(%Call{} = call, user_id) do
     Phoenix.PubSub.broadcast(
       Veejr.PubSub,
-      "user:#{callee_id}",
+      "user:#{user_id}",
       {:veejr_call_cancelled, call.public_id}
     )
   end
-
-  defp notify_ring_cancelled(%Call{}), do: :ok
 
   defp notify_schedule_created(%ScheduledCall{invitee: %User{host: nil}} = schedule) do
     notify_schedule_user(schedule, schedule.invitee, :scheduled)

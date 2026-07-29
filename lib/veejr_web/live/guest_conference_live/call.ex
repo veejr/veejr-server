@@ -34,6 +34,18 @@ defmodule VeejrWeb.GuestConferenceLive.Call do
          pending_count: nil,
          is_guest: true,
          allow_reinvite: false,
+         # The guest's only peer is the host. "host" is the stable id both
+         # sides use, matching the `from: "host"` on relayed signals.
+         peers: [
+           %{
+             id: "host",
+             name: call.host.display_name || call.host.username,
+             public_key: call.host.public_key,
+             state: "joined"
+           }
+         ],
+         can_add_participant: false,
+         addable_friends: [],
          conference: conference,
          token: token,
          return_to: ~p"/guest/#{token}",
@@ -62,15 +74,17 @@ defmodule VeejrWeb.GuestConferenceLive.Call do
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_info({:call_peer_joined, _id}, socket) do
-    {:noreply, push_event(socket, "call:peer_joined", %{})}
+  def handle_info({:call_peer_joined, _id, _participant}, socket) do
+    {:noreply, push_event(socket, "call:peer_joined", %{peer: "host"})}
   end
 
-  def handle_info({:call_signal, _id, from_id, ciphertext, nonce}, socket) do
+  def handle_info({:call_signal, _id, from_id, _target, ciphertext, nonce}, socket) do
     if from_id == Calls.guest_presence_id(socket.assigns.conference) do
       {:noreply, socket}
     else
-      {:noreply, push_event(socket, "call:signal", %{ciphertext: ciphertext, nonce: nonce})}
+      # A guest call has exactly one other side, so it is always the host.
+      {:noreply,
+       push_event(socket, "call:signal", %{ciphertext: ciphertext, nonce: nonce, from: "host"})}
     end
   end
 
