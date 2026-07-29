@@ -29,6 +29,12 @@ has a distinct purpose.
 | --- | --- | --- |
 | [Current Windows host runbook](HOST_RUNBOOK.md) | Project-operated host only | Exact services, paths, network constraints, boot behavior, and host-specific hazards. Do not copy secret locations or host assumptions blindly into another deployment. |
 
+## Reporting problems
+
+| Document | Audience | Purpose |
+| --- | --- | --- |
+| [Security policy](../SECURITY.md) | Security researchers, operators | How to report a vulnerability privately, what is in scope, and which architectural limits are documented rather than defects. |
+
 ## Planning
 
 [`next_sol.md`](../next_sol.md) is a product assessment and roadmap, not a

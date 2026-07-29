@@ -1,0 +1,139 @@
+name: CI
+
+# Runs the same gate as `mix precommit`, with one deliberate difference: the
+# local alias *fixes* formatting and unused deps, while CI only *checks* them.
+# A run that silently rewrote files would report success on a tree nobody has.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Supersede in-flight runs for the same branch; a stale result on an
+  # overwritten commit is noise.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MIX_ENV: test
+  # Match the deployed runtime (elixir:1.20-otp-28), not the ~> 1.15 floor in
+  # mix.exs. CI should fail the way production would.
+  ELIXIR_VERSION: "1.20.1"
+  OTP_VERSION: "28"
+
+jobs:
+  test:
+    name: Compile, format, fixtures, tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      # protocol.verify runs scripts/protocol_fixtures.mjs, which imports the
+      # shipped assets/js/veejr/crypto.js. No node, no crypto verification.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-
+
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      # Checks, not fixes: --check-unused and --check-formatted are the CI
+      # counterparts of the precommit alias's deps.unlock/format steps.
+      - name: Check for unused dependencies
+        run: mix deps.unlock --check-unused
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile with warnings as errors
+        run: mix compile --warnings-as-errors
+
+      # Verifies protocol-fixtures/v1.json against the real browser crypto
+      # module, so a regression in key wrapping, envelope sealing, or
+      # attachment encryption fails here rather than shipping.
+      - name: Verify protocol fixtures against shipped crypto
+        run: mix protocol.verify
+
+      - name: Run tests
+        run: mix test
+
+  assets:
+    name: Production asset build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-assets-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-assets-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-
+
+      - name: Fetch dependencies
+        run: mix deps.get
+        env:
+          MIX_ENV: prod
+
+      # Deployment runs assets.deploy on the live host, so a broken Tailwind or
+      # esbuild config currently surfaces mid-deploy. Building it here moves
+      # that failure to the pull request.
+      - name: Install asset toolchain
+        run: mix assets.setup
+        env:
+          MIX_ENV: prod
+
+      - name: Build and digest assets
+        run: mix assets.deploy
+        env:
+          MIX_ENV: prod
+
+      # The vendored runtime libraries are served same-origin so the
+      # Content-Security-Policy can keep script-src pinned to 'self'. If one
+      # goes missing the map or the Orbit contacts view breaks in production
+      # only, so assert they survive the digest step.
+      - name: Verify vendored assets are present
+        run: |
+          set -euo pipefail
+          for f in \
+            priv/static/vendor/leaflet.js \
+            priv/static/vendor/leaflet.css \
+            priv/static/vendor/three.min.js \
+            priv/static/vendor/images/marker-icon.png \
+            priv/static/vendor/images/marker-icon-2x.png
+          do
+            test -s "$f" || { echo "missing or empty: $f"; exit 1; }
+          done
+          echo "vendored assets present"

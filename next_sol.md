@@ -1,6 +1,42 @@
 # Product assessment and roadmap
 
-Status: updated for Veejr v0.3.16 on 2026-07-22.
+Status: assessment written against **v0.3.16 on 2026-07-22**. Current version
+is **v0.3.58**. The judgments below have not been re-derived since; treat them
+as a snapshot of thinking at that point rather than a description of today's
+code. `docs/README.md` explains why this file is not a compatibility or
+operational contract — a roadmap item is not implemented unless the current
+behavior is also documented in the README, architecture, feature guide, or a
+code-backed specification.
+
+## Landed since this assessment
+
+Items above that have since moved, so the roadmap is not read as still-open
+work:
+
+- **Server CI is established** (`.github/workflows/ci.yml`): compile with
+  warnings as errors, formatting, unused-dependency, and protocol-fixture
+  checks plus the full test suite on every pull request, and a separate
+  production asset build. *Android CI remains outstanding.*
+- **Cryptographic fixtures now verify the shipped browser module.**
+  `mix protocol.verify` previously re-derived its values from tweetnacl and
+  never executed `assets/js/veejr/crypto.js`; it now replays the fixture
+  through the real module and runs in CI. *Automated Android-side
+  interoperability still runs manually.*
+- **A Content-Security-Policy is enforced** in production, pinning `script-src`
+  and `connect-src` to the instance origin. This narrows, but does not remove,
+  the browser trust problem described under Weak Points — a server that can
+  rewrite the client can rewrite the header too.
+- **Request budgets** now cover authentication, directory, invitation, upload,
+  and federation endpoints, closing a requirement that
+  `REIMPLEMENTATION_SPEC.md` §17 had specified but nothing implemented.
+- **A disclosure policy exists** (`SECURITY.md`) with private reporting
+  enabled, which is a precondition for the independent review listed below.
+
+Still open from the list below: two-instance federation tests, an independent
+protocol and security review, immutable release images, automated
+backup/restore drills, and everything under product polish, federation
+maturity, conversation evolution, operational portability, and conferencing
+consolidation.
 
 Veejr has become a genuinely interesting application. It is no longer just a messaging experiment; it has a recognizable philosophy: private communication, deliberate consent, self-hosting, federation, and user portability.
 

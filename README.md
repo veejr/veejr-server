@@ -68,6 +68,9 @@ For installation and server administration, see:
 - [Production operations, upgrades, and recovery](docs/OPERATIONS.md)
 - [Calls and YouTube watch parties](docs/CALLS_AND_WATCH_PARTIES.md)
 
+To report a security vulnerability, see [SECURITY.md](SECURITY.md). Please do
+not open a public issue for one.
+
 ## Technology
 
 - Elixir 1.15+ and Phoenix 1.8 / LiveView 1.2
