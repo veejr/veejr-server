@@ -38,7 +38,10 @@ veejr-*.tar
 !/priv/static/vendor/**/*.png
 !/priv/static/vendor/*.js
 !/priv/static/vendor/*.css
-/priv/static/vendor/*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*.*
+# Re-ignore the digested copies phx.digest writes beside them. A digest suffix
+# is 32 hex characters, so requiring eight is enough to tell "-2x.png" (a real
+# source file) from "-401d815d….png" (build output).
+/priv/static/vendor/**/*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*.*
 /priv/static/vendor/**/*.gz
 /priv/static/uploads/
 
