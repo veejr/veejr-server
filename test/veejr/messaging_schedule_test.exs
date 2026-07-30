@@ -98,7 +98,9 @@ defmodule Veejr.MessagingScheduleTest do
       {:ok, _} = rotate_key(recipient)
 
       Messaging.subscribe(sender)
-      assert %{released: 1, refused: 1} = Messaging.dispatch_due_sends(DateTime.add(deliver_at, 1))
+
+      assert %{released: 1, refused: 1} =
+               Messaging.dispatch_due_sends(DateTime.add(deliver_at, 1))
 
       assert Messaging.list_pending_notifications(recipient) == []
       assert Messaging.list_history(recipient) == []
@@ -193,7 +195,9 @@ defmodule Veejr.MessagingScheduleTest do
 
       [note] = Messaging.list_self_envelopes(user)
 
-      {:ok, _} = Messaging.set_reminder(user, note.public_id, DateTime.add(DateTime.utc_now(), 60))
+      {:ok, _} =
+        Messaging.set_reminder(user, note.public_id, DateTime.add(DateTime.utc_now(), 60))
+
       assert {:ok, cleared} = Messaging.set_reminder(user, note.public_id, nil)
       assert is_nil(cleared.remind_at)
 

@@ -497,7 +497,7 @@ defmodule VeejrWeb.MessagesLive.Components do
           class="mb-5 overflow-hidden rounded-[1.75rem] border border-base-300 bg-base-100 shadow-[0_18px_55px_-36px_color-mix(in_oklab,var(--color-base-content)_48%,transparent)]"
           aria-label="Create and find notes"
         >
-          <div class="grid gap-px bg-base-300/70 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+          <div class="grid gap-px bg-base-300/70 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(18rem,0.9fr)]">
             <button
               id="self-notes-quick-create"
               data-role="new-note"
@@ -519,6 +519,42 @@ defmodule VeejrWeb.MessagesLive.Components do
                 C
               </kbd>
             </button>
+
+            <div class="flex min-h-24 items-stretch gap-px bg-base-300/70">
+              <button
+                id="self-notes-new-sheet"
+                data-role="new-sheet"
+                type="button"
+                class="group flex flex-1 items-center gap-3 bg-base-100 px-4 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+              >
+                <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60 transition group-hover:bg-primary/10 group-hover:text-primary">
+                  <.icon name="hero-table-cells" class="size-5" />
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-semibold text-base-content">Spreadsheet</span>
+                  <span class="mt-0.5 block text-xs text-base-content/60">
+                    Grid with formulas
+                  </span>
+                </span>
+              </button>
+
+              <button
+                id="self-notes-new-page"
+                data-role="new-page"
+                type="button"
+                class="group flex flex-1 items-center gap-3 bg-base-100 px-4 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+              >
+                <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60 transition group-hover:bg-primary/10 group-hover:text-primary">
+                  <.icon name="hero-document-text" class="size-5" />
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-semibold text-base-content">Document</span>
+                  <span class="mt-0.5 block text-xs text-base-content/60">
+                    Headings, lists, formatting
+                  </span>
+                </span>
+              </button>
+            </div>
 
             <label class="group flex min-h-24 items-center gap-3 bg-base-100 px-5 py-4 transition focus-within:bg-base-200/60">
               <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/55 transition group-focus-within:bg-primary/10 group-focus-within:text-primary">

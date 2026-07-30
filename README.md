@@ -23,6 +23,16 @@ friendship, and consent rules.
 - An encrypted **Notes to yourself** board with text/checklist cards, labels,
   colors, pin/archive/trash flows, local search, attachments, and idempotent
   Google Keep Takeout import.
+- Encrypted personal **spreadsheets and text documents** on the same board. The
+  spreadsheet has a formula engine (~30 functions, dependency-ordered
+  recalculation, cycle detection) and CSV import/export; the document editor has
+  headings, lists, quotes, code, and inline formatting, with plain-text and
+  print/PDF export. Both editors are downloaded only when a document is opened.
+- **Scheduled messages**: written and encrypted now, released later. Nothing
+  reaches the recipient until it is due, and the sender can cancel or reschedule
+  until then.
+- **One-shot reminders** on any note or document. The time is server-visible so
+  something can fire it; the reminder itself names no note content.
 - Personal notes attached to contacts and groups. Unlike Notes to yourself,
   these convenience notes are server-side plaintext and are not part of the
   end-to-end encrypted message system.
@@ -167,6 +177,58 @@ opening a thread marks its accepted incoming messages read. Choose Classic,
 Salon, Party, or Comic for a browser-local Messages appearance. New-message
 animation and control colors follow that choice, while every message retains
 an explicit UTC date and time.
+
+### Notes, spreadsheets, and documents
+
+**Notes to yourself** in Messages is a private, encrypted board. Alongside note
+and checklist cards it holds two kinds of document:
+
+- **Spreadsheet** — a grid with a formula bar. Type a value, or `=` for a
+  formula: `SUM`, `AVERAGE`, `IF`, `COUNTIF`, `SUMIF`, `ROUND`, text functions,
+  and about twenty more. Arrow keys move, Enter or F2 edits, Delete clears, and
+  any printable key starts typing over a cell. Formulas recalculate in
+  dependency order, and a reference cycle shows `#CIRCULAR` rather than hanging.
+  CSV imports and exports; the export contains computed values, not formula
+  source.
+- **Document** — headings, body text, quotes, code, bulleted and numbered
+  lists, dividers, and inline **bold**, *italic*, underline, strikethrough, and
+  code. Click a block to edit it, Enter to start a new one, Backspace at the
+  start to merge back. Select text and use the toolbar or Ctrl/Cmd+B/I/U.
+  Exports as plain text, or prints to paper or PDF.
+
+Both save with Save or Ctrl/Cmd+S, and both are encrypted in the browser like
+every other note — the server stores ciphertext and cannot tell a spreadsheet
+from a document. Documents are one encrypted item each, so keep them to
+roughly a few thousand cells or a long chapter; put bulk data in attachments.
+
+The editors are a separate download that happens the first time you open a
+document, so sessions that never open one do not pay for them.
+
+### Reminders
+
+Any note or document can carry a reminder. Use **⏰ Remind me** on its card and
+give a local date and time; clear it by leaving the field empty. When it fires
+you get a browser notification and the board highlights the card.
+
+A reminder time is stored unencrypted, because the server has to know when to
+fire it. The reminder itself carries no note content — not the title, body,
+labels, or attachment names.
+
+### Scheduling a message
+
+Open **Message options** in the composer and set **Send later**. The message is
+encrypted immediately, exactly as an immediate send would be, and the server
+holds that ciphertext until its time. Nothing reaches the recipient before
+then — there is no notification for them to see and no way to fetch it.
+
+You can cancel or reschedule from the conversation until it goes out. Whether
+it arrives as a request or lands directly in the conversation is decided when
+it is released, not when you wrote it.
+
+One case fails deliberately. If the recipient changes their encryption key
+after you schedule a message, the waiting ciphertext is sealed to a key they no
+longer hold, and delivering it would produce a message that silently never
+opens. Veejr refuses to send it and tells you to send it again.
 
 The Message options menu can set an availability time and a display count.
 Those limits are applied to every encrypted copy, including the sender's
