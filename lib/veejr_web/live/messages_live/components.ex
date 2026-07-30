@@ -727,9 +727,16 @@ defmodule VeejrWeb.MessagesLive.Components do
 
   def conversation_thread(assigns) do
     ~H"""
+    <%!--
+    The whole thread is the drop target, not just the composer row: dragging a
+    file at a 3rem-tall strip is a poor aim. The composer hook finds this by
+    walking up from itself.
+    --%>
     <div
       :if={@selected_conversation && !@self_notes}
-      class="messages-chat flex min-h-0 flex-1 flex-col"
+      data-composer-dropzone
+      data-drop-label="Drop to attach"
+      class="messages-chat relative flex min-h-0 flex-1 flex-col"
     >
       <div class="messages-chat-header flex items-center justify-between gap-3 border-b border-base-300 bg-base-100 px-5 py-4">
         <div class="flex min-w-0 items-center gap-3">
@@ -850,7 +857,9 @@ defmodule VeejrWeb.MessagesLive.Components do
     ~H"""
     <div
       :if={!@selected_conversation && !@self_notes}
-      class="flex flex-1 flex-col justify-end"
+      data-composer-dropzone
+      data-drop-label="Drop to attach"
+      class="relative flex flex-1 flex-col justify-end"
     >
       <div class="messages-empty-state mx-auto max-w-xl px-6 py-12 text-center">
         <.user_avatar

@@ -5,22 +5,78 @@
 // form params.
 
 import {
+  cacheSecretKey,
   getSecretKey,
   sealFor,
   sealLocal,
   openLocal,
+  unlockIdentity,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, currentLocationPath, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showError} from "./shared.js"
 import {noteDocument} from "./notes_document.js"
 import {Decrypt} from "./messages.js"
+
+// A drag only counts when it actually carries files: dragging selected text
+// or a link across the thread must not arm the drop target.
+function draggingFiles(event) {
+  return [...(event.dataTransfer?.types || [])].includes("Files")
+}
+
+// Same name, size, and mtime is the same file. Guards against dropping a
+// batch twice, which is easy to do with a big drop target.
+function sameFile(a, b) {
+  return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified
+}
+
+// Clipboard images are all called "image.png", so three pasted screenshots
+// would arrive as three identical names — and dedupe would eat two of them.
+function namedPaste(file) {
+  if (!file.type.startsWith("image/") || !/^image\.\w+$/u.test(file.name || "")) return file
+
+  const stamp = new Date().toISOString().replace(/[:.]/gu, "-").slice(0, 19)
+  const extension = file.name.split(".").pop()
+  return new File([file], `pasted-${stamp}.${extension}`, {
+    type: file.type,
+    lastModified: file.lastModified,
+  })
+}
+
+function formatBytes(size) {
+  if (!Number.isFinite(size)) return ""
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// A file dropped just outside a drop target replaces the page with that file,
+// losing an unsent draft. Swallow those, once per document.
+let strayDropGuardInstalled = false
+
+function installStrayDropGuard() {
+  if (strayDropGuardInstalled) return
+  strayDropGuardInstalled = true
+
+  for (const type of ["dragover", "drop"]) {
+    document.addEventListener(type, (event) => {
+      if (!draggingFiles(event) || event.defaultPrevented) return
+      if (event.target instanceof Element && event.target.closest("[data-composer-dropzone]")) {
+        return
+      }
+      event.preventDefault()
+      if (type === "drop" && event.dataTransfer) event.dataTransfer.dropEffect = "none"
+    })
+  }
+}
 
 export const Composer = {
   mounted() {
     this.recordedAudio = []
     this.recordedVideo = []
     this.videoFacingMode = "user"
+    this.thumbnailUrls = []
     this.textEl = this.el.querySelector("[data-role=text]")
     this.restoreDraft()
+    this.setupAttachments()
 
     this.onDraftInput = () => {
       clearTimeout(this.draftTimer)
@@ -42,8 +98,20 @@ export const Composer = {
     }
     window.addEventListener("veejr:reply-message", this.onReplyMessage)
 
+    // Delegated, not bound to the textarea: switching conversations patches a
+    // new textarea into the same form, and a listener held on the old element
+    // goes with it — which silently killed Enter-to-send after a switch.
     this.onTextKeydown = (e) => {
       if (e.key !== "Enter" || e.shiftKey || e.isComposing) return
+
+      // Enter in the unlock prompt unlocks; it must not also submit the form.
+      if (e.target.matches?.("[data-role=composer-passphrase]")) {
+        e.preventDefault()
+        if (!e.repeat) this.attemptUnlock?.()
+        return
+      }
+
+      if (!e.target.matches?.("[data-role=text]")) return
       e.preventDefault()
       if (!e.repeat) this.send().catch((err) => showError(this.el, err.message))
     }
@@ -105,6 +173,29 @@ export const Composer = {
         return
       }
 
+      const discardFile = e.target.closest("[data-role=discard-file]")
+      if (discardFile && this.el.contains(discardFile)) {
+        e.preventDefault()
+        this.discardFile(parseInt(discardFile.dataset.index))
+        return
+      }
+
+      const unlockSubmit = e.target.closest("[data-role=composer-unlock-submit]")
+      if (unlockSubmit && this.el.contains(unlockSubmit)) {
+        e.preventDefault()
+        this.attemptUnlock?.()
+        return
+      }
+
+      const unlockCancel = e.target.closest("[data-role=composer-unlock-cancel]")
+      if (unlockCancel && this.el.contains(unlockCancel)) {
+        e.preventDefault()
+        // Cancelling abandons the send but keeps the text and attachments,
+        // so nothing typed is lost by changing your mind.
+        this.finishUnlock?.(null)
+        return
+      }
+
       const cancelReply = e.target.closest("[data-role=cancel-reply]")
       if (cancelReply && this.el.contains(cancelReply)) {
         e.preventDefault()
@@ -134,12 +225,261 @@ export const Composer = {
     this.el.addEventListener("click", this.onComposerClick)
     document.addEventListener("click", this.onDocumentClick)
     document.addEventListener("keydown", this.onDocumentKeydown)
-    if (this.textEl) this.textEl.addEventListener("keydown", this.onTextKeydown)
+    this.el.addEventListener("keydown", this.onTextKeydown)
 
     this.el.addEventListener("submit", (e) => {
       e.preventDefault()
       this.send().catch((err) => showError(this.el, err.message))
     })
+  },
+
+  // Attachments: paste, drop, and the visible strip.
+  //
+  // The `[data-role=files]` input stays the single source of truth — `send()`
+  // reads it and `form.reset()` clears it — so pasted and dropped files are
+  // written *into* it with a DataTransfer rather than kept alongside it.
+  setupAttachments() {
+    const input = this.attachmentInput()
+    if (!input) return
+
+    this.onFilesChanged = (e) => {
+      if (e.target.matches?.("[data-role=files]")) this.renderFilePreview()
+    }
+    this.el.addEventListener("change", this.onFilesChanged)
+
+    // Delegated for the same reason as keydown: the textarea is replaced when
+    // the conversation changes, the form is not.
+    this.onComposerPaste = (e) => {
+      const files = [...(e.clipboardData?.files || [])]
+      if (files.length === 0) return // ordinary text paste, left alone
+      e.preventDefault()
+      this.addFiles(files.map((file) => namedPaste(file)))
+    }
+    this.el.addEventListener("paste", this.onComposerPaste)
+
+    // The whole thread is the target where one is marked; elsewhere (self
+    // notes, the map) the composer is its own. Start from the parent so the
+    // composer's own marker does not win over the thread's.
+    this.dropzone = this.el.parentElement?.closest("[data-composer-dropzone]") || this.el
+
+    const dragging = (on) => this.dropzone.classList.toggle("is-dropping", on)
+
+    this.onDragOver = (e) => {
+      if (!draggingFiles(e)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+      dragging(true)
+    }
+    this.onDragLeave = (e) => {
+      // dragleave also fires moving between children, so only a pointer that
+      // actually left the zone clears the highlight.
+      if (!this.dropzone.contains(e.relatedTarget)) dragging(false)
+    }
+    this.onDrop = (e) => {
+      if (!draggingFiles(e)) return
+      e.preventDefault()
+      dragging(false)
+      this.addFiles([...(e.dataTransfer?.files || [])])
+    }
+
+    this.dropzone.addEventListener("dragover", this.onDragOver)
+    this.dropzone.addEventListener("dragleave", this.onDragLeave)
+    this.dropzone.addEventListener("drop", this.onDrop)
+    installStrayDropGuard()
+    this.renderFilePreview()
+  },
+
+  // Resolves to the unwrapped secret key, or null if the person backs out.
+  // Only ever one prompt: pressing Enter twice waits on the same one.
+  unlockInPlace() {
+    if (this.unlockPending) return this.unlockPending
+
+    const {userId, encSecretKey, keySalt, keyNonce} = this.el.dataset
+    const panel = this.el.querySelector("[data-role=composer-unlock]")
+    const input = this.el.querySelector("[data-role=composer-passphrase]")
+
+    // Someone who never finished key setup has nothing to unwrap; that is
+    // still the keys page's job.
+    if (!panel || !input || !encSecretKey || !keySalt || !keyNonce) {
+      window.location.assign(`/keys?return_to=${encodeURIComponent(currentLocationPath())}`)
+      return Promise.resolve(null)
+    }
+
+    const error = this.el.querySelector("[data-role=composer-unlock-error]")
+    const submit = this.el.querySelector("[data-role=composer-unlock-submit]")
+    panel.classList.remove("hidden")
+    panel.classList.add("flex")
+    error?.classList.add("hidden")
+    window.setTimeout(() => input.focus(), 0)
+
+    this.unlockPending = new Promise((resolve) => {
+      this.finishUnlock = (secretKey) => {
+        panel.classList.add("hidden")
+        panel.classList.remove("flex")
+        input.value = ""
+        error?.classList.add("hidden")
+        this.unlockPending = null
+        this.finishUnlock = null
+        this.attemptUnlock = null
+        resolve(secretKey)
+      }
+
+      this.attemptUnlock = async () => {
+        if (!input.value || submit?.disabled) return
+        if (submit) {
+          submit.disabled = true
+          submit.textContent = "Unlocking…"
+        }
+
+        try {
+          const secretKey = await unlockIdentity(input.value, encSecretKey, keySalt, keyNonce)
+          if (!secretKey) {
+            if (error) {
+              error.textContent = "Wrong passphrase."
+              error.classList.remove("hidden")
+            }
+            input.select()
+            return
+          }
+
+          cacheSecretKey(userId, secretKey)
+          this.finishUnlock(secretKey)
+        } catch {
+          if (error) {
+            error.textContent = "Could not unlock your keys on this device."
+            error.classList.remove("hidden")
+          }
+        } finally {
+          if (submit) {
+            submit.disabled = false
+            submit.textContent = "Unlock and send"
+          }
+        }
+      }
+    })
+
+    return this.unlockPending
+  },
+
+  attachmentInput() {
+    return this.el.querySelector("[data-role=files]")
+  },
+
+  maxUploadBytes() {
+    const value = parseInt(this.el.dataset.maxUploadBytes || "", 10)
+    return Number.isInteger(value) && value > 0 ? value : null
+  },
+
+  addFiles(incoming) {
+    const input = this.attachmentInput()
+    if (!input || incoming.length === 0) return
+
+    const max = this.maxUploadBytes()
+    const kept = [...input.files]
+    const tooLarge = []
+
+    for (const file of incoming) {
+      if (max && file.size > max) {
+        tooLarge.push(file.name)
+      } else if (!kept.some((existing) => sameFile(existing, file))) {
+        kept.push(file)
+      }
+    }
+
+    try {
+      const transfer = new DataTransfer()
+      for (const file of kept) transfer.items.add(file)
+      input.files = transfer.files
+    } catch {
+      return showError(
+        this.el,
+        "This browser cannot attach pasted or dropped files. Use the paper clip instead.",
+      )
+    }
+
+    if (tooLarge.length > 0) {
+      showError(
+        this.el,
+        `Too large for this instance (limit ${formatBytes(max)}): ${tooLarge.join(", ")}.`,
+      )
+    } else {
+      this.el.querySelector("[data-role=error]")?.classList.add("hidden")
+    }
+
+    this.renderFilePreview()
+  },
+
+  discardFile(index) {
+    const input = this.attachmentInput()
+    if (!input) return
+    const kept = [...input.files].filter((_file, i) => i !== index)
+    const transfer = new DataTransfer()
+    for (const file of kept) transfer.items.add(file)
+    input.files = transfer.files
+    this.renderFilePreview()
+  },
+
+  renderFilePreview() {
+    const preview = this.el.querySelector("[data-role=file-preview]")
+    if (!preview) return
+
+    this.thumbnailUrls.forEach((url) => URL.revokeObjectURL(url))
+    this.thumbnailUrls = []
+    preview.textContent = ""
+
+    const files = [...(this.attachmentInput()?.files || [])]
+    preview.classList.toggle("hidden", files.length === 0)
+    preview.classList.toggle("flex", files.length > 0)
+
+    files.forEach((file, index) => {
+      const chip = document.createElement("span")
+      chip.className =
+        "inline-flex max-w-full items-center gap-2 rounded-full border border-base-300 bg-base-200 py-1 pl-1 pr-1.5 text-xs"
+
+      if (file.type.startsWith("image/")) {
+        const url = URL.createObjectURL(file)
+        this.thumbnailUrls.push(url)
+        const thumb = document.createElement("img")
+        thumb.src = url
+        thumb.alt = ""
+        thumb.className = "size-7 shrink-0 rounded-full object-cover"
+        chip.appendChild(thumb)
+      } else {
+        const badge = document.createElement("span")
+        badge.className =
+          "grid size-7 shrink-0 place-items-center rounded-full bg-base-300 text-[0.7rem]"
+        badge.textContent = "📄"
+        chip.appendChild(badge)
+      }
+
+      const label = document.createElement("span")
+      label.className = "min-w-0 truncate"
+      label.textContent = file.name
+      label.title = `${file.name} · ${formatBytes(file.size)}`
+
+      const size = document.createElement("span")
+      size.className = "shrink-0 opacity-60"
+      size.textContent = formatBytes(file.size)
+
+      const remove = document.createElement("button")
+      remove.type = "button"
+      remove.dataset.role = "discard-file"
+      remove.dataset.index = index.toString()
+      remove.setAttribute("aria-label", `Remove ${file.name}`)
+      remove.className =
+        "grid size-5 shrink-0 place-items-center rounded-full opacity-60 transition hover:bg-base-300 hover:opacity-100"
+      remove.textContent = "×"
+
+      chip.append(label, size, remove)
+      preview.appendChild(chip)
+    })
+  },
+
+  // A patch can swap the textarea and the file input for fresh elements while
+  // keeping this form, so cached references are refreshed rather than trusted.
+  updated() {
+    this.textEl = this.el.querySelector("[data-role=text]")
+    this.renderFilePreview()
   },
 
   captureEmojiElements() {
@@ -161,15 +501,24 @@ export const Composer = {
     if (this.onComposerClick) this.el.removeEventListener("click", this.onComposerClick)
     if (this.onDocumentClick) document.removeEventListener("click", this.onDocumentClick)
     if (this.onDocumentKeydown) document.removeEventListener("keydown", this.onDocumentKeydown)
-    if (this.textEl) this.textEl.removeEventListener("keydown", this.onTextKeydown)
+    if (this.onTextKeydown) this.el.removeEventListener("keydown", this.onTextKeydown)
     if (this.onDraftInput) {
       this.el.removeEventListener("input", this.onDraftInput)
       this.el.removeEventListener("change", this.onDraftInput)
     }
     if (this.onReplyMessage) window.removeEventListener("veejr:reply-message", this.onReplyMessage)
     if (this.emojiMenu && this.emojiMenu.parentElement === document.body) this.emojiMenu.remove()
+    if (this.onComposerPaste) this.el.removeEventListener("paste", this.onComposerPaste)
+    if (this.onFilesChanged) this.el.removeEventListener("change", this.onFilesChanged)
+    if (this.dropzone) {
+      this.dropzone.removeEventListener("dragover", this.onDragOver)
+      this.dropzone.removeEventListener("dragleave", this.onDragLeave)
+      this.dropzone.removeEventListener("drop", this.onDrop)
+      this.dropzone.classList.remove("is-dropping")
+    }
     this.recordedAudio.forEach((entry) => URL.revokeObjectURL(entry.url))
     this.recordedVideo.forEach((entry) => URL.revokeObjectURL(entry.url))
+    this.thumbnailUrls.forEach((url) => URL.revokeObjectURL(url))
   },
 
   draftStorageKey() {
@@ -618,11 +967,11 @@ export const Composer = {
     }
     if (this.recordingFinalizing) throw new Error("Wait for the recording to finish before sending.")
 
-    const mySecret = getSecretKey(userId)
-    if (!mySecret) {
-      window.location.assign(`/keys?return_to=${encodeURIComponent(currentLocationPath())}`)
-      return
-    }
+    // A locked tab used to be sent to /keys, which discarded the message and
+    // its attachments — files cannot be restored from a draft. Unlock in
+    // place instead and carry straight on with this same send.
+    const mySecret = getSecretKey(userId) || (await this.unlockInPlace())
+    if (!mySecret) return
 
     const selectedValues = (name) => [
       ...new Set(
@@ -759,6 +1108,8 @@ export const Composer = {
       this.clearDraft()
       this.clearAudioRecordings()
       this.clearVideoRecordings()
+      // reset() empties the file input without firing `change`.
+      this.renderFilePreview()
       const err = form.querySelector("[data-role=error]")
       if (err) err.classList.add("hidden")
     } finally {

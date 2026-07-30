@@ -92,6 +92,13 @@ The unlocked secret key is cached in `sessionStorage`, scoped to the browser
 tab session. A user can therefore roam with the wrapped key, but must supply
 the passphrase on each new browser session.
 
+Surfaces that need a key mid-action unwrap it where they stand rather than
+navigating to the keys page: the call page does this, and so does the message
+composer, which would otherwise discard a written message and its attachments
+on the way. Each such surface is served the same already-encrypted key
+material and unwraps it locally; the passphrase and the raw secret key never
+become a LiveView event or a request.
+
 ### Envelope encryption
 
 For N recipients, the browser creates N recipient envelopes plus a self-copy:
@@ -114,6 +121,14 @@ browser re-encrypts the revised payload for each recipient. Sender deletion
 removes the owned envelope batch and its no-longer-referenced attachment bytes.
 
 ### Attachments
+
+Files reach the composer from the picker, a paste, or a drop anywhere on the
+conversation. All three write into the same `<input type="file">` through a
+`DataTransfer`, so that input stays the one source of truth the send path
+reads and a form reset still clears everything. The instance's upload limit is
+served as a data attribute so an oversize file is refused before it is
+encrypted, and attachments are deliberately never written to the draft: drafts
+are sealed into `localStorage`, which is no place for file bytes.
 
 The browser encrypts each file once with a random `nacl.secretbox` key. The
 opaque blob is uploaded separately; its `{blob_id, key, nonce, name, mime,

@@ -240,6 +240,55 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#connection-status[role='status'][aria-live='polite']")
   end
 
+  test "offers pasted and dropped attachments", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/messages")
+
+    # Attachments were invisible until send; the strip is what makes a paste
+    # visible at all, since the file input is sr-only behind the paper clip.
+    assert has_element?(view, "#message-composer [data-role='file-preview'][aria-live='polite']")
+
+    # The browser refuses an oversize file up front rather than after a 413,
+    # which needs the instance's own limit.
+    limit = Veejr.InstanceSettings.max_upload_bytes()
+    assert has_element?(view, "#message-composer[data-max-upload-bytes='#{limit}']")
+
+    # A drop is accepted across the whole conversation pane, not just the
+    # composer row.
+    assert has_element?(view, "[data-composer-dropzone][data-drop-label='Drop to attach']")
+  end
+
+  test "offers to unlock in place rather than losing a composed message", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/messages")
+
+    assert has_element?(view, "#message-composer [data-role='composer-unlock']")
+
+    assert has_element?(
+             view,
+             "#message-composer [data-role='composer-passphrase'][type='password'][autocomplete='current-password']"
+           )
+
+    assert has_element?(view, "#message-composer [data-role='composer-unlock-submit']")
+    assert has_element?(view, "#message-composer [data-role='composer-unlock-cancel']")
+
+    assert has_element?(
+             view,
+             "#message-composer [data-role='composer-unlock-error'][role='alert']"
+           )
+  end
+
+  test "carries the wrapped key so unlocking never needs a round trip", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, view, _html} = live(conn, "/messages")
+
+    # The passphrase is unwrapped in the browser; only this already-encrypted
+    # material is served, exactly as the keys and call pages do it.
+    assert has_element?(view, "#message-composer[data-enc-secret-key='#{user.enc_secret_key}']")
+    assert has_element?(view, "#message-composer[data-key-salt='#{user.key_salt}']")
+    assert has_element?(view, "#message-composer[data-key-nonce='#{user.key_nonce}']")
+  end
+
   test "renders encrypted draft, reply, expiry, and bulk-action affordances", %{
     conn: conn,
     user: user

@@ -149,6 +149,19 @@ conversations by choosing **Unarchive**.
 
 In Messages, the composer stays pinned to the bottom of the conversation.
 Press **Enter** to send; press **Shift+Enter** to insert a newline.
+
+Attach files with the paper clip, by pasting them into the message box, or by
+dropping them anywhere on the conversation. A screenshot pasted from the
+clipboard is named for the moment you pasted it. Everything attached shows as
+a chip above the composer — images as thumbnails — and each can be removed
+before sending. A file larger than the instance's upload limit is refused as
+soon as you attach it, rather than after it has been encrypted and uploaded.
+Attachments live only in that browser tab until sent, so they do not survive a
+reload the way a text draft does.
+
+If your encryption key is locked when you send, the composer asks for your
+passphrase in place and then sends the message you already wrote — it no
+longer sends you to the keys page and discards the draft and its attachments.
 The conversation rail shows client-decrypted previews and unread counts;
 opening a thread marks its accepted incoming messages read. Choose Classic,
 Salon, Party, or Comic for a browser-local Messages appearance. New-message
