@@ -353,7 +353,7 @@ defmodule VeejrWeb.MessagesLive do
   def handle_event("delete_self_note", %{"id" => public_id}, socket) do
     user = socket.assigns.current_scope.user
 
-    case Messaging.delete_self_note(user, public_id) do
+    case Messaging.delete_self_item(user, public_id) do
       {:ok, _} -> {:reply, %{ok: true}, refresh(socket)}
       {:error, _} -> {:reply, %{error: "Could not permanently delete that note."}, socket}
     end
@@ -460,6 +460,39 @@ defmodule VeejrWeb.MessagesLive do
     {:noreply, refresh(socket)}
   end
 
+  # A scheduled message went out: the thread's "Scheduled" chip should become
+  # an ordinary sent message.
+  def handle_info({:veejr_schedule_released}, socket) do
+    {:noreply, refresh(socket)}
+  end
+
+  # It could not go out. The reason is a code, never message content.
+  def handle_info({:veejr_schedule_failed, _public_id, reason}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:error, schedule_failure_message(reason))
+     |> refresh()}
+  end
+
+  # A note reminder fired. The board reloads and lets the browser decrypt the
+  # card; the server names no note content here.
+  def handle_info({:veejr_note_reminder, public_id}, socket) do
+    {:noreply,
+     socket
+     |> push_event("veejr:note_reminder", %{id: public_id})
+     |> refresh()}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp schedule_failure_message("recipient_key_changed"),
+    do:
+      "A scheduled message was not sent: the recipient's encryption key changed " <>
+        "after you scheduled it. Send it again to use their new key."
+
+  defp schedule_failure_message(_reason),
+    do: "A scheduled message could not be sent. Send it again."
+
   defp refresh(socket) do
     socket = mark_selected_conversation_read(socket)
     user = socket.assigns.current_scope.user
@@ -508,8 +541,8 @@ defmodule VeejrWeb.MessagesLive do
 
     if socket.assigns.self_notes do
       limit = socket.assigns.self_note_limit || 50
-      self_note_envelopes = Messaging.list_self_note_envelopes(user, limit: limit)
-      self_note_count = Messaging.count_self_note_envelopes(user)
+      self_note_envelopes = Messaging.list_self_envelopes(user, limit: limit)
+      self_note_count = Messaging.count_self_envelopes(user)
 
       assign(socket,
         self_note_envelopes: self_note_envelopes,

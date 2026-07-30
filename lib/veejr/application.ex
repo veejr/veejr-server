@@ -22,6 +22,8 @@ defmodule Veejr.Application do
       {Veejr.Push.Outbox, []},
       # Dispatches persistent scheduled-call reminders.
       {Veejr.Calls.Reminders, []},
+      # Releases scheduled messages and fires note/document reminders.
+      {Veejr.Messaging.Scheduler, []},
       # Periodic cleanup (abandoned attachment uploads, stale calls).
       {Veejr.Janitor, []},
       # In-memory request budgets for auth, directory, upload, and federation.

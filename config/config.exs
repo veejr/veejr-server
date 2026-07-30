@@ -59,11 +59,16 @@ config :phoenix_live_view,
 config :veejr, Veejr.Mailer, adapter: Swoosh.Adapters.Local
 
 # Configure esbuild (the version is required)
+# `--splitting --format=esm` is what makes `await import(…)` produce a separate
+# chunk instead of being inlined into app.js. Without it esbuild bundles a
+# dynamic import into the entry point and the on-demand editors (spreadsheet,
+# word processor) would cost every session their bytes. It requires the entry
+# to be loaded as `<script type="module">`; see root.html.heex.
 config :esbuild,
   version: "0.25.4",
   veejr: [
     args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --external:crypto --alias:@=.),
+      ~w(js/app.js --bundle --splitting --format=esm --target=es2022 --outdir=../priv/static/assets/js --chunk-names=chunks/[name]-[hash] --external:/fonts/* --external:/images/* --external:crypto --alias:@=.),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]

@@ -27,7 +27,7 @@ defmodule Veejr.MessagingSendTest do
                %{"recipient_id" => user.id, "ciphertext" => "encrypted note", "nonce" => "nonce"}
              ])
 
-    [note] = Messaging.list_self_note_envelopes(user)
+    [note] = Messaging.list_self_envelopes(user)
     assert note.kind == "self_note"
     assert note.sender_id == user.id
     assert note.recipient_id == user.id
@@ -48,31 +48,31 @@ defmodule Veejr.MessagingSendTest do
                ])
     end
 
-    notes = Messaging.list_self_note_envelopes(user, limit: 50)
+    notes = Messaging.list_self_envelopes(user, limit: 50)
 
     assert length(notes) == 50
     assert hd(notes).ciphertext == "encrypted-note-55"
     refute Enum.any?(notes, &(&1.ciphertext == "encrypted-note-1"))
 
-    all_notes = Messaging.list_self_note_envelopes(user, limit: :all)
+    all_notes = Messaging.list_self_envelopes(user, limit: :all)
 
     assert length(all_notes) == 55
     assert List.last(all_notes).ciphertext == "encrypted-note-1"
-    assert Messaging.count_self_note_envelopes(user) == 55
+    assert Messaging.count_self_envelopes(user) == 55
   end
 
   test "rejects a self note with expiry or another recipient" do
     user = user_fixture()
     other = user_fixture()
 
-    assert {:error, :invalid_self_note} =
+    assert {:error, :invalid_self_item} =
              Messaging.send_batch(
                user,
                "self_note",
                [%{"recipient_id" => other.id, "ciphertext" => "ct", "nonce" => "nonce"}]
              )
 
-    assert {:error, :invalid_self_note} =
+    assert {:error, :invalid_self_item} =
              Messaging.send_batch(
                user,
                "self_note",
@@ -90,7 +90,7 @@ defmodule Veejr.MessagingSendTest do
              ])
 
     [message] = Messaging.list_history(user)
-    assert {:error, :not_found} = Messaging.delete_self_note(user, message.public_id)
+    assert {:error, :not_found} = Messaging.delete_self_item(user, message.public_id)
     assert Enum.any?(Messaging.list_history(user), &(&1.public_id == message.public_id))
   end
 

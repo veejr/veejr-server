@@ -137,7 +137,7 @@ defmodule VeejrWeb.MessagesLiveTest do
     })
 
     assert_patch(view, "/messages?self_notes=true")
-    [note] = Messaging.list_self_note_envelopes(user)
+    [note] = Messaging.list_self_envelopes(user)
     assert has_element?(view, "#self-note-#{note.public_id}")
   end
 
@@ -164,7 +164,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     oldest_note =
       user
-      |> Messaging.list_self_note_envelopes(limit: :all)
+      |> Messaging.list_self_envelopes(limit: :all)
       |> List.last()
 
     {:ok, view, _html} = live(conn, "/messages?self_notes=true")
