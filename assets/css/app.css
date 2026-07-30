@@ -2619,3 +2619,22 @@ select :is(option, optgroup) {
     transition: none !important;
   }
 }
+
+/* Drag-and-drop attachments.
+   The highlight is a ::after on the drop target rather than an injected
+   element, so there is nothing for a LiveView patch to remove mid-drag. */
+[data-composer-dropzone].is-dropping::after {
+  content: attr(data-drop-label);
+  position: absolute;
+  inset: 0.5rem;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--color-primary);
+  border-radius: 1.5rem;
+  background-color: color-mix(in oklab, var(--color-primary) 12%, var(--color-base-100));
+  color: var(--color-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  pointer-events: none;
+}

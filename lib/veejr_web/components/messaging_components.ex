@@ -142,8 +142,8 @@ defmodule VeejrWeb.MessagingComponents do
 
   def composer(assigns) do
     assigns =
-      assign(
-        assigns,
+      assigns
+      |> assign(
         :can_send?,
         if assigns.show_recipients do
           true
@@ -152,6 +152,9 @@ defmodule VeejrWeb.MessagingComponents do
             assigns.selected_group_ids != []
         end
       )
+      # The browser needs the instance's limit to refuse an oversize file
+      # before encrypting and uploading it, rather than after a 413.
+      |> assign(:max_upload_bytes, Veejr.InstanceSettings.max_upload_bytes())
 
     ~H"""
     <form
@@ -162,8 +165,14 @@ defmodule VeejrWeb.MessagingComponents do
       data-kind={@kind}
       data-payload={@payload}
       data-draft-key={@draft_key}
+      data-max-upload-bytes={@max_upload_bytes}
+      data-composer-dropzone={@show_files && ""}
+      data-drop-label="Drop to attach"
+      data-enc-secret-key={@user.enc_secret_key}
+      data-key-salt={@user.key_salt}
+      data-key-nonce={@user.key_nonce}
       class={[
-        "space-y-3",
+        "relative space-y-3",
         @surface == "messages" &&
           "rounded-[28px] border border-base-300 bg-base-100 p-3 shadow-sm",
         @surface != "messages" &&
@@ -171,6 +180,39 @@ defmodule VeejrWeb.MessagingComponents do
       ]}
     >
       <p data-role="error" class="hidden text-error text-sm"></p>
+      <%!--
+      Unlocking used to mean a trip to /keys, which threw away the message and
+      any attachments on the way. The passphrase is read straight from this
+      input and never becomes a LiveView event, exactly as on the keys page.
+      --%>
+      <div
+        data-role="composer-unlock"
+        class="hidden flex-wrap items-center gap-2 rounded-2xl border border-primary/25 bg-primary/5 p-2"
+      >
+        <span class="px-1 text-xs font-medium opacity-70">
+          <.icon name="hero-lock-closed" class="mr-1 inline size-3.5" /> Unlock to send
+        </span>
+        <input
+          type="password"
+          data-role="composer-passphrase"
+          aria-label="Encryption passphrase"
+          autocomplete="current-password"
+          placeholder="Encryption passphrase"
+          class="min-w-0 flex-1 rounded-full border border-base-300 bg-base-100 px-3 py-1.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        />
+        <button type="button" data-role="composer-unlock-submit" class="btn btn-primary btn-sm">
+          Unlock and send
+        </button>
+        <button type="button" data-role="composer-unlock-cancel" class="btn btn-ghost btn-sm">
+          Cancel
+        </button>
+        <p
+          data-role="composer-unlock-error"
+          role="alert"
+          class="hidden w-full px-1 text-xs text-error"
+        >
+        </p>
+      </div>
       <div
         :if={@kind == "message"}
         data-role="reply-preview"
@@ -607,6 +649,18 @@ defmodule VeejrWeb.MessagingComponents do
       >
       </div>
       <div :if={@show_files} data-role="video-preview" class="space-y-2"></div>
+      <%!--
+      Attached files were invisible until send on the messages surface, where
+      the input is sr-only behind the paper clip. Pasting into a composer that
+      shows nothing back reads as a broken paste, so the strip comes first.
+      --%>
+      <div
+        :if={@show_files}
+        data-role="file-preview"
+        aria-live="polite"
+        class="hidden flex-wrap gap-2"
+      >
+      </div>
     </form>
     """
   end
