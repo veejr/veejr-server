@@ -76,6 +76,11 @@ jobs:
       - name: Verify protocol fixtures against shipped crypto
         run: mix protocol.verify
 
+      # The pure browser modules — formula evaluation, the document and page
+      # model, note merge and search. `mix test` cannot reach any of them.
+      - name: Run browser module tests
+        run: mix js.test
+
       - name: Run tests
         run: mix test
 
