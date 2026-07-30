@@ -7,6 +7,7 @@ defmodule VeejrWeb.MessagesLive do
   import VeejrWeb.MessagesLive.Components
 
   alias Veejr.{Messaging, Social}
+  alias Veejr.Messaging.Envelope
   alias VeejrWeb.ConversationLauncher
 
   @message_page_size 50
@@ -328,6 +329,12 @@ defmodule VeejrWeb.MessagesLive do
     {:noreply, socket |> assign(:self_note_limit, :all) |> refresh()}
   end
 
+  # A newly created document has no card yet; the board asks for the list again
+  # rather than reloading the page.
+  def handle_event("refresh_self_notes", _params, socket) do
+    {:noreply, refresh(socket)}
+  end
+
   def handle_event("delete_envelope", %{"id" => public_id}, socket) do
     case Messaging.delete_envelope(socket.assigns.current_scope.user, public_id) do
       {:ok, {:deleted, _count}} ->
@@ -353,7 +360,7 @@ defmodule VeejrWeb.MessagesLive do
   def handle_event("delete_self_note", %{"id" => public_id}, socket) do
     user = socket.assigns.current_scope.user
 
-    case Messaging.delete_self_note(user, public_id) do
+    case Messaging.delete_self_item(user, public_id) do
       {:ok, _} -> {:reply, %{ok: true}, refresh(socket)}
       {:error, _} -> {:reply, %{error: "Could not permanently delete that note."}, socket}
     end
@@ -400,20 +407,17 @@ defmodule VeejrWeb.MessagesLive do
   end
 
   def handle_event("send_batch", %{"kind" => kind, "envelopes" => envelopes} = params, socket) do
-    opts = Map.take(params, ["expires_at", "max_displays", "attachment_ids"])
+    opts = Map.take(params, ["expires_at", "max_displays", "attachment_ids", "deliver_at"])
 
     case Messaging.send_batch(socket.assigns.current_scope.user, kind, envelopes, opts) do
       {:ok, _batch_id, _queued} ->
         socket =
           socket
-          |> put_flash(
-            :info,
-            if(kind == "self_note", do: "Note saved.", else: "Encrypted and sent.")
-          )
+          |> put_flash(:info, send_batch_message(kind, params["deliver_at"]))
           |> refresh()
 
         socket =
-          if kind == "self_note" and not socket.assigns.self_notes do
+          if Envelope.self_kind?(kind) and not socket.assigns.self_notes do
             push_patch(socket, to: ~p"/messages?self_notes=true")
           else
             socket
@@ -421,8 +425,43 @@ defmodule VeejrWeb.MessagesLive do
 
         {:reply, %{ok: true}, socket}
 
+      {:error, :invalid_deliver_at} ->
+        {:reply, %{error: "That send time is not valid. Pick a time in the next year."}, socket}
+
       {:error, _} ->
         {:reply, %{error: "Sending failed — are all recipients still your friends?"}, socket}
+    end
+  end
+
+  # Sets or clears a reminder on one of the caller's own board items. The time
+  # has to be server-visible for anything to fire it; the note itself stays
+  # encrypted and the reminder that fires names none of its content.
+  def handle_event("set_reminder", %{"id" => public_id} = params, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Messaging.set_reminder(user, public_id, params["remind_at"]) do
+      {:ok, envelope} ->
+        message = if envelope.remind_at, do: "Reminder set.", else: "Reminder cleared."
+        {:reply, %{ok: true}, socket |> put_flash(:info, message) |> refresh()}
+
+      {:error, :invalid_remind_at} ->
+        {:reply, %{error: "Pick a reminder time in the next year."}, socket}
+
+      {:error, _reason} ->
+        {:reply, %{error: "That note could not be found."}, socket}
+    end
+  end
+
+  # Cancels an unreleased scheduled message: deleting the batch as its sender
+  # removes every copy, including ones no recipient has been told about.
+  def handle_event("cancel_scheduled", %{"id" => public_id}, socket) do
+    case Messaging.delete_envelope(socket.assigns.current_scope.user, public_id) do
+      {:ok, {:deleted, _count}} ->
+        {:reply, %{ok: true},
+         socket |> put_flash(:info, "Scheduled message cancelled.") |> refresh()}
+
+      _ ->
+        {:reply, %{error: "That scheduled message could not be cancelled."}, socket}
     end
   end
 
@@ -459,6 +498,47 @@ defmodule VeejrWeb.MessagesLive do
   def handle_info({:veejr_notification, _notification}, socket) do
     {:noreply, refresh(socket)}
   end
+
+  # A scheduled message went out: the thread's "Scheduled" chip should become
+  # an ordinary sent message.
+  def handle_info({:veejr_schedule_released}, socket) do
+    {:noreply, refresh(socket)}
+  end
+
+  # It could not go out. The reason is a code, never message content.
+  def handle_info({:veejr_schedule_failed, _public_id, reason}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:error, schedule_failure_message(reason))
+     |> refresh()}
+  end
+
+  # A note reminder fired. The board reloads and lets the browser decrypt the
+  # card; the server names no note content here.
+  def handle_info({:veejr_note_reminder, public_id}, socket) do
+    {:noreply,
+     socket
+     |> push_event("veejr:note_reminder", %{id: public_id})
+     |> refresh()}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp send_batch_message("self_note", _deliver_at), do: "Note saved."
+  defp send_batch_message("self_doc", _deliver_at), do: "Document saved."
+
+  defp send_batch_message(_kind, deliver_at) when is_binary(deliver_at) and deliver_at != "",
+    do: "Encrypted and scheduled."
+
+  defp send_batch_message(_kind, _deliver_at), do: "Encrypted and sent."
+
+  defp schedule_failure_message("recipient_key_changed"),
+    do:
+      "A scheduled message was not sent: the recipient's encryption key changed " <>
+        "after you scheduled it. Send it again to use their new key."
+
+  defp schedule_failure_message(_reason),
+    do: "A scheduled message could not be sent. Send it again."
 
   defp refresh(socket) do
     socket = mark_selected_conversation_read(socket)
@@ -508,8 +588,8 @@ defmodule VeejrWeb.MessagesLive do
 
     if socket.assigns.self_notes do
       limit = socket.assigns.self_note_limit || 50
-      self_note_envelopes = Messaging.list_self_note_envelopes(user, limit: limit)
-      self_note_count = Messaging.count_self_note_envelopes(user)
+      self_note_envelopes = Messaging.list_self_envelopes(user, limit: limit)
+      self_note_count = Messaging.count_self_envelopes(user)
 
       assign(socket,
         self_note_envelopes: self_note_envelopes,

@@ -152,6 +152,10 @@ defmodule VeejrWeb.MapLive do
   @impl true
   def handle_info({:veejr_notification, _}, socket), do: {:noreply, socket}
 
+  # Other broadcasts on the user's topic belong to other views; ignoring them
+  # here keeps a new message type from crashing this one.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   defp refresh(socket) do
     user = socket.assigns.current_scope.user
 

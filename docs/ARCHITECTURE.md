@@ -120,6 +120,31 @@ copied. Sender edits replace every ciphertext copy in the owned batch after the
 browser re-encrypts the revised payload for each recipient. Sender deletion
 removes the owned envelope batch and its no-longer-referenced attachment bytes.
 
+### Owner-only items: notes and documents
+
+Two kinds are a single copy addressed to yourself, never notified and never
+federated: `self_note` (a card on the Notes to yourself board) and `self_doc`
+(a spreadsheet or a text document). They are refused if given more than one
+recipient, a recipient other than the sender, an expiry, a display limit, or a
+schedule — there is no second party for any of those to mean anything to.
+
+`self_doc` is one envelope kind for every document format, with the format
+named by `doc_kind` *inside* the encrypted payload. The server therefore cannot
+distinguish a spreadsheet from a text document, and adding a third format later
+requires no protocol change.
+
+A text document is stored as blocks of plain text plus mark ranges
+(`{s, e, m}`) — never as a markup string. The editor turns those into spans it
+creates with DOM APIs, so the board's rule that decrypted content never reaches
+`innerHTML` holds for formatted text too: there is no HTML to sanitize because
+none is ever produced. Spreadsheet formulas are evaluated by an interpreter,
+not compiled to JavaScript; the enforced `script-src 'self'` policy carries no
+`'unsafe-eval'`, so the alternative would not run in a browser anyway.
+
+Because the whole document lives in one envelope, it is bounded by the
+ciphertext ceiling (350,000 base64 characters, ~256 KB of payload). Large
+attachments continue to use the encrypted blob path.
+
 ### Attachments
 
 Files reach the composer from the picker, a paste, or a drop anywhere on the
@@ -174,6 +199,52 @@ only the latest encrypted envelope so a browser hook can decrypt its preview.
 Opening a Messages thread stamps its accepted incoming copies read. These
 read/unread markers are server-readable presentation metadata; preview
 plaintext remains browser-only.
+
+### Scheduled sends
+
+A scheduled message is an ordinary envelope. The browser seals it for each
+recipient at compose time, exactly as for an immediate send, and the server
+stores that ciphertext with a `deliver_at`. What is deferred is only the
+*release*: no notification row exists until the message is due, for local and
+remote recipients alike, which is what makes it unreachable rather than merely
+hidden — both `fetch_envelope/2` and `list_history/2` require an accepted
+notification, so there is no id to guess and nothing to enumerate.
+
+```text
+compose -> encrypt -> envelope stored with deliver_at (no notification)
+                          |
+        Messaging.Scheduler tick, deliver_at reached
+                          |
+        +-- recipient key unchanged -> notification created (consent evaluated
+        |                              now, against the conversation as it
+        |                              stands) / federation notify enqueued
+        |
+        +-- recipient key rotated ---> release refused, release_error set,
+                                       sender told to send it again
+```
+
+Two consequences are deliberate. **Consent is decided at release**, not at
+compose: whether the message auto-accepts depends on the conversation window
+when it actually arrives. And **a rotated recipient key blocks delivery**. Key
+rotation re-encrypts history through `Messaging.list_resealable/1`, which walks
+`list_history/2` and therefore cannot see an unreleased scheduled envelope —
+including it would hand the recipient the message early. Without the
+`recipient_public_key` snapshot taken at compose time, a recipient who rotated
+while the message waited would receive ciphertext that looks intact and never
+opens. Release compares the snapshot with the recipient's current key and
+refuses rather than delivering something undecryptable.
+
+The server learns that a scheduled message exists, for whom, and when it is
+due. It does not learn its content at any point.
+
+### Reminders
+
+A self-note or self-document may carry one `remind_at`. This time is
+necessarily server-readable — something has to know when to fire — but the
+reminder that fires is content-free: it names no title, body, label, or
+attachment, only that a reminder is due and which encrypted card it belongs to.
+The browser opens the board and decrypts the card itself. Setting a new time
+re-arms an already-fired reminder.
 
 Contacts and Messages appearance preferences are browser-local `localStorage`
 choices and do not alter stored content. Contacts supports Classic, Quiet, six
@@ -433,7 +504,7 @@ message plaintext. Push services still observe endpoint and timing metadata.
 | `friendships` | Canonical user pair and `pending`/`accepted` state. |
 | `groups`, `group_members` | Owner-local organization of accepted friends. |
 | `contact_notes`, `group_notes` | Owner-private but server-readable plaintext notes. |
-| `envelopes` | Per-recipient ciphertext, nonce, sender-key snapshot, delivery/read/edit/expiry/display metadata, and a materialized per-viewer thread key so conversation lists and pages are index queries that load no ciphertext except the newest encrypted preview candidate. |
+| `envelopes` | Per-recipient ciphertext, nonce, sender-key snapshot, delivery/read/edit/expiry/display metadata, and a materialized per-viewer thread key so conversation lists and pages are index queries that load no ciphertext except the newest encrypted preview candidate. Also the scheduled-send fields (`deliver_at`, `released_at`, `release_error`, `recipient_public_key`) and one-shot reminder fields (`remind_at`, `reminded_at`). |
 | `conversation_archives` | Archived/preserved conversation instances; archiving stamps member envelopes with the instance key. |
 | `notifications` | Per-envelope consent state. |
 | `conversation_windows` | Rolling user/peer auto-accept expiry. |

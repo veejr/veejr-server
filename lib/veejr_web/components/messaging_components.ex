@@ -263,6 +263,20 @@ defmodule VeejrWeb.MessagingComponents do
             />
           </label>
         </div>
+        <div class="mt-3 border-t border-base-300 pt-3">
+          <label class="text-xs font-medium uppercase tracking-wide opacity-70">
+            Send later
+            <input
+              data-role="deliver-at"
+              type="datetime-local"
+              class="mt-1 w-full rounded-xl border border-base-300 bg-base-100 px-3 py-2 text-sm font-normal normal-case tracking-normal text-base-content outline-none transition focus:ring-2 focus:ring-primary/30"
+            />
+          </label>
+          <p data-role="schedule-summary" class="mt-2 text-xs leading-5 opacity-70">
+            Sends immediately. A scheduled message is encrypted now and held as ciphertext
+            until its time; the server never sees the text.
+          </p>
+        </div>
         <p data-role="expiry-summary" class="mt-3 text-xs leading-5 opacity-70">
           No expiry or display limit. Limits cannot revoke content a recipient has already saved.
         </p>
@@ -861,6 +875,8 @@ defmodule VeejrWeb.MessagingComponents do
         data-nonce={@envelope.nonce}
         data-public-id={@envelope.public_id}
         data-updated-at={DateTime.to_iso8601(@envelope.updated_at)}
+        data-kind={@envelope.kind}
+        data-remind-at={@envelope.remind_at && DateTime.to_iso8601(@envelope.remind_at)}
       >
         <span class="loading loading-dots loading-xs"></span>
       </div>

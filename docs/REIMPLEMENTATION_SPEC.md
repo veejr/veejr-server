@@ -217,12 +217,29 @@ Plaintext is compact UTF-8 JSON:
 }
 ```
 
-Allowed kinds are `message`, `location`, `note`, and `self_note`. A `self_note`
-is a single sender-to-self encrypted envelope and MUST NOT create delivery
-notifications, expiry/display limits, or federation work. Its note title,
-body, labels, checklist, attachments, and board state remain encrypted. Common
-message/location/map-note payloads use `v: 1`; the self-note card document uses
-`v: 2` as specified in [SELF_NOTES_KEEP_SPEC.md](SELF_NOTES_KEEP_SPEC.md).
+Allowed kinds are `message`, `location`, `note`, `self_note`, and `self_doc`.
+`self_note` and `self_doc` are single sender-to-self encrypted envelopes and
+MUST NOT create delivery notifications, expiry/display limits, scheduling, or
+federation work. Their title, body, labels, checklist, cells, blocks,
+attachments, and board state remain encrypted. Common message/location/map-note
+payloads use `v: 1`; the self-note card document uses `v: 2` as specified in
+[SELF_NOTES_KEEP_SPEC.md](SELF_NOTES_KEEP_SPEC.md); the self-document uses
+`v: 1` with its format named by an encrypted `doc_kind`, as specified in
+[DOCUMENTS.md](DOCUMENTS.md). An implementation MUST NOT add a separate envelope
+kind per document format.
+
+A `message`, `location`, or `note` batch MAY carry a `deliver_at` in the future.
+The implementation MUST store the ciphertext immediately and withhold *all*
+release until that time: no notification row, no federation notify, and no read
+path that returns the envelope to its recipient. It MUST evaluate consent at
+release rather than at compose, MUST record the recipient's public key at
+compose time, and MUST refuse release (recording the refusal and informing the
+sender) when that key no longer matches — otherwise key rotation during the
+wait silently delivers undecryptable ciphertext. Release MUST be idempotent
+under restart.
+
+An owner-only envelope MAY carry a `remind_at`, which is server-readable
+metadata. The reminder that fires MUST contain no decrypted document content.
 Location payloads add
 `lat`, `lng`, and `located_at`; map notes add `lat`, `lng`, and optional
 `title`. Coordinates exist only inside ciphertext.

@@ -9,6 +9,54 @@ import {
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
 import {mergeNoteDocuments, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
+import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
+
+// The spreadsheet and word processor, and everything they pull in (the
+// document model, the formula engine), live behind this one dynamic import.
+// A session that never opens a document never downloads any of it — which is
+// most sessions, and the reason the editors are a separate chunk rather than
+// more of this file.
+let documentEditor = null
+
+function loadDocumentEditor() {
+  if (!documentEditor) {
+    documentEditor = import("../docs/editor.js").catch(() => {
+      // Let a later attempt retry instead of caching the rejection forever.
+      documentEditor = null
+      throw new Error("The document editor could not be loaded. Check your connection and try again.")
+    })
+  }
+  return documentEditor
+}
+
+// What a document card shows and what the board's local search matches on.
+// Deliberately computed from the raw payload here rather than by importing
+// docs/document.js, so listing documents costs nothing until one is opened.
+function documentSummary(payload) {
+  const isSheet = payload.doc_kind === "sheet"
+  const parts = [payload.title, ...(Array.isArray(payload.labels) ? payload.labels : [])]
+  let preview = ""
+
+  if (isSheet) {
+    const cells = payload.sheet?.cells || {}
+    const refs = Object.keys(cells)
+    for (const ref of refs) parts.push(cells[ref]?.f ?? cells[ref]?.v ?? "")
+    preview = `${refs.length} cell${refs.length === 1 ? "" : "s"}`
+  } else {
+    const blocks = Array.isArray(payload.page?.blocks) ? payload.page.blocks : []
+    for (const block of blocks) parts.push(block?.text ?? "")
+    const words = blocks.map((block) => String(block?.text ?? "")).join(" ").trim()
+    preview = words ? words.slice(0, 240) : "Empty document"
+  }
+
+  return {
+    isSheet,
+    kindLabel: isSheet ? "Spreadsheet" : "Document",
+    title: payload.title || (isSheet ? "Untitled spreadsheet" : "Untitled document"),
+    preview,
+    searchText: parts.filter((value) => value !== undefined && value !== null).join(" "),
+  }
+}
 
 function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
   const returnFocus = document.activeElement
@@ -535,7 +583,10 @@ export const SelfNotesBoard = {
       if (label) this.bulk((note) => { note.labels = [...new Set([...(note.labels || []), label])].slice(0, 10) })
     })
     this.el.querySelector("[data-role=delete-trashed]")?.addEventListener("click", () => this.deleteTrashed())
+    this.el.querySelector("[data-role=new-sheet]")?.addEventListener("click", () => this.createDocument("sheet"))
+    this.el.querySelector("[data-role=new-page]")?.addEventListener("click", () => this.createDocument("page"))
     this.onEdit = (event) => this.edit(event.detail)
+    this.onEditDocument = (event) => this.editDocument(event.detail)
     this.onSave = (event) => this.save(event.detail)
     this.onRendered = () => this.applyFilters()
     this.onSelected = (event) => this.setSelected(event.detail)
@@ -555,6 +606,7 @@ export const SelfNotesBoard = {
       if (event.key.toLowerCase() === "c") { event.preventDefault(); this.create() }
     }
     window.addEventListener("veejr:self-note-edit", this.onEdit)
+    window.addEventListener("veejr:self-doc-edit", this.onEditDocument)
     window.addEventListener("veejr:self-note-save", this.onSave)
     window.addEventListener("veejr:self-note-rendered", this.onRendered)
     window.addEventListener("veejr:self-note-selected", this.onSelected)
@@ -567,6 +619,7 @@ export const SelfNotesBoard = {
   },
   destroyed() {
     window.removeEventListener("veejr:self-note-edit", this.onEdit)
+    window.removeEventListener("veejr:self-doc-edit", this.onEditDocument)
     window.removeEventListener("veejr:self-note-save", this.onSave)
     window.removeEventListener("veejr:self-note-rendered", this.onRendered)
     window.removeEventListener("veejr:self-note-selected", this.onSelected)
@@ -793,6 +846,75 @@ export const SelfNotesBoard = {
       })
     })
   },
+  // Creating a document downloads the editor chunk first; the board itself
+  // never carries the grid, the block editor, or the formula engine.
+  async createDocument(docKind) {
+    const {userId, peerKey: key} = this.el.dataset
+    if (!userId || !key) return
+
+    const secret = getSecretKey(userId)
+    if (!secret) {
+      window.alert("Unlock your keys before creating a document.")
+      return
+    }
+
+    try {
+      const {openDocumentEditor} = await loadDocumentEditor()
+      const saved = await openDocumentEditor({
+        payload: {doc_kind: docKind},
+        save: async (doc) => {
+          await pushWithReply(this, "send_batch", {
+            kind: "self_doc",
+            envelopes: [{recipient_id: Number(userId), ...sealFor(key, doc, secret)}],
+          })
+        },
+      })
+      // The board's card list comes from the server, so a first save needs a
+      // refresh to show the new card. Editing an existing one does not.
+      if (saved) this.pushEvent("refresh_self_notes", {})
+    } catch (error) {
+      window.alert(error.message || "The document could not be opened.")
+    }
+  },
+  async editDocument({payload, element}) {
+    const secret = getSecretKey(element.dataset.userId)
+    if (!secret) {
+      window.alert("Unlock your keys before editing a document.")
+      return
+    }
+
+    try {
+      const {openDocumentEditor} = await loadDocumentEditor()
+      await openDocumentEditor({
+        payload,
+        save: async (doc) => {
+          const {copies} = await pushWithReply(this, "prepare_edit", {id: element.dataset.publicId})
+          const envelopes = copies.map((copy) => ({
+            public_id: copy.public_id,
+            ...sealFor(copy.public_key, doc, secret),
+          }))
+
+          await pushWithReply(this, "edit_batch", {
+            id: element.dataset.publicId,
+            envelopes,
+            expected_updated_at: element.dataset.updatedAt,
+          })
+
+          // Keep the card's ciphertext current so a second save in the same
+          // session is not rejected as stale.
+          const current = envelopes.find((entry) => entry.public_id === element.dataset.publicId)
+          if (current) {
+            element.dataset.ciphertext = current.ciphertext
+            element.dataset.nonce = current.nonce
+            element.dataset.updatedAt = new Date().toISOString()
+          }
+        },
+      })
+      element.dispatchEvent(new CustomEvent("self-notes:refresh"))
+    } catch (error) {
+      window.alert(error.message || "The document could not be opened.")
+    }
+  },
   edit({payload, element}) {
     const tall = element.querySelector(".self-note-body")?.dataset.collapsible === "true"
     noteEditor(this.el, payload, async (note) => {
@@ -856,14 +978,17 @@ export const SelfNotesBoard = {
 export const SelfNotes = {
   mounted() {
     this.card = this.el.closest(".self-note-card")
+    // Notes edit inline on the card; documents open their own editor.
+    this.openEvent = () =>
+      this.payload?.kind === "self_doc" ? "veejr:self-doc-edit" : "veejr:self-note-edit"
     this.onCardClick = (event) => {
       if (this.card.dataset.editing === "true" || event.target.closest("button, input, textarea, select, label, a, [data-role='note-editor']")) return
-      if (this.payload) window.dispatchEvent(new CustomEvent("veejr:self-note-edit", {detail: {payload: this.payload, element: this.el}}))
+      if (this.payload) window.dispatchEvent(new CustomEvent(this.openEvent(), {detail: {payload: this.payload, element: this.el}}))
     }
     this.onCardKeydown = (event) => {
       if (this.card.dataset.editing === "true" || event.target !== this.card || !["Enter", " "].includes(event.key) || !this.payload) return
       event.preventDefault()
-      window.dispatchEvent(new CustomEvent("veejr:self-note-edit", {detail: {payload: this.payload, element: this.el}}))
+      window.dispatchEvent(new CustomEvent(this.openEvent(), {detail: {payload: this.payload, element: this.el}}))
     }
     this.card.addEventListener("click", this.onCardClick)
     this.card.addEventListener("keydown", this.onCardKeydown)
@@ -880,6 +1005,104 @@ export const SelfNotes = {
     this.el.removeEventListener("self-notes:refresh", this.onRefresh)
     if (this.card) selfNoteSearchIndex.delete(this.card)
   },
+  // Set or clear a reminder. Unlike everything else on a card, the time is
+  // stored server-side in plaintext — something has to know when to fire it —
+  // so the button says so, and the reminder itself carries no note content.
+  reminderButton() {
+    const current = this.el.dataset.remindAt || ""
+    const button = document.createElement("button")
+    button.type = "button"
+    button.className = current ? "btn btn-xs btn-outline btn-primary" : "btn btn-ghost btn-xs"
+    button.textContent = current ? `⏰ ${describeScheduledTime(current)}` : "⏰ Remind me"
+    button.title = current
+      ? "Change or clear this reminder. The time is stored unencrypted; the note is not."
+      : "Set a reminder. The time is stored unencrypted; the note stays encrypted."
+
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation()
+      const answer = window.prompt(
+        "Reminder time (YYYY-MM-DDTHH:MM, your local time). Leave empty to clear it.",
+        current ? isoToLocalDateTime(current) : localDateTimeIn(60)
+      )
+      if (answer === null) return
+
+      const remindAt = answer.trim() === "" ? null : localDateTimeToIso(answer.trim())
+      if (answer.trim() !== "" && !remindAt) {
+        window.alert("That time could not be read. Use the form YYYY-MM-DDTHH:MM.")
+        return
+      }
+
+      button.disabled = true
+      try {
+        await pushWithReply(this, "set_reminder", {id: this.el.dataset.publicId, remind_at: remindAt})
+        this.el.dataset.remindAt = remindAt || ""
+      } catch (error) {
+        window.alert(error.message || "The reminder could not be set.")
+      } finally {
+        button.disabled = false
+      }
+    })
+
+    return button
+  },
+  // A document card: title, what kind it is, and a preview. Opening it loads
+  // the editor chunk; the card itself needs none of it.
+  renderDocument(payload, card) {
+    const summary = documentSummary(payload)
+    this.payload = payload
+
+    card.tabIndex = 0
+    card.dataset.selfDoc = payload.doc_kind === "sheet" ? "sheet" : "page"
+    card.setAttribute("aria-label", `Open ${summary.title}`)
+    card.dataset.noteLabels = JSON.stringify(
+      (Array.isArray(payload.labels) ? payload.labels : []).filter((label) => typeof label === "string").slice(0, 10)
+    )
+    card.dataset.noteUpdated = payload.updated_at || ""
+    card.dataset.noteArchived = String(!!payload.archived_at)
+    card.dataset.noteTrashed = String(!!payload.trashed_at)
+    card.dataset.notePinned = String(!!payload.pinned)
+
+    selfNoteSearchIndex.set(card, normalizeNoteSearch([
+      summary.kindLabel,
+      "document",
+      summary.searchText,
+      "updated", payload.updated_at,
+      "created", payload.created_at,
+    ].filter(Boolean).join(" ")))
+
+    const header = document.createElement("div")
+    header.className = "flex items-center gap-2"
+
+    const badge = document.createElement("span")
+    badge.className = "rounded-full bg-base-200 px-2 py-0.5 text-xs opacity-70"
+    badge.textContent = summary.kindLabel
+
+    const title = document.createElement("h3")
+    title.className = "min-w-0 flex-1 truncate font-semibold"
+    title.textContent = payload.pinned ? `📌 ${summary.title}` : summary.title
+
+    header.append(badge, title)
+
+    const preview = document.createElement("p")
+    preview.className = "mt-2 line-clamp-3 whitespace-pre-wrap text-sm opacity-70"
+    preview.textContent = summary.preview
+
+    const open = document.createElement("button")
+    open.type = "button"
+    open.className = "btn btn-outline btn-xs"
+    open.textContent = summary.isSheet ? "Open spreadsheet" : "Open document"
+    open.addEventListener("click", (event) => {
+      event.stopPropagation()
+      window.dispatchEvent(new CustomEvent("veejr:self-doc-edit", {detail: {payload, element: this.el}}))
+    })
+
+    const actions = document.createElement("div")
+    actions.className = "mt-3 flex flex-wrap items-center gap-2"
+    actions.append(open, this.reminderButton())
+
+    this.el.append(header, preview, actions)
+    window.dispatchEvent(new CustomEvent("veejr:self-note-rendered"))
+  },
   render() {
     const card = this.card || this.el.closest(".self-note-card")
     selfNoteSearchIndex.delete(card)
@@ -887,6 +1110,7 @@ export const SelfNotes = {
     this.el.textContent = ""
     if (!secret) { this.payload = null; this.el.textContent = "Locked — unlock keys to read"; return }
     const payload = openFrom(this.el.dataset.ciphertext, this.el.dataset.nonce, this.el.dataset.peerKey, secret)
+    if (payload && payload.kind === "self_doc") { this.renderDocument(payload, card); return }
     if (!payload || payload.v !== 2 || payload.kind !== "self_note" || !Array.isArray(payload.checklist) || !Array.isArray(payload.labels) || !Array.isArray(payload.attachments)) { this.payload = null; this.el.textContent = "Unsupported or malformed encrypted note."; return }
     this.payload = payload
     card.tabIndex = 0
@@ -1014,6 +1238,7 @@ export const SelfNotes = {
       })
       actions.appendChild(button)
     }
+    actions.appendChild(this.reminderButton())
     action(payload.pinned ? "Unpin" : "Pin", () => { payload.pinned = !payload.pinned })
     action(payload.archived_at ? "Unarchive" : "Archive", () => { payload.archived_at = payload.archived_at ? null : new Date().toISOString() })
     action(payload.trashed_at ? "Restore" : "Trash", () => { payload.trashed_at = payload.trashed_at ? null : new Date().toISOString() })

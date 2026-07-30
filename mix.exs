@@ -92,11 +92,17 @@ defmodule Veejr.MixProject do
         "phx.digest"
       ],
       "protocol.verify": ["cmd node scripts/protocol_fixtures.mjs verify"],
+      # The browser owns all the cryptography, the notes board, and now the
+      # document editors — roughly a third of the application by volume, none
+      # of which `mix test` can reach. These cover the pure modules: formula
+      # evaluation, the document/page model, and note merge and search.
+      "js.test": ["cmd node --test test/js/**/*.test.mjs"],
       precommit: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
         "protocol.verify",
+        "js.test",
         "test"
       ]
     ]

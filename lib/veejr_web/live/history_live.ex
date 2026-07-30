@@ -64,6 +64,10 @@ defmodule VeejrWeb.HistoryLive do
   @impl true
   def handle_info({:veejr_notification, _}, socket), do: {:noreply, refresh(socket)}
 
+  # Other broadcasts on the user's topic belong to other views; ignoring them
+  # here keeps a new message type from crashing this one.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("message_displayed", %{"id" => public_id}, socket) do
     case Messaging.record_display(socket.assigns.current_scope.user, public_id) do

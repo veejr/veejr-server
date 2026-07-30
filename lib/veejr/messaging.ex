@@ -29,6 +29,13 @@ defmodule Veejr.Messaging do
   # a fresh request. Re-upped on every send or receive.
   @window_seconds 5 * 60
   @max_expiry_seconds 60 * 60 * 24 * 30
+  # How far ahead a message or reminder may be scheduled, and how much lateness
+  # counts as clock skew rather than a mistyped date.
+  @max_schedule_seconds 60 * 60 * 24 * 365
+  @schedule_grace_seconds 120
+  # Work per scheduler tick. Bounded so a backlog (a long outage, a clock
+  # jump) drains over several ticks instead of one very long transaction.
+  @schedule_batch_size 200
 
   # Participant sentinel for a batch with no recipients besides the sender.
   # Part of stored conversation keys — do not change.
@@ -137,6 +144,12 @@ defmodule Veejr.Messaging do
 
     result =
       Repo.transaction(fn ->
+        deliver_at =
+          case normalize_deliver_at(opt(opts, :deliver_at)) do
+            :invalid -> Repo.rollback(:invalid_deliver_at)
+            value -> value
+          end
+
         attachment_ids = normalize_attachment_ids(opt(opts, :attachment_ids))
         link_batch_blobs!(sender, batch_id, attachment_ids)
 
@@ -152,11 +165,15 @@ defmodule Veejr.Messaging do
           Repo.rollback(:duplicate_recipients)
         end
 
-        if kind == "self_note" and
+        # Owner-only kinds are one copy addressed to yourself, with no expiry,
+        # display limit, or scheduling: there is no second party for any of
+        # those to mean anything to.
+        if Envelope.self_kind?(kind) and
              (length(recipient_ids) != 1 or recipient_ids != [sender.id] or
                 not is_nil(effective_expires_at(opt(opts, :expires_at))) or
+                not is_nil(deliver_at) or
                 not is_nil(normalize_max_displays(opt(opts, :max_displays)))) do
-          Repo.rollback(:invalid_self_note)
+          Repo.rollback(:invalid_self_item)
         end
 
         recipients =
@@ -185,7 +202,13 @@ defmodule Veejr.Messaging do
               batch_id: batch_id,
               sender_public_key: sender.public_key,
               thread_key: conversation_key(participants),
-              participants: Jason.encode!(participants)
+              participants: Jason.encode!(participants),
+              deliver_at: deliver_at,
+              # Only for copies addressed to someone else. The sender's own
+              # self-copy is resealed normally by key rotation, so a snapshot
+              # of it would go stale and produce a false mismatch at release.
+              recipient_public_key:
+                if(deliver_at && recipient.id != sender.id, do: recipient.public_key)
             }
             |> Envelope.changeset(%{
               recipient_id: recipient.id,
@@ -202,6 +225,16 @@ defmodule Veejr.Messaging do
 
           cond do
             recipient.id == sender.id ->
+              {envelope, nil}
+
+            # Scheduled: store the ciphertext and stop. No notification row is
+            # created for either a local or a remote recipient, which is what
+            # keeps the message unreachable until it is due — `fetch_envelope/2`
+            # and `list_history/2` both require an accepted notification, so
+            # there is nothing to guess at and nothing to enumerate. The
+            # consent decision is deliberately *not* made here; it is made from
+            # the conversation state that exists at release time.
+            not is_nil(deliver_at) ->
               {envelope, nil}
 
             # Local recipient: notify in-place. If their conversation with the
@@ -259,6 +292,261 @@ defmodule Veejr.Messaging do
 
       {:ok, batch_id, queued}
     end
+  end
+
+  ## Scheduled delivery
+
+  @doc """
+  Releases scheduled envelopes that have come due, and returns a tally.
+
+  A scheduled message is ordinary ciphertext that was sealed in the browser at
+  compose time; releasing it is exactly the notification and federation work
+  `send_batch/4` would have done immediately. Doing that work *here* rather
+  than at compose time is deliberate: consent is evaluated against the
+  conversation as it stands when the message actually arrives, not as it stood
+  when it was written.
+
+  `released_at` is set for every outcome, including refusal, so a crash
+  mid-sweep cannot deliver the same envelope twice.
+  """
+  def dispatch_due_sends(now \\ DateTime.utc_now(:second)) do
+    due =
+      from(e in Envelope,
+        where: not is_nil(e.deliver_at) and is_nil(e.released_at) and e.deliver_at <= ^now,
+        order_by: [asc: e.deliver_at, asc: e.id],
+        limit: @schedule_batch_size,
+        preload: [:sender, :recipient]
+      )
+      |> Repo.all()
+
+    tally =
+      Enum.reduce(due, %{released: 0, refused: 0, queued: 0}, fn envelope, tally ->
+        case release_envelope(envelope, now) do
+          {:ok, {:refused, reason}} ->
+            notify_sender_of_failed_release(envelope, reason)
+            %{tally | refused: tally.refused + 1}
+
+          {:ok, :remote} ->
+            %{tally | released: tally.released + 1, queued: tally.queued + 1}
+
+          {:ok, {:local, notification}} ->
+            broadcast_notification(Repo.preload(notification, [:user, envelope: [:sender]]))
+            %{tally | released: tally.released + 1}
+
+          {:ok, :self} ->
+            %{tally | released: tally.released + 1}
+
+          {:error, _reason} ->
+            tally
+        end
+      end)
+
+    if tally.queued > 0, do: Veejr.Federation.Outbox.kick()
+    if tally.released > 0 or tally.refused > 0, do: broadcast_schedule_change(due)
+
+    tally
+  end
+
+  defp release_envelope(%Envelope{} = envelope, now) do
+    %{sender: sender, recipient: recipient} = envelope
+
+    Repo.transaction(fn ->
+      cond do
+        # The sender's own copy of a scheduled batch. Nothing to deliver — it
+        # just stops being labelled "scheduled" in their own thread.
+        recipient.id == sender.id ->
+          mark_released!(envelope, now, nil)
+          :self
+
+        # The recipient rotated their identity key while the message waited.
+        # `list_resealable/1` could not have re-encrypted this copy, because
+        # rotation only walks history the user may already read and a
+        # scheduled envelope has no accepted notification. Delivering it now
+        # would hand them ciphertext that silently never opens, so refuse and
+        # let the sender decide whether to send it again.
+        not is_nil(envelope.recipient_public_key) and
+            recipient.public_key != envelope.recipient_public_key ->
+          mark_released!(envelope, now, "recipient_key_changed")
+          {:refused, "recipient_key_changed"}
+
+        is_nil(recipient.host) ->
+          touch_conversation(sender.id, recipient.id)
+
+          state =
+            if conversation_active?(recipient.id, sender.id) or
+                 automatic_delivery?(recipient, sender) do
+              touch_conversation(recipient.id, sender.id)
+              "accepted"
+            else
+              "pending"
+            end
+
+          notification =
+            Repo.insert!(%Notification{
+              envelope_id: envelope.id,
+              user_id: recipient.id,
+              state: state
+            })
+
+          mark_released!(envelope, now, nil)
+          {:local, notification}
+
+        true ->
+          touch_conversation(sender.id, recipient.id)
+          Veejr.Federation.enqueue_notify(sender, envelope, recipient)
+          mark_released!(envelope, now, nil)
+          :remote
+      end
+    end)
+  end
+
+  defp mark_released!(%Envelope{} = envelope, now, error) do
+    envelope
+    |> Ecto.Changeset.change(released_at: now, release_error: error)
+    |> Repo.update!()
+  end
+
+  # Content-free: the sender is told *that* a scheduled message could not be
+  # released and which one, never its plaintext.
+  defp notify_sender_of_failed_release(%Envelope{} = envelope, reason) do
+    Phoenix.PubSub.broadcast(
+      Veejr.PubSub,
+      topic(envelope.sender_id),
+      {:veejr_schedule_failed, envelope.public_id, reason}
+    )
+
+    Veejr.Push.notify_user_async(envelope.sender, %{
+      title: "Scheduled message not sent",
+      body: "The recipient's encryption key changed. Open veejr to send it again.",
+      url: "/messages"
+    })
+  end
+
+  # Senders watching a thread should see a "Scheduled" chip disappear when the
+  # message actually goes out.
+  defp broadcast_schedule_change(envelopes) do
+    envelopes
+    |> Enum.map(& &1.sender_id)
+    |> Enum.uniq()
+    |> Enum.each(fn sender_id ->
+      Phoenix.PubSub.broadcast(Veejr.PubSub, topic(sender_id), {:veejr_schedule_released})
+    end)
+  end
+
+  @doc """
+  Lists the caller's own scheduled-but-unreleased copies, newest due first.
+
+  Only the self-copy of each batch is returned, so a message scheduled to
+  several people appears once.
+  """
+  def list_scheduled_envelopes(%User{id: id}) do
+    from(e in Envelope,
+      where:
+        e.sender_id == ^id and e.recipient_id == ^id and not is_nil(e.deliver_at) and
+          is_nil(e.released_at),
+      order_by: [asc: e.deliver_at, asc: e.id],
+      preload: [:sender]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Reschedules an unreleased scheduled batch. Cancelling is `delete_envelope/2`,
+  which already removes every copy of a batch for its sender.
+  """
+  def reschedule_batch(%User{id: user_id}, public_id, deliver_at)
+      when is_binary(public_id) do
+    with %Envelope{} = envelope <-
+           Repo.get_by(Envelope, public_id: public_id, sender_id: user_id),
+         true <- is_nil(envelope.released_at) and not is_nil(envelope.deliver_at),
+         value when value not in [:invalid, nil] <- normalize_deliver_at(deliver_at) do
+      {count, _} =
+        from(e in Envelope,
+          where:
+            e.sender_id == ^user_id and e.batch_id == ^envelope.batch_id and
+              is_nil(e.released_at)
+        )
+        |> Repo.update_all(set: [deliver_at: value])
+
+      {:ok, count}
+    else
+      nil -> {:error, :not_found}
+      false -> {:error, :already_released}
+      _ -> {:error, :invalid_deliver_at}
+    end
+  end
+
+  ## Reminders
+
+  @doc """
+  Sets or clears a one-shot reminder on one of the caller's own board items.
+
+  The time is necessarily server-visible — something has to know when to fire —
+  but the reminder that fires carries no note content. Setting a new time
+  re-arms an already-fired reminder.
+  """
+  def set_reminder(%User{id: user_id}, public_id, remind_at) when is_binary(public_id) do
+    with %Envelope{} = envelope <- self_item(user_id, public_id),
+         value <- normalize_deliver_at(remind_at),
+         true <- value != :invalid do
+      envelope
+      |> Ecto.Changeset.change(remind_at: value, reminded_at: nil)
+      |> Repo.update()
+      |> case do
+        {:ok, envelope} -> {:ok, envelope}
+        error -> error
+      end
+    else
+      nil -> {:error, :not_found}
+      false -> {:error, :invalid_remind_at}
+    end
+  end
+
+  defp self_item(user_id, public_id) do
+    from(e in Envelope,
+      where:
+        e.public_id == ^public_id and e.sender_id == ^user_id and e.recipient_id == ^user_id and
+          e.kind in ^Envelope.self_kinds()
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Fires due note and document reminders exactly once each.
+
+  The payload names no title, body, label, or attachment — only that a
+  reminder is due and which encrypted card it belongs to. The browser opens
+  the board and decrypts the card itself.
+  """
+  def dispatch_due_note_reminders(now \\ DateTime.utc_now(:second)) do
+    due =
+      from(e in Envelope,
+        where: not is_nil(e.remind_at) and is_nil(e.reminded_at) and e.remind_at <= ^now,
+        order_by: [asc: e.remind_at, asc: e.id],
+        limit: @schedule_batch_size,
+        preload: [:recipient]
+      )
+      |> Repo.all()
+
+    Enum.each(due, fn envelope ->
+      envelope
+      |> Ecto.Changeset.change(reminded_at: now)
+      |> Repo.update!()
+
+      Phoenix.PubSub.broadcast(
+        Veejr.PubSub,
+        topic(envelope.recipient_id),
+        {:veejr_note_reminder, envelope.public_id}
+      )
+
+      Veejr.Push.notify_user_async(envelope.recipient, %{
+        title: "Note reminder",
+        body: "A note you set a reminder on is due.",
+        url: "/messages?self_notes=true"
+      })
+    end)
+
+    %{reminded: length(due)}
   end
 
   @doc """
@@ -468,6 +756,42 @@ defmodule Veejr.Messaging do
   end
 
   defp normalize_max_displays(_), do: nil
+
+  @doc false
+  # A schedule far enough in the past to be a mistake is rejected rather than
+  # silently sent now — a mistyped year should not fire immediately. A few
+  # seconds of clock skew or round-trip lag is not a mistake, so anything
+  # already due simply sends immediately (nil = no schedule).
+  def normalize_deliver_at(value, now \\ DateTime.utc_now(:second))
+  def normalize_deliver_at(nil, _now), do: nil
+  def normalize_deliver_at("", _now), do: nil
+
+  def normalize_deliver_at(value, now) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} -> normalize_deliver_at(datetime, now)
+      _ -> :invalid
+    end
+  end
+
+  def normalize_deliver_at(%DateTime{} = value, now) do
+    value = DateTime.truncate(value, :second)
+
+    cond do
+      DateTime.compare(value, DateTime.add(now, -@schedule_grace_seconds, :second)) == :lt ->
+        :invalid
+
+      DateTime.compare(value, DateTime.add(now, @max_schedule_seconds, :second)) == :gt ->
+        :invalid
+
+      DateTime.compare(value, now) != :gt ->
+        nil
+
+      true ->
+        value
+    end
+  end
+
+  def normalize_deliver_at(_value, _now), do: :invalid
 
   ## Notifications (the pull side)
 
@@ -942,11 +1266,20 @@ defmodule Veejr.Messaging do
     query |> Repo.all() |> Enum.reverse()
   end
 
-  @doc "Returns the owner's encrypted note cards, newest edit first."
-  def list_self_note_envelopes(%User{id: id}, opts \\ []) do
+  @doc """
+  Returns the owner's encrypted board items — note cards and documents alike —
+  newest edit first.
+
+  Notes and documents share one board and one query because they are the same
+  owner-only envelope shape; only the encrypted payload differs. Pass `:kinds`
+  to narrow to one of them.
+  """
+  def list_self_envelopes(%User{id: id}, opts \\ []) do
+    kinds = self_kinds_option(opts)
+
     query =
       from(e in Envelope,
-        where: e.sender_id == ^id and e.recipient_id == ^id and e.kind == "self_note",
+        where: e.sender_id == ^id and e.recipient_id == ^id and e.kind in ^kinds,
         preload: [:sender],
         order_by: [desc: e.edited_at, desc: e.inserted_at, desc: e.id]
       )
@@ -962,12 +1295,22 @@ defmodule Veejr.Messaging do
     |> Repo.all()
   end
 
-  @doc "Counts the owner's encrypted note cards without loading their ciphertext."
-  def count_self_note_envelopes(%User{id: id}) do
+  @doc "Counts the owner's board items without loading their ciphertext."
+  def count_self_envelopes(%User{id: id}, opts \\ []) do
+    kinds = self_kinds_option(opts)
+
     from(e in Envelope,
-      where: e.sender_id == ^id and e.recipient_id == ^id and e.kind == "self_note"
+      where: e.sender_id == ^id and e.recipient_id == ^id and e.kind in ^kinds
     )
     |> Repo.aggregate(:count)
+  end
+
+  defp self_kinds_option(opts) do
+    case Keyword.get(opts, :kinds) do
+      nil -> Envelope.self_kinds()
+      kinds when is_list(kinds) -> Enum.filter(kinds, &Envelope.self_kind?/1)
+      kind when is_binary(kind) -> Enum.filter([kind], &Envelope.self_kind?/1)
+    end
   end
 
   @doc "Returns legacy self-addressed messages that a browser may copy into self notes."
@@ -1396,14 +1739,12 @@ defmodule Veejr.Messaging do
     end
   end
 
-  @doc "Permanently removes one owner-only self-note, never another envelope kind."
-  def delete_self_note(%User{id: user_id} = user, public_id) when is_binary(public_id) do
-    case Repo.get_by(Envelope,
-           public_id: public_id,
-           sender_id: user_id,
-           recipient_id: user_id,
-           kind: "self_note"
-         ) do
+  @doc """
+  Permanently removes one owner-only board item — a note or a document — and
+  never an envelope of any other kind.
+  """
+  def delete_self_item(%User{id: user_id} = user, public_id) when is_binary(public_id) do
+    case self_item(user_id, public_id) do
       nil -> {:error, :not_found}
       _envelope -> delete_envelope(user, public_id)
     end

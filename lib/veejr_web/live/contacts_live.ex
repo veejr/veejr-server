@@ -562,6 +562,11 @@ defmodule VeejrWeb.ContactsLive do
     {:noreply, refresh(socket)}
   end
 
+  # Everything else on the user's topic (schedule releases, note reminders,
+  # anything added later) is for other views. Without this clause a new
+  # broadcast would take the page down.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("start_conversation", params, socket) do
     case ConversationLauncher.destination(socket.assigns, params) do

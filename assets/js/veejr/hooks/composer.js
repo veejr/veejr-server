@@ -14,6 +14,7 @@ import {
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, currentLocationPath, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showError} from "./shared.js"
 import {noteDocument} from "./notes_document.js"
+import {localDateTimeToIso} from "../schedule_time.js"
 import {Decrypt} from "./messages.js"
 
 // A drag only counts when it actually carries files: dragging selected text
@@ -539,12 +540,20 @@ export const Composer = {
       const text = this.el.querySelector("[data-role=text]")
       const ttl = this.el.querySelector("[data-role=ttl]")
       const displays = this.el.querySelector("[data-role=max-displays]")
+      const deliverAt = this.el.querySelector("[data-role=deliver-at]")
       if (text && typeof draft.text === "string") text.value = draft.text
       if (ttl && typeof draft.ttl === "string") ttl.value = draft.ttl
       if (displays && typeof draft.maxDisplays === "string") displays.value = draft.maxDisplays
+      // A send time already in the past is not worth restoring — the user
+      // would have to notice and clear it before the message would go.
+      if (deliverAt && typeof draft.deliverAt === "string" && draft.deliverAt) {
+        const restored = localDateTimeToIso(draft.deliverAt)
+        if (restored && new Date(restored).getTime() > Date.now()) deliverAt.value = draft.deliverAt
+      }
       if (draft.replyTo?.id) this.replyTo = draft.replyTo
       this.renderReplyPreview()
       this.renderExpirySummary()
+      this.renderScheduleSummary()
       this.setDraftStatus("Draft restored")
     } catch {
       localStorage.removeItem(this.draftStorageKey())
@@ -558,7 +567,8 @@ export const Composer = {
     const text = this.el.querySelector("[data-role=text]")?.value || ""
     const ttl = this.el.querySelector("[data-role=ttl]")?.value || ""
     const maxDisplays = this.el.querySelector("[data-role=max-displays]")?.value || ""
-    const hasDraft = text.trim() || ttl || maxDisplays || this.replyTo
+    const deliverAt = this.el.querySelector("[data-role=deliver-at]")?.value || ""
+    const hasDraft = text.trim() || ttl || maxDisplays || deliverAt || this.replyTo
 
     if (!hasDraft) {
       this.clearDraft()
@@ -568,11 +578,15 @@ export const Composer = {
     localStorage.setItem(
       this.draftStorageKey(),
       JSON.stringify(
-        sealLocal({v: 1, text, ttl, maxDisplays, replyTo: this.replyTo || null}, secret)
+        sealLocal(
+          {v: 1, text, ttl, maxDisplays, deliverAt, replyTo: this.replyTo || null},
+          secret
+        )
       )
     )
     this.setDraftStatus("Draft saved on this device")
     this.renderExpirySummary()
+    this.renderScheduleSummary()
   },
 
   clearDraft() {
@@ -619,6 +633,33 @@ export const Composer = {
     summary.textContent = parts.length
       ? `This message ${parts.join(" and ")}. A recipient may still save what they see.`
       : "No expiry or display limit. Limits cannot revoke content a recipient has already saved."
+  },
+
+  renderScheduleSummary() {
+    const summary = this.el.querySelector("[data-role=schedule-summary]")
+    const input = this.el.querySelector("[data-role=deliver-at]")
+    if (!summary || !input) return
+
+    const iso = localDateTimeToIso(input.value)
+    if (!iso) {
+      summary.textContent =
+        "Sends immediately. A scheduled message is encrypted now and held as ciphertext " +
+        "until its time; the server never sees the text."
+      delete summary.dataset.state
+      return
+    }
+
+    const when = new Date(iso)
+    if (when.getTime() <= Date.now()) {
+      summary.textContent = "That time has already passed — pick a later one."
+      summary.dataset.state = "invalid"
+      return
+    }
+
+    summary.textContent =
+      `Sends on ${when.toLocaleString()}. It is encrypted now; you can cancel it ` +
+      "from the conversation until then."
+    summary.dataset.state = "scheduled"
   },
 
   setEmojiMenuOpen(open) {
@@ -1089,6 +1130,11 @@ export const Composer = {
       if (Number.isInteger(maxDisplays) && maxDisplays > 0) {
         messageOptions.max_displays = maxDisplays
       }
+      // A scheduled message is sealed here and now, exactly like an immediate
+      // one; only its release is deferred. The server holds ciphertext it
+      // cannot read until the time arrives.
+      const deliverAt = localDateTimeToIso(form.querySelector("[data-role=deliver-at]")?.value)
+      if (deliverAt) messageOptions.deliver_at = deliverAt
 
       busy("Encrypting…")
       const envelopes = recipients.map((r) => ({
@@ -1100,7 +1146,7 @@ export const Composer = {
         envelopes.push({recipient_id: parseInt(userId), ...sealFor(myKey, payload, mySecret)})
       }
 
-      busy("Sending…")
+      busy(deliverAt ? "Scheduling…" : "Sending…")
       await this.pushWithReply("send_batch", {kind, envelopes, ...messageOptions})
 
       form.reset()

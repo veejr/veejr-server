@@ -2,7 +2,13 @@ defmodule Veejr.Messaging.Envelope do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @kinds ~w(message location note self_note)
+  @kinds ~w(message location note self_note self_doc)
+
+  # Owner-only kinds: exactly one copy, addressed to the sender, never
+  # notified or federated. `self_doc` carries its document type (spreadsheet,
+  # page) *inside* the encrypted payload, so adding a document format does not
+  # add a kind — and the server cannot tell one document type from another.
+  @self_kinds ~w(self_note self_doc)
 
   schema "envelopes" do
     field :public_id, :string
@@ -31,6 +37,18 @@ defmodule Veejr.Messaging.Envelope do
     # opaque content fingerprint of an imported note, so a re-import can tell a
     # changed note (update) from an unchanged one (skip).
     field :dedup_version, :string
+    # Scheduled send. The ciphertext is stored at compose time and withheld
+    # until `deliver_at`; `released_at` marks the scheduler's decision (once),
+    # and `release_error` records a refusal such as a rotated recipient key.
+    field :deliver_at, :utc_datetime
+    field :released_at, :utc_datetime
+    field :release_error, :string
+    # The recipient key this copy was sealed to, so release can detect a
+    # rotation that happened while the message waited. See the migration.
+    field :recipient_public_key, :string
+    # One-shot reminder for an owner-only self note or document.
+    field :remind_at, :utc_datetime
+    field :reminded_at, :utc_datetime
 
     belongs_to :sender, Veejr.Accounts.User
     belongs_to :recipient, Veejr.Accounts.User
@@ -40,6 +58,12 @@ defmodule Veejr.Messaging.Envelope do
   end
 
   def kinds, do: @kinds
+
+  @doc "Kinds that must be a single owner-addressed copy with no notification."
+  def self_kinds, do: @self_kinds
+
+  @doc "True for the owner-only kinds (`self_note`, `self_doc`)."
+  def self_kind?(kind), do: kind in @self_kinds
 
   def changeset(envelope, attrs) do
     envelope

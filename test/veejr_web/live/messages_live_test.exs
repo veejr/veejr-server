@@ -137,7 +137,7 @@ defmodule VeejrWeb.MessagesLiveTest do
     })
 
     assert_patch(view, "/messages?self_notes=true")
-    [note] = Messaging.list_self_note_envelopes(user)
+    [note] = Messaging.list_self_envelopes(user)
     assert has_element?(view, "#self-note-#{note.public_id}")
   end
 
@@ -148,6 +148,107 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#self-notes-quick-create[data-role='new-note']")
     assert has_element?(view, "#self-notes-search[data-role='search']")
     assert has_element?(view, "#self-notes-date-filters")
+    assert has_element?(view, "#self-notes-new-sheet[data-role='new-sheet']")
+    assert has_element?(view, "#self-notes-new-page[data-role='new-page']")
+  end
+
+  test "creates a document on the notes board", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, "/messages")
+
+    render_hook(view, "send_batch", %{
+      "kind" => "self_doc",
+      "envelopes" => [
+        %{"recipient_id" => user.id, "ciphertext" => "encrypted-sheet", "nonce" => "nonce"}
+      ]
+    })
+
+    assert_patch(view, "/messages?self_notes=true")
+    [doc] = Messaging.list_self_envelopes(user, kinds: ["self_doc"])
+    assert has_element?(view, "#self-note-content-#{doc.public_id}[data-kind='self_doc']")
+  end
+
+  test "sets and clears a reminder on a board item", %{conn: conn, user: user} do
+    {:ok, _batch, []} =
+      Messaging.send_batch(user, "self_note", [
+        %{"recipient_id" => user.id, "ciphertext" => "encrypted", "nonce" => "nonce"}
+      ])
+
+    [note] = Messaging.list_self_envelopes(user)
+    {:ok, view, _html} = live(conn, "/messages?self_notes=true")
+
+    remind_at = DateTime.utc_now(:second) |> DateTime.add(3600) |> DateTime.to_iso8601()
+
+    assert render_hook(view, "set_reminder", %{"id" => note.public_id, "remind_at" => remind_at}) =~
+             "Reminder set."
+
+    assert has_element?(view, "#self-note-#{note.public_id} [data-remind-at]")
+
+    assert render_hook(view, "set_reminder", %{"id" => note.public_id, "remind_at" => nil}) =~
+             "Reminder cleared."
+  end
+
+  test "refuses a reminder on someone else's item", %{conn: conn, user: user} do
+    stranger = user_fixture(%{username: "stranger"})
+
+    {:ok, _batch, []} =
+      Messaging.send_batch(stranger, "self_note", [
+        %{"recipient_id" => stranger.id, "ciphertext" => "theirs", "nonce" => "nonce"}
+      ])
+
+    [theirs] = Messaging.list_self_envelopes(stranger)
+    {:ok, view, _html} = live(conn, "/messages?self_notes=true")
+
+    render_hook(view, "set_reminder", %{"id" => theirs.public_id, "remind_at" => nil})
+
+    # Unchanged, and the caller learns nothing about what exists.
+    assert Repo.get_by!(Veejr.Messaging.Envelope, public_id: theirs.public_id).recipient_id ==
+             stranger.id
+
+    assert Messaging.list_self_envelopes(user) == []
+  end
+
+  test "schedules a message and cancels it before release", %{conn: conn, user: user} do
+    friend = user_fixture(%{username: "scheduled_friend"})
+    {:ok, request} = Social.send_friend_request(user, friend.username)
+    {:ok, _} = Social.accept_friend_request(friend, request.id)
+
+    {:ok, view, _html} = live(conn, "/messages")
+    deliver_at = DateTime.utc_now(:second) |> DateTime.add(3600) |> DateTime.to_iso8601()
+
+    assert render_hook(view, "send_batch", %{
+             "kind" => "message",
+             "deliver_at" => deliver_at,
+             "envelopes" => [
+               %{"recipient_id" => user.id, "ciphertext" => "self", "nonce" => "n1"},
+               %{"recipient_id" => friend.id, "ciphertext" => "theirs", "nonce" => "n2"}
+             ]
+           }) =~ "Encrypted and scheduled."
+
+    # Nothing released: the recipient has no notification to see.
+    assert Messaging.list_pending_notifications(friend) == []
+    assert [scheduled] = Messaging.list_scheduled_envelopes(user)
+
+    render_hook(view, "cancel_scheduled", %{"id" => scheduled.public_id})
+    assert Messaging.list_scheduled_envelopes(user) == []
+  end
+
+  test "rejects an unusable send time", %{conn: conn, user: user} do
+    friend = user_fixture(%{username: "bad_time_friend"})
+    {:ok, request} = Social.send_friend_request(user, friend.username)
+    {:ok, _} = Social.accept_friend_request(friend, request.id)
+
+    {:ok, view, _html} = live(conn, "/messages")
+
+    render_hook(view, "send_batch", %{
+      "kind" => "message",
+      "deliver_at" => "whenever",
+      "envelopes" => [
+        %{"recipient_id" => friend.id, "ciphertext" => "theirs", "nonce" => "n"}
+      ]
+    })
+
+    assert Messaging.list_scheduled_envelopes(user) == []
+    assert Messaging.list_history(friend) == []
   end
 
   test "loads every self note in one action", %{conn: conn, user: user} do
@@ -164,7 +265,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     oldest_note =
       user
-      |> Messaging.list_self_note_envelopes(limit: :all)
+      |> Messaging.list_self_envelopes(limit: :all)
       |> List.last()
 
     {:ok, view, _html} = live(conn, "/messages?self_notes=true")

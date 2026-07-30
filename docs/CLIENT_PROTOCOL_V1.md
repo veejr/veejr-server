@@ -104,7 +104,7 @@ clients can fail before login when incompatible.
   "api_versions": [1],
   "payload_versions": [1],
   "max_blob_bytes": 26214400,
-  "message_kinds": ["message", "location", "note", "self_note"],
+  "message_kinds": ["message", "location", "note", "self_note", "self_doc"],
   "instance_mode": "community"
 }
 ```
@@ -711,12 +711,18 @@ Each `attachment_ids` entry MUST identify a blob owned by the sender. The
 server links those opaque IDs to the batch atomically without learning file
 names, media types, keys, or other encrypted descriptor fields.
 
-Allowed kinds are `message`, `location`, `note`, and `self_note`. A `self_note`
-batch MUST contain exactly one envelope addressed to its sender, MUST NOT carry
-an expiry or display limit, and MUST NOT produce a notification or federation
-delivery. Its decrypted payload is a versioned note document; title, body,
-labels, checklist items, attachment descriptors, and card state remain inside
-the ciphertext. `max_displays` is either
+Allowed kinds are `message`, `location`, `note`, `self_note`, and `self_doc`. A
+`self_note` or `self_doc` batch MUST contain exactly one envelope addressed to
+its sender, MUST NOT carry an expiry, display limit, or `deliver_at`, and MUST
+NOT produce a notification or federation delivery. Its decrypted payload is a
+versioned document; title, body, labels, checklist items, cells, blocks,
+attachment descriptors, and card state remain inside the ciphertext.
+
+This version of the native batch endpoint accepts `kind: "message"` only.
+`self_note` and `self_doc` are listed in `message_kinds` so a client can
+recognize items it receives but does not create.
+
+`max_displays` is either
 null or 1 through 100. `expires_at` is null or a future timestamp within the
 server's maximum allowed horizon. Invalid options MUST be rejected rather than
 silently normalized by the API.
@@ -819,7 +825,19 @@ A `self_note` envelope contains document `v: 2`, `kind: "self_note"`, a random
 created/updated timestamps, attachment descriptors, and card settings. All
 fields remain inside ciphertext. Clients that do not implement this document
 MUST retain or safely omit the encrypted item and MUST NOT reinterpret it as a
-version-1 message. The complete validation and privacy rules are in
+version-1 message.
+
+### 14.5 Self-document
+
+A `self_doc` envelope contains document `v: 1`, `kind: "self_doc"`, a random
+`doc_id`, a `doc_kind` of `"sheet"` or `"page"`, title, labels, color, card
+state, timestamps, and exactly one of a `sheet` or `page` body. The format is
+named inside the ciphertext, so a server distinguishes documents from each
+other no more than it distinguishes two notes. Clients that do not implement it
+MUST retain the encrypted item unchanged and MUST NOT reinterpret it. The
+payload contract is in [DOCUMENTS.md](DOCUMENTS.md).
+
+The complete validation and privacy rules are in
 [SELF_NOTES_KEEP_SPEC.md](SELF_NOTES_KEEP_SPEC.md#7-encrypted-payload-contract).
 
 ### 14.5 Attachment descriptor

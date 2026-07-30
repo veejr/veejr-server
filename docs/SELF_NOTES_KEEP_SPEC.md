@@ -19,13 +19,18 @@ JSON plus available attachments, uses keyed opaque deduplication identifiers,
 and updates an earlier imported card when Keep content changes instead of
 creating a duplicate.
 
+One-shot reminders are now implemented (see §14). The board also hosts
+encrypted `self_doc` items — spreadsheets and text documents — which share this
+document's card, search, and organization model but carry their own payload
+contract; see [DOCUMENTS.md](DOCUMENTS.md).
+
 This document still records the intended complete behavior. Requirements not
 yet matching the web implementation remain roadmap items, notably the richer
 three-way conflict comparison, cursor/progress/cancellation UX for very large
 searches, legacy self-message conversion, and native-client parity. Current
 loading starts at 50 and can add 50 or remove the limit with **Load all
-notes**. Search requests that load-all path automatically. Scheduled reminders
-remain explicitly unimplemented.
+notes**. Search requests that load-all path automatically. Recurring reminders
+remain unimplemented.
 
 ## 1. Outcome
 
@@ -60,7 +65,7 @@ This is a behavioral and interaction reference, not a visual copy of Google Keep
 
 ### 3.2 Explicitly deferred
 
-- Scheduled notifications/reminders (the UI may reserve the location, but must not claim it works).
+- Recurring reminders. One-shot reminders are implemented (§14).
 - Drawing/canvas notes, OCR, voice transcription, collaborators, shared notes, public links, and third-party sync.
 - Server-side search, server-readable labels, server-side color/state filtering, or analytics containing note plaintext.
 - Drag-and-drop reordering. Default order is deterministic and based on encrypted note timestamps.
@@ -322,3 +327,27 @@ Validation after decryption:
 
 The board is no longer feature-flagged. Existing self-message history must
 remain visible; future changes must not silently reinterpret or discard it.
+
+## 14. Reminders
+
+A note or document may carry one reminder. It is the single part of a card that
+is **not** encrypted, and the exception is unavoidable: something has to know
+when to fire, and only the server is awake when the browser is not.
+
+- The time lives in `envelopes.remind_at`; `reminded_at` marks it fired so a
+  restart mid-sweep cannot fire it twice.
+- Setting a new time clears `reminded_at`, which re-arms a fired reminder.
+  Passing an empty time clears the reminder.
+- `Messaging.set_reminder/3` accepts only the caller's own `self_note` or
+  `self_doc` envelope. It refuses an ordinary message and another user's item,
+  both returning `:not_found` so the caller learns nothing about what exists.
+- `Veejr.Messaging.Scheduler` sweeps on a fixed interval;
+  `dispatch_due_note_reminders/1` is the whole behavior and is directly callable
+  in tests.
+- The fired reminder is content-free. It carries a fixed title and body and the
+  card's `public_id` — no title, body, checklist item, label, or attachment
+  name. The browser opens the board and decrypts the card itself.
+
+What the server can therefore infer is that a person set a reminder on some
+encrypted item for some time. Recurring reminders, reminder-relative offsets
+("15 minutes before"), and location reminders are unimplemented.

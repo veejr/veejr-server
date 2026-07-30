@@ -20,7 +20,8 @@ has a distinct purpose.
 | --- | --- | --- |
 | [Client protocol v1](CLIENT_PROTOCOL_V1.md) | Draft versioned contract | Native HTTP API, payload formats, cryptographic wire format, and Android interoperability. Browser call/watch signaling is explicitly outside v1. |
 | [Reimplementation specification](REIMPLEMENTATION_SPEC.md) | Normative baseline for v0.3.55 | Framework-independent product, data, security, federation, UI, operation, call, and acceptance requirements. |
-| [Notes to yourself specification](SELF_NOTES_KEEP_SPEC.md) | Implemented baseline plus roadmap | Encrypted card payload v2, privacy rules, current web behavior, and remaining parity/hardening work. |
+| [Notes to yourself specification](SELF_NOTES_KEEP_SPEC.md) | Implemented baseline plus roadmap | Encrypted card payload v2, reminders, privacy rules, current web behavior, and remaining parity/hardening work. |
+| [Documents specification](DOCUMENTS.md) | Implemented web baseline | The `self_doc` payload for spreadsheets and pages, the formula engine, the block/mark model, and the on-demand editor chunk. |
 | [`protocol-fixtures/v1.json`](../protocol-fixtures/v1.json) | Machine-verified fixture | Cross-client cryptographic interoperability values. |
 
 ## Deployment-specific reference
