@@ -1,3 +1,5 @@
+import {clearFaviconActivity, setFaviconActivity} from "./favicon.js"
+
 const YOUTUBE_ORIGINS = new Set(["https://www.youtube.com", "https://www.youtube-nocookie.com"])
 
 function playerCommand(iframe, func, args = []) {
@@ -9,6 +11,8 @@ function playerCommand(iframe, func, args = []) {
 
 export const YouTubeWatch = {
   mounted() {
+    this.faviconSource = `watch:${this.el.id || "youtube"}`
+    setFaviconActivity(this.faviconSource, "youtube")
     this.iframe = this.el.querySelector("[data-role='player']")
     this.host = this.el.dataset.host === "true"
     this.playback = this.el.dataset.playback || "paused"
@@ -82,6 +86,7 @@ export const YouTubeWatch = {
   },
 
   destroyed() {
+    clearFaviconActivity(this.faviconSource)
     window.removeEventListener("message", this.onMessage)
     this.iframe?.removeEventListener("load", this.listenToPlayer)
     this.fullscreenButton?.removeEventListener("click", this.onFullscreen)

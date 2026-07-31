@@ -1,3 +1,5 @@
+import {clearFaviconActivity, setFaviconActivity} from "./favicon.js"
+
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/u
 const YOUTUBE_ORIGINS = new Set(["https://www.youtube.com", "https://www.youtube-nocookie.com"])
 
@@ -64,6 +66,7 @@ export class CallYouTube {
     this.position = 0
     this.appliedPlayback = null
     this.playerPosition = null
+    this.faviconSource = `${hook.faviconSource || `call:${hook.el.dataset.callId}`}:youtube`
 
     this.onWindowMessage = event => this.handlePlayerMessage(event)
     window.addEventListener("message", this.onWindowMessage)
@@ -76,6 +79,7 @@ export class CallYouTube {
     this.clearPlayerTimers()
     this.iframe?.remove()
     this.hook.el.dataset.youtubeActive = "false"
+    clearFaviconActivity(this.faviconSource)
   }
 
   setupControls() {
@@ -222,6 +226,7 @@ export class CallYouTube {
     this.active = true
     this.localController = localController
     this.hook.el.dataset.youtubeActive = "true"
+    setFaviconActivity(this.faviconSource, "youtube")
     this.videoId = videoId
     this.playback = playback
     this.position = position
@@ -374,6 +379,7 @@ export class CallYouTube {
     this.appliedPlayback = null
     this.playerPosition = null
     this.hook.el.dataset.youtubeActive = "false"
+    clearFaviconActivity(this.faviconSource)
     this.stage?.classList.add("hidden")
     this.stage?.classList.remove("block")
     this.compactCallVideos(false)
