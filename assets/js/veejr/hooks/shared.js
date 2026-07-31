@@ -9,6 +9,7 @@ import {
   decryptBlob,
 } from "../crypto.js"
 import {Decrypt} from "./messages.js"
+import {appendLinkedText} from "../link_text.js"
 import {ensureLeaflet} from "../map_hook.js"
 
 // Promise wrapper around pushEvent-with-reply, shared by several hooks.
@@ -210,7 +211,8 @@ export function showMediaModal({blob, title, mime}) {
 
 // Full-screen map modal for a decrypted location or geo-note. The plaintext
 // (coordinates, title, text) only ever exists in this browser; everything is
-// written with textContent, matching the Decrypt hook's security rule.
+// written with textContent, matching the Decrypt hook's security rule — except
+// the note body, which goes through the same audited linkifier as a bubble.
 
 export async function showLocationModal({lat, lng, title, text, kind}) {
   const overlay = document.createElement("div")
@@ -243,7 +245,7 @@ export async function showLocationModal({lat, lng, title, text, kind}) {
   if (text) {
     const p = document.createElement("p")
     p.className = "whitespace-pre-wrap text-sm"
-    p.textContent = text
+    appendLinkedText(p, text)
     info.appendChild(p)
   }
 

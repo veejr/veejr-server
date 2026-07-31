@@ -15,6 +15,7 @@
 //   hooks/contacts_scenes.js the lazily loaded WebGL contact views
 //   hooks/ui.js              hooks with no cryptographic role
 //   hooks/shared.js          helpers used by several of the above
+//   link_text.js             autolinking URLs found in decrypted text
 
 import {KeySetup, KeyUnlock, KeyRewrap, KeyRotate, KeyReset, KeyLock} from "./hooks/keys.js"
 import {Composer} from "./hooks/composer.js"

@@ -2,13 +2,16 @@
 // message bubbles.
 //
 // Plaintext is written with textContent so a decrypted message can never be
-// parsed as markup.
+// parsed as markup. Message bodies go through ../link_text.js instead, which
+// keeps the same guarantee: it appends text nodes and anchors it builds
+// itself, never markup parsed out of the message.
 
 import {
   getSecretKey,
   sealFor,
   openFrom,
 } from "../crypto.js"
+import {appendLinkedText} from "../link_text.js"
 import {attachmentMime, currentLocationPath, decryptAttachmentBlob, downloadAttachment, previewableMedia, pushWithReply, showLocationModal, showMediaModal} from "./shared.js"
 
 export const Decrypt = {
@@ -74,7 +77,7 @@ export const Decrypt = {
     if (payload.text) {
       const p = document.createElement("p")
       p.className = "whitespace-pre-wrap"
-      p.textContent = payload.text
+      appendLinkedText(p, payload.text)
       this.el.appendChild(p)
     }
 
@@ -490,7 +493,7 @@ export const MessageBubble = {
         decryptEl.textContent = ""
         const p = document.createElement("p")
         p.className = "whitespace-pre-wrap"
-        p.textContent = text
+        appendLinkedText(p, text)
         decryptEl.appendChild(p)
         this.closeEditor()
       } finally {
