@@ -77,6 +77,12 @@ defmodule VeejrWeb.Layouts do
     default: nil,
     doc: "additional classes applied to the main page region"
 
+  attr :main_padding_class, :string,
+    default: "py-10",
+    doc:
+      "vertical padding for the main page region. Pages that fill the viewport " <>
+        "instead of scrolling pass \"\" and manage their own spacing"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -242,7 +248,7 @@ defmodule VeejrWeb.Layouts do
         </div>
       </header>
 
-      <main class={["px-4 py-10 sm:px-6 lg:px-8", @main_class]}>
+      <main class={["px-4 sm:px-6 lg:px-8", @main_padding_class, @main_class]}>
         <div class={@container_class}>
           {render_slot(@inner_block)}
         </div>

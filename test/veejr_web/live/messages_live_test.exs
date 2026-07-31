@@ -64,6 +64,25 @@ defmodule VeejrWeb.MessagesLiveTest do
     refute has_element?(view, "#messages-page-header-content #self-notes-command-center")
   end
 
+  test "spends the layout's vertical padding on the thread instead", %{conn: conn} do
+    {:ok, messages, _html} = live(conn, "/messages")
+
+    # The workspace is sized to the viewport rather than scrolling with the
+    # page, so the layout's `py-10` would come straight out of the thread.
+    refute has_element?(messages, "main.py-10")
+    assert has_element?(messages, "main.flex-1 #messages-workspace")
+
+    # Notes to yourself is the same workspace with the notes pane swapped in,
+    # so it gets the height back too.
+    {:ok, notes, _html} = live(conn, "/messages?self_notes=true")
+    refute has_element?(notes, "main.py-10")
+    assert has_element?(notes, "main.flex-1 #self-notes-pane-header")
+
+    # Pages that do scroll keep it.
+    {:ok, contacts, _html} = live(conn, "/contacts")
+    assert has_element?(contacts, "main.py-10")
+  end
+
   test "offers four persistent chat appearances and an arrival celebration", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 

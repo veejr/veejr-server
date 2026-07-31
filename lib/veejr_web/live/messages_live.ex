@@ -20,6 +20,7 @@ defmodule VeejrWeb.MessagesLive do
       current_scope={@current_scope}
       pending_count={@pending_count}
       main_class="flex min-h-0 flex-1 flex-col"
+      main_padding_class=""
       container_class="mx-auto h-full min-h-0 w-full max-w-7xl"
     >
       <div
