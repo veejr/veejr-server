@@ -19,13 +19,14 @@ defmodule VeejrWeb.MessagesLive do
       flash={@flash}
       current_scope={@current_scope}
       pending_count={@pending_count}
-      container_class="mx-auto max-w-7xl"
+      main_class="flex min-h-0 flex-1 flex-col"
+      container_class="mx-auto h-full min-h-0 w-full max-w-7xl"
     >
       <div
         id="messages-workspace"
         phx-hook="ChatTheme"
         data-chat-theme="classic"
-        class="messages-workspace rounded-[32px] border border-base-300 bg-base-200 shadow-sm"
+        class="messages-workspace flex h-full min-h-0 flex-col rounded-[32px] border border-base-300 bg-base-200 shadow-sm"
       >
         <.page_header conversations={@conversations} friends={@friends} groups={@groups} />
 
@@ -33,7 +34,7 @@ defmodule VeejrWeb.MessagesLive do
 
         <.consent_dialog pending={@pending} current_scope={@current_scope} />
 
-        <section class="messages-layout min-h-[42rem] overflow-hidden rounded-b-[31px] lg:h-[calc(100svh-12rem)] lg:min-h-0">
+        <section class="messages-layout flex min-h-0 flex-1 overflow-hidden rounded-b-[31px]">
           <.conversation_rail
             conversations={@conversations}
             selected_conversation_key={@selected_conversation_key}
@@ -43,7 +44,7 @@ defmodule VeejrWeb.MessagesLive do
             available_groups={@available_groups}
           />
 
-          <main class="messages-main flex h-full min-h-0 min-w-0 flex-col bg-base-200/80">
+          <main class="messages-main flex h-full min-h-0 min-w-0 flex-1 flex-col bg-base-200/80">
             <.self_notes_pane
               self_notes={@self_notes}
               self_note_envelopes={@self_note_envelopes}

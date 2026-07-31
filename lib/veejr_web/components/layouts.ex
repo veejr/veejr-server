@@ -73,175 +73,183 @@ defmodule VeejrWeb.Layouts do
     default: "mx-auto max-w-3xl space-y-4",
     doc: "classes applied to the inner page container"
 
+  attr :main_class, :string,
+    default: nil,
+    doc: "additional classes applied to the main page region"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <div
-      id="connection-status"
-      role="status"
-      aria-live="polite"
-      class="fixed inset-x-0 top-0 z-[100] hidden items-center justify-center gap-2 bg-warning px-4 py-2 text-center text-sm font-medium text-warning-content shadow-lg"
-    >
-      <.icon name="hero-signal-slash" class="size-4" />
-      <span data-role="connection-status-text">Connection interrupted</span>
-    </div>
-    <header class="sticky top-0 z-40 flex min-h-16 flex-wrap items-center gap-2 border-b border-base-300 bg-base-100/95 px-4 py-2 shadow-sm backdrop-blur sm:flex-nowrap sm:px-6 lg:px-8">
-      <details
-        :if={@current_scope}
-        id="primary-navigation-menu"
-        phx-hook=".NavigationMenu"
-        class="dropdown shrink-0"
+    <div class="flex h-svh min-h-svh flex-col">
+      <div
+        id="connection-status"
+        role="status"
+        aria-live="polite"
+        class="fixed inset-x-0 top-0 z-[100] hidden items-center justify-center gap-2 bg-warning px-4 py-2 text-center text-sm font-medium text-warning-content shadow-lg"
       >
-        <summary
-          id="primary-navigation-trigger"
-          class="btn btn-ghost btn-square btn-sm list-none [&::-webkit-details-marker]:hidden"
-          aria-label="Open navigation menu"
-          aria-controls="primary-navigation-links"
-          title="Menu"
+        <.icon name="hero-signal-slash" class="size-4" />
+        <span data-role="connection-status-text">Connection interrupted</span>
+      </div>
+      <header class="sticky top-0 z-40 flex min-h-16 flex-wrap items-center gap-2 border-b border-base-300 bg-base-100/95 px-4 py-2 shadow-sm backdrop-blur sm:flex-nowrap sm:px-6 lg:px-8">
+        <details
+          :if={@current_scope}
+          id="primary-navigation-menu"
+          phx-hook=".NavigationMenu"
+          class="dropdown shrink-0"
         >
-          <.icon name="hero-bars-3" class="size-5" />
-        </summary>
-        <nav
-          id="primary-navigation-links"
-          aria-label="Primary navigation"
-          class="app-menu-surface dropdown-content z-50 mt-2 w-72 rounded-2xl border p-2"
-        >
-          <ul class="menu gap-1 p-0">
-            <li class="menu-title px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55">
-              Navigate
-            </li>
-            <li>
-              <.link
-                navigate={~p"/contacts"}
-                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
-              >
-                <.icon name="hero-user-group" class="size-4" />
-                <span class="flex-1">Contacts</span>
-                <span
-                  :if={@pending_count && @pending_count > 0}
-                  class="badge badge-primary badge-sm"
+          <summary
+            id="primary-navigation-trigger"
+            class="btn btn-ghost btn-square btn-sm list-none [&::-webkit-details-marker]:hidden"
+            aria-label="Open navigation menu"
+            aria-controls="primary-navigation-links"
+            title="Menu"
+          >
+            <.icon name="hero-bars-3" class="size-5" />
+          </summary>
+          <nav
+            id="primary-navigation-links"
+            aria-label="Primary navigation"
+            class="app-menu-surface dropdown-content z-50 mt-2 w-72 rounded-2xl border p-2"
+          >
+            <ul class="menu gap-1 p-0">
+              <li class="menu-title px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55">
+                Navigate
+              </li>
+              <li>
+                <.link
+                  navigate={~p"/contacts"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
                 >
-                  {@pending_count}
-                </span>
-              </.link>
-            </li>
-            <li>
-              <.link
-                navigate={~p"/messages"}
-                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                  <.icon name="hero-user-group" class="size-4" />
+                  <span class="flex-1">Contacts</span>
+                  <span
+                    :if={@pending_count && @pending_count > 0}
+                    class="badge badge-primary badge-sm"
+                  >
+                    {@pending_count}
+                  </span>
+                </.link>
+              </li>
+              <li>
+                <.link
+                  navigate={~p"/messages"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-chat-bubble-left-right" class="size-4" /> Messages
+                </.link>
+              </li>
+              <li>
+                <.link
+                  navigate={~p"/calls"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-video-camera" class="size-4" /> Calls
+                </.link>
+              </li>
+              <li>
+                <.link
+                  navigate={~p"/map"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-map" class="size-4" /> Map
+                </.link>
+              </li>
+              <li>
+                <.link
+                  navigate={~p"/history"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-clock" class="size-4" /> History
+                </.link>
+              </li>
+              <li>
+                <.link
+                  navigate={~p"/watch"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-play-circle" class="size-4" /> Watch
+                </.link>
+              </li>
+              <li
+                id="primary-navigation-themes"
+                class="menu-title mt-2 border-t border-base-300 px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55"
               >
-                <.icon name="hero-chat-bubble-left-right" class="size-4" /> Messages
-              </.link>
-            </li>
-            <li>
-              <.link
-                navigate={~p"/calls"}
-                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
-              >
-                <.icon name="hero-video-camera" class="size-4" /> Calls
-              </.link>
-            </li>
-            <li>
-              <.link
-                navigate={~p"/map"}
-                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
-              >
-                <.icon name="hero-map" class="size-4" /> Map
-              </.link>
-            </li>
-            <li>
-              <.link
-                navigate={~p"/history"}
-                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
-              >
-                <.icon name="hero-clock" class="size-4" /> History
-              </.link>
-            </li>
-            <li>
-              <.link
-                navigate={~p"/watch"}
-                phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
-              >
-                <.icon name="hero-play-circle" class="size-4" /> Watch
-              </.link>
-            </li>
-            <li
-              id="primary-navigation-themes"
-              class="menu-title mt-2 border-t border-base-300 px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55"
-            >
-              Themes
-            </li>
-            <li class="px-1 pb-1">
-              <.theme_toggle />
-            </li>
-          </ul>
-        </nav>
-        <script :type={Phoenix.LiveView.ColocatedHook} name=".NavigationMenu">
-          export default {
-            mounted() {
-              this.closeOnOutsidePress = event => {
-                if (this.el.open && !this.el.contains(event.target)) {
-                  this.el.removeAttribute("open")
+                Themes
+              </li>
+              <li class="px-1 pb-1">
+                <.theme_toggle />
+              </li>
+            </ul>
+          </nav>
+          <script :type={Phoenix.LiveView.ColocatedHook} name=".NavigationMenu">
+            export default {
+              mounted() {
+                this.closeOnOutsidePress = event => {
+                  if (this.el.open && !this.el.contains(event.target)) {
+                    this.el.removeAttribute("open")
+                  }
                 }
-              }
-              this.closeOnEscape = event => {
-                if (event.key === "Escape" && this.el.open) {
-                  this.el.removeAttribute("open")
-                  this.el.querySelector("summary")?.focus()
+                this.closeOnEscape = event => {
+                  if (event.key === "Escape" && this.el.open) {
+                    this.el.removeAttribute("open")
+                    this.el.querySelector("summary")?.focus()
+                  }
                 }
+                document.addEventListener("pointerdown", this.closeOnOutsidePress)
+                document.addEventListener("keydown", this.closeOnEscape)
+              },
+              destroyed() {
+                document.removeEventListener("pointerdown", this.closeOnOutsidePress)
+                document.removeEventListener("keydown", this.closeOnEscape)
               }
-              document.addEventListener("pointerdown", this.closeOnOutsidePress)
-              document.addEventListener("keydown", this.closeOnEscape)
-            },
-            destroyed() {
-              document.removeEventListener("pointerdown", this.closeOnOutsidePress)
-              document.removeEventListener("keydown", this.closeOnEscape)
             }
-          }
-        </script>
-      </details>
-      <.link
-        navigate={~p"/"}
-        class="flex items-center gap-2 text-lg font-bold tracking-tight whitespace-nowrap"
-      >
-        <.veejr_mark class="size-6 veejr-brand" id="header-mark" />
-        <span class="lowercase">veejr</span>
-      </.link>
-      <div class="ml-auto shrink-0">
-        <ul class="flex px-1 space-x-2 items-center">
-          <%= if @current_scope do %>
-            <li>
-              <.link
-                navigate={~p"/account"}
-                class="btn btn-ghost btn-sm max-w-40 truncate"
-                title="Account"
-              >
-                @{@current_scope.user.username}
-              </.link>
-            </li>
-            <li>
-              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm">
-                Log out
-              </.link>
-            </li>
-          <% else %>
-            <li>
-              <.link navigate={~p"/users/register"} class="btn btn-ghost btn-sm">Register</.link>
-            </li>
-            <li><.link navigate={~p"/users/log-in"} class="btn btn-primary btn-sm">Log in</.link></li>
-          <% end %>
-        </ul>
-      </div>
-    </header>
+          </script>
+        </details>
+        <.link
+          navigate={~p"/"}
+          class="flex items-center gap-2 text-lg font-bold tracking-tight whitespace-nowrap"
+        >
+          <.veejr_mark class="size-6 veejr-brand" id="header-mark" />
+          <span class="lowercase">veejr</span>
+        </.link>
+        <div class="ml-auto shrink-0">
+          <ul class="flex px-1 space-x-2 items-center">
+            <%= if @current_scope do %>
+              <li>
+                <.link
+                  navigate={~p"/account"}
+                  class="btn btn-ghost btn-sm max-w-40 truncate"
+                  title="Account"
+                >
+                  @{@current_scope.user.username}
+                </.link>
+              </li>
+              <li>
+                <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm">
+                  Log out
+                </.link>
+              </li>
+            <% else %>
+              <li>
+                <.link navigate={~p"/users/register"} class="btn btn-ghost btn-sm">Register</.link>
+              </li>
+              <li>
+                <.link navigate={~p"/users/log-in"} class="btn btn-primary btn-sm">Log in</.link>
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      </header>
 
-    <main class="px-4 py-10 sm:px-6 lg:px-8">
-      <div class={@container_class}>
-        {render_slot(@inner_block)}
-      </div>
-    </main>
+      <main class={["px-4 py-10 sm:px-6 lg:px-8", @main_class]}>
+        <div class={@container_class}>
+          {render_slot(@inner_block)}
+        </div>
+      </main>
 
-    <.flash_group flash={@flash} />
+      <.flash_group flash={@flash} />
+    </div>
     """
   end
 

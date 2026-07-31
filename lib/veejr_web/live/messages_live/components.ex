@@ -907,7 +907,7 @@ defmodule VeejrWeb.MessagesLive.Components do
         id={"thread-#{@selected_conversation.key}"}
         phx-hook="ScrollBottom"
         data-has-more={@has_more_messages}
-        class="messages-thread min-h-[26rem] flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6 lg:min-h-0"
+        class="messages-thread min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6"
       >
         <div class="py-2 text-center">
           <button
@@ -992,7 +992,7 @@ defmodule VeejrWeb.MessagesLive.Components do
           {selected_recipient_subtitle(@selected_recipient)}
         </p>
       </div>
-      <section class="border-t border-base-300 bg-base-100/90 p-3 backdrop-blur">
+      <section class="messages-composer-dock sticky bottom-0 z-20 border-t border-base-300 bg-base-100/90 p-3 shadow-[0_-8px_24px_rgba(0,0,0,0.06)] backdrop-blur">
         <.composer
           id="message-composer"
           user={@current_scope.user}
