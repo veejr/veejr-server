@@ -494,9 +494,9 @@ defmodule VeejrWeb.MessagesLive.Components do
         </div>
         <div
           id="self-notes-search-bar"
-          class="sticky top-0 z-20 mb-3 rounded-2xl border border-base-300 bg-base-100/95 p-2 shadow-sm backdrop-blur"
+          class="sticky top-0 z-20 mb-3 flex items-center gap-2 rounded-2xl border border-base-300 bg-base-100/95 p-2 shadow-sm backdrop-blur"
         >
-          <label class="group flex items-center gap-3 rounded-xl px-3 py-2 transition focus-within:bg-base-200/60">
+          <label class="group flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 transition focus-within:bg-base-200/60">
             <.icon
               name="hero-magnifying-glass"
               class="size-5 shrink-0 text-base-content/45 transition group-focus-within:text-primary"
@@ -512,6 +512,23 @@ defmodule VeejrWeb.MessagesLive.Components do
             <kbd class="hidden rounded-lg border border-base-300 bg-base-200 px-2 py-1 text-[0.65rem] font-semibold text-base-content/55 sm:block">
               /
             </kbd>
+          </label>
+          <label
+            for="self-notes-sort"
+            class="flex shrink-0 items-center gap-1.5 rounded-xl border border-base-300 bg-base-100 px-2 text-base-content/60 transition focus-within:border-primary focus-within:text-primary"
+          >
+            <.icon name="hero-arrows-up-down" class="size-4" />
+            <span class="sr-only">Sort notes by</span>
+            <select
+              id="self-notes-sort"
+              data-role="sort"
+              aria-label="Sort notes by"
+              class="h-10 max-w-32 bg-transparent pr-1 text-xs font-semibold text-base-content outline-none sm:max-w-none"
+            >
+              <option value="updated" selected>Last edited</option>
+              <option value="created">Creation date</option>
+              <option value="title">Title</option>
+            </select>
           </label>
         </div>
         <details

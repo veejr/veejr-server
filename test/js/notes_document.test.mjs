@@ -9,12 +9,52 @@ import {test} from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  compareSelfNotes,
   mergeNoteDocuments,
   noteDocument,
   noteSearchClauses,
   normalizeNoteSearch,
   normalizeSelfNoteColor,
 } from "../../assets/js/veejr/hooks/notes_document.js"
+
+const sortableNotes = [
+  {
+    title: "Zulu",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+    pinned: false,
+  },
+  {
+    title: "alpha",
+    createdAt: "2026-02-01T00:00:00Z",
+    updatedAt: "2026-02-15T00:00:00Z",
+    pinned: false,
+  },
+  {
+    title: "Pinned",
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z",
+    pinned: true,
+  },
+]
+
+test("self notes default to last edited while keeping pinned notes first", () => {
+  assert.deepEqual(
+    [...sortableNotes].sort(compareSelfNotes).map((note) => note.title),
+    ["Pinned", "Zulu", "alpha"]
+  )
+})
+
+test("self notes can sort by creation date or title", () => {
+  assert.deepEqual(
+    [...sortableNotes].sort((left, right) => compareSelfNotes(left, right, "created")).map((note) => note.title),
+    ["Pinned", "alpha", "Zulu"]
+  )
+  assert.deepEqual(
+    [...sortableNotes].sort((left, right) => compareSelfNotes(left, right, "title")).map((note) => note.title),
+    ["Pinned", "alpha", "Zulu"]
+  )
+})
 
 test("a new note gets defaults and a fresh id", () => {
   const note = noteDocument()

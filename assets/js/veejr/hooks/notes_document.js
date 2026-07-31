@@ -153,4 +153,29 @@ export function noteSearchClauses(value) {
   return clauses
 }
 
+export function compareSelfNotes(left, right, sortBy = "updated") {
+  const pinned =
+    Number(!!right.pinned) - Number(!!left.pinned)
+
+  if (pinned !== 0) return pinned
+
+  if (sortBy === "title") {
+    const title =
+      normalizeNoteSearch(left.title || "Untitled note")
+        .localeCompare(normalizeNoteSearch(right.title || "Untitled note"))
+
+    if (title !== 0) return title
+  }
+
+  const dateField = sortBy === "created" ? "createdAt" : "updatedAt"
+  const date =
+    String(right[dateField] || "")
+      .localeCompare(String(left[dateField] || ""))
+
+  if (date !== 0) return date
+
+  return normalizeNoteSearch(left.title || "Untitled note")
+    .localeCompare(normalizeNoteSearch(right.title || "Untitled note"))
+}
+
 export const selfNoteSearchIndex = new WeakMap()
