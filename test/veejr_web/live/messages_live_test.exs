@@ -61,6 +61,7 @@ defmodule VeejrWeb.MessagesLiveTest do
            )
 
     assert has_element?(view, "#messages-tools-content #messages-conversation-builder-form")
+    refute has_element?(view, "#messages-page-header-content #self-notes-command-center")
   end
 
   test "offers four persistent chat appearances and an arrival celebration", %{conn: conn} do
@@ -205,9 +206,10 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
+             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
            )
 
+    refute has_element?(view, "#self-notes-board #self-notes-command-center")
     assert has_element?(view, "#self-notes-command-center-toggle")
     assert has_element?(view, "#self-notes-quick-create[data-role='new-note']")
     assert has_element?(view, "#self-notes-date-filters")

@@ -191,6 +191,222 @@ defmodule VeejrWeb.MessagesLive.Components do
             </div>
           </div>
         </details>
+        <.self_notes_command_center :if={@self_notes} />
+      </div>
+    </details>
+    """
+  end
+
+  @doc false
+  def self_notes_command_center(assigns) do
+    ~H"""
+    <details
+      id="self-notes-command-center"
+      class="group mb-5 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-[0_18px_55px_-36px_color-mix(in_oklab,var(--color-base-content)_48%,transparent)]"
+      aria-label="Create and filter notes"
+    >
+      <summary
+        id="self-notes-command-center-toggle"
+        class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-semibold text-base-content/70 transition hover:bg-base-200/60 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+      >
+        <span class="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <.icon name="hero-plus" class="size-4" />
+        </span>
+        <span>Create and filter</span>
+        <span class="hidden text-xs font-normal text-base-content/45 sm:inline">
+          Notes, spreadsheets, documents, and views
+        </span>
+        <.icon
+          name="hero-chevron-down"
+          class="ml-auto size-4 transition duration-200 group-open:rotate-180"
+        />
+      </summary>
+      <div class="border-t border-base-300">
+        <div class="grid gap-px bg-base-300/70 lg:grid-cols-2">
+          <button
+            id="self-notes-quick-create"
+            data-role="new-note"
+            type="button"
+            class="group flex min-h-24 items-center gap-4 bg-base-100 px-5 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+          >
+            <span class="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-content shadow-lg shadow-primary/20 transition duration-200 group-hover:-translate-y-0.5 group-hover:rotate-2">
+              <.icon name="hero-plus" class="size-6" />
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-base font-semibold text-base-content">
+                Capture a new note
+              </span>
+              <span class="mt-0.5 block text-xs text-base-content/60">
+                Write, make a checklist, or add private media
+              </span>
+            </span>
+            <kbd class="hidden rounded-lg border border-base-300 bg-base-200 px-2 py-1 text-[0.65rem] font-semibold text-base-content/55 sm:block">
+              C
+            </kbd>
+          </button>
+
+          <div class="flex min-h-24 items-stretch gap-px bg-base-300/70">
+            <button
+              id="self-notes-new-sheet"
+              data-role="new-sheet"
+              type="button"
+              class="group flex flex-1 items-center gap-3 bg-base-100 px-4 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            >
+              <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60 transition group-hover:bg-primary/10 group-hover:text-primary">
+                <.icon name="hero-table-cells" class="size-5" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm font-semibold text-base-content">Spreadsheet</span>
+                <span class="mt-0.5 block text-xs text-base-content/60">
+                  Grid with formulas
+                </span>
+              </span>
+            </button>
+
+            <button
+              id="self-notes-new-page"
+              data-role="new-page"
+              type="button"
+              class="group flex flex-1 items-center gap-3 bg-base-100 px-4 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            >
+              <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60 transition group-hover:bg-primary/10 group-hover:text-primary">
+                <.icon name="hero-document-text" class="size-5" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm font-semibold text-base-content">Document</span>
+                <span class="mt-0.5 block text-xs text-base-content/60">
+                  Headings, lists, formatting
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+        <div class="border-t border-base-300 bg-base-100 px-4 py-3">
+          <details
+            id="self-notes-date-filters"
+            class="group rounded-xl border border-transparent open:border-base-300 open:bg-base-200/40"
+          >
+            <summary class="flex cursor-pointer list-none items-center gap-2 rounded-xl px-2 py-2 text-xs font-semibold text-base-content/60 transition hover:bg-base-200/70 hover:text-base-content">
+              <.icon name="hero-calendar-days" class="size-4" /> Filter by updated date
+              <.icon
+                name="hero-chevron-down"
+                class="ml-auto size-4 transition group-open:rotate-180"
+              />
+            </summary>
+            <div class="flex flex-wrap items-center gap-2 border-t border-base-300 px-3 py-3 text-xs">
+              <label class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1.5">
+                <span class="text-base-content/55">From</span>
+                <input
+                  id="self-notes-date-from"
+                  data-role="date-from"
+                  type="date"
+                  class="bg-transparent text-base-content outline-none"
+                />
+              </label>
+              <label class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1.5">
+                <span class="text-base-content/55">To</span>
+                <input
+                  id="self-notes-date-to"
+                  data-role="date-to"
+                  type="date"
+                  class="bg-transparent text-base-content outline-none"
+                />
+              </label>
+              <button
+                data-role="date-preset"
+                data-days="0"
+                type="button"
+                class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
+                aria-pressed="false"
+              >Today</button>
+              <button
+                data-role="date-preset"
+                data-days="7"
+                type="button"
+                class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
+                aria-pressed="false"
+              >Last 7 days</button>
+              <button
+                data-role="date-preset"
+                data-days="30"
+                type="button"
+                class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
+                aria-pressed="false"
+              >Last 30 days</button>
+              <button
+                data-role="clear-dates"
+                type="button"
+                class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/50 transition hover:bg-base-200 hover:text-base-content"
+              >Clear</button>
+            </div>
+          </details>
+          <div
+            class="mt-3 flex flex-wrap items-center gap-1 rounded-xl bg-base-200/75 p-1"
+            role="tablist"
+            aria-label="Note filters"
+          >
+            <button
+              data-role="filter"
+              data-filter="active"
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+              aria-pressed="true"
+            >Notes</button>
+            <button
+              data-role="filter"
+              data-filter="reminders"
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+              aria-pressed="false"
+            >Reminders</button>
+            <button
+              data-role="filter"
+              data-filter="archived"
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+              aria-pressed="false"
+            >Archive</button>
+            <button
+              data-role="filter"
+              data-filter="trashed"
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+              aria-pressed="false"
+            >Trash</button>
+            <button
+              data-role="view"
+              data-view="grid"
+              type="button"
+              title="Grid view"
+              aria-label="Grid view"
+              class="ml-auto rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+              aria-pressed="true"
+            ><.icon name="hero-squares-2x2" class="size-4" /></button>
+            <button
+              data-role="view"
+              data-view="list"
+              type="button"
+              title="List view"
+              aria-label="List view"
+              class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+              aria-pressed="false"
+            ><.icon name="hero-list-bullet" class="size-4" /></button>
+          </div>
+          <div id="self-notes-labels" data-role="labels" class="mt-3 flex flex-wrap gap-1"></div>
+          <p
+            id="self-notes-filter-status"
+            data-role="filter-status"
+            class="mt-3 border-t border-base-300 pt-3 text-xs text-base-content/55"
+            aria-live="polite"
+          >
+          </p>
+          <button
+            data-role="delete-trashed"
+            type="button"
+            disabled
+            class="mt-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-error transition hover:bg-error/10 disabled:hidden"
+          >Delete all trashed forever</button>
+        </div>
       </div>
     </details>
     """
@@ -605,215 +821,6 @@ defmodule VeejrWeb.MessagesLive.Components do
           <button data-role="bulk-label" type="button" class="btn btn-ghost btn-xs">Labels</button>
           <button data-role="bulk-clear" type="button" class="btn btn-ghost btn-xs">Clear</button>
         </div>
-        <details
-          id="self-notes-command-center"
-          class="group mb-5 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-[0_18px_55px_-36px_color-mix(in_oklab,var(--color-base-content)_48%,transparent)]"
-          aria-label="Create and filter notes"
-        >
-          <summary
-            id="self-notes-command-center-toggle"
-            class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-semibold text-base-content/70 transition hover:bg-base-200/60 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-          >
-            <span class="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <.icon name="hero-plus" class="size-4" />
-            </span>
-            <span>Create and filter</span>
-            <span class="hidden text-xs font-normal text-base-content/45 sm:inline">
-              Notes, spreadsheets, documents, and views
-            </span>
-            <.icon
-              name="hero-chevron-down"
-              class="ml-auto size-4 transition duration-200 group-open:rotate-180"
-            />
-          </summary>
-          <div class="border-t border-base-300">
-            <div class="grid gap-px bg-base-300/70 lg:grid-cols-2">
-              <button
-                id="self-notes-quick-create"
-                data-role="new-note"
-                type="button"
-                class="group flex min-h-24 items-center gap-4 bg-base-100 px-5 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-              >
-                <span class="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-content shadow-lg shadow-primary/20 transition duration-200 group-hover:-translate-y-0.5 group-hover:rotate-2">
-                  <.icon name="hero-plus" class="size-6" />
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block text-base font-semibold text-base-content">
-                    Capture a new note
-                  </span>
-                  <span class="mt-0.5 block text-xs text-base-content/60">
-                    Write, make a checklist, or add private media
-                  </span>
-                </span>
-                <kbd class="hidden rounded-lg border border-base-300 bg-base-200 px-2 py-1 text-[0.65rem] font-semibold text-base-content/55 sm:block">
-                  C
-                </kbd>
-              </button>
-
-              <div class="flex min-h-24 items-stretch gap-px bg-base-300/70">
-                <button
-                  id="self-notes-new-sheet"
-                  data-role="new-sheet"
-                  type="button"
-                  class="group flex flex-1 items-center gap-3 bg-base-100 px-4 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                >
-                  <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60 transition group-hover:bg-primary/10 group-hover:text-primary">
-                    <.icon name="hero-table-cells" class="size-5" />
-                  </span>
-                  <span class="min-w-0 flex-1">
-                    <span class="block text-sm font-semibold text-base-content">Spreadsheet</span>
-                    <span class="mt-0.5 block text-xs text-base-content/60">
-                      Grid with formulas
-                    </span>
-                  </span>
-                </button>
-
-                <button
-                  id="self-notes-new-page"
-                  data-role="new-page"
-                  type="button"
-                  class="group flex flex-1 items-center gap-3 bg-base-100 px-4 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                >
-                  <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60 transition group-hover:bg-primary/10 group-hover:text-primary">
-                    <.icon name="hero-document-text" class="size-5" />
-                  </span>
-                  <span class="min-w-0 flex-1">
-                    <span class="block text-sm font-semibold text-base-content">Document</span>
-                    <span class="mt-0.5 block text-xs text-base-content/60">
-                      Headings, lists, formatting
-                    </span>
-                  </span>
-                </button>
-              </div>
-            </div>
-            <div class="border-t border-base-300 bg-base-100 px-4 py-3">
-              <details
-                id="self-notes-date-filters"
-                class="group rounded-xl border border-transparent open:border-base-300 open:bg-base-200/40"
-              >
-                <summary class="flex cursor-pointer list-none items-center gap-2 rounded-xl px-2 py-2 text-xs font-semibold text-base-content/60 transition hover:bg-base-200/70 hover:text-base-content">
-                  <.icon name="hero-calendar-days" class="size-4" /> Filter by updated date
-                  <.icon
-                    name="hero-chevron-down"
-                    class="ml-auto size-4 transition group-open:rotate-180"
-                  />
-                </summary>
-                <div class="flex flex-wrap items-center gap-2 border-t border-base-300 px-3 py-3 text-xs">
-                  <label class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1.5">
-                    <span class="text-base-content/55">From</span>
-                    <input
-                      id="self-notes-date-from"
-                      data-role="date-from"
-                      type="date"
-                      class="bg-transparent text-base-content outline-none"
-                    />
-                  </label>
-                  <label class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1.5">
-                    <span class="text-base-content/55">To</span>
-                    <input
-                      id="self-notes-date-to"
-                      data-role="date-to"
-                      type="date"
-                      class="bg-transparent text-base-content outline-none"
-                    />
-                  </label>
-                  <button
-                    data-role="date-preset"
-                    data-days="0"
-                    type="button"
-                    class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
-                    aria-pressed="false"
-                  >Today</button>
-                  <button
-                    data-role="date-preset"
-                    data-days="7"
-                    type="button"
-                    class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
-                    aria-pressed="false"
-                  >Last 7 days</button>
-                  <button
-                    data-role="date-preset"
-                    data-days="30"
-                    type="button"
-                    class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
-                    aria-pressed="false"
-                  >Last 30 days</button>
-                  <button
-                    data-role="clear-dates"
-                    type="button"
-                    class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/50 transition hover:bg-base-200 hover:text-base-content"
-                  >Clear</button>
-                </div>
-              </details>
-              <div
-                class="mt-3 flex flex-wrap items-center gap-1 rounded-xl bg-base-200/75 p-1"
-                role="tablist"
-                aria-label="Note filters"
-              >
-                <button
-                  data-role="filter"
-                  data-filter="active"
-                  type="button"
-                  class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-                  aria-pressed="true"
-                >Notes</button>
-                <button
-                  data-role="filter"
-                  data-filter="reminders"
-                  type="button"
-                  class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-                  aria-pressed="false"
-                >Reminders</button>
-                <button
-                  data-role="filter"
-                  data-filter="archived"
-                  type="button"
-                  class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-                  aria-pressed="false"
-                >Archive</button>
-                <button
-                  data-role="filter"
-                  data-filter="trashed"
-                  type="button"
-                  class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-                  aria-pressed="false"
-                >Trash</button>
-                <button
-                  data-role="view"
-                  data-view="grid"
-                  type="button"
-                  title="Grid view"
-                  aria-label="Grid view"
-                  class="ml-auto rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-                  aria-pressed="true"
-                ><.icon name="hero-squares-2x2" class="size-4" /></button>
-                <button
-                  data-role="view"
-                  data-view="list"
-                  type="button"
-                  title="List view"
-                  aria-label="List view"
-                  class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-                  aria-pressed="false"
-                ><.icon name="hero-list-bullet" class="size-4" /></button>
-              </div>
-              <div id="self-notes-labels" data-role="labels" class="mt-3 flex flex-wrap gap-1"></div>
-              <p
-                id="self-notes-filter-status"
-                data-role="filter-status"
-                class="mt-3 border-t border-base-300 pt-3 text-xs text-base-content/55"
-                aria-live="polite"
-              >
-              </p>
-              <button
-                data-role="delete-trashed"
-                type="button"
-                disabled
-                class="mt-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-error transition hover:bg-error/10 disabled:hidden"
-              >Delete all trashed forever</button>
-            </div>
-          </div>
-        </details>
         <p
           id="self-notes-reminders-empty"
           data-role="reminders-empty"

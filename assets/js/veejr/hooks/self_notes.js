@@ -497,6 +497,12 @@ async function keepContentFingerprint(secret, k) {
 // A small fixed progress banner for the import run.
 
 export const SelfNotesBoard = {
+  control(selector) {
+    return document.querySelector(`#self-notes-command-center ${selector}`)
+  },
+  controls(selector) {
+    return document.querySelectorAll(`#self-notes-command-center ${selector}`)
+  },
   mounted() {
     this.filter = "active"
     this.view = "grid"
@@ -509,7 +515,7 @@ export const SelfNotesBoard = {
     this.dateTo = ""
     this.selected = new Map()
     this.el.addEventListener("self-notes:new", () => this.create())
-    this.el.querySelector("[data-role=new-note]")?.addEventListener("click", () => this.create())
+    this.control("[data-role=new-note]")?.addEventListener("click", () => this.create())
     this.el.addEventListener("self-notes:import", () => this.el.querySelector("[data-role=import-file]")?.click())
     this.el.querySelector("[data-role=import-file]")?.addEventListener("change", (event) => {
       const file = event.target.files?.[0]
@@ -529,15 +535,15 @@ export const SelfNotesBoard = {
       this.sortBy = event.target.value
       this.applyFilters()
     })
-    this.el.querySelector("[data-role=date-from]")?.addEventListener("change", (event) => {
+    this.control("[data-role=date-from]")?.addEventListener("change", (event) => {
       this.dateFrom = event.target.value
       this.applyFilters()
     })
-    this.el.querySelector("[data-role=date-to]")?.addEventListener("change", (event) => {
+    this.control("[data-role=date-to]")?.addEventListener("change", (event) => {
       this.dateTo = event.target.value
       this.applyFilters()
     })
-    this.el.querySelectorAll("[data-role=date-preset]").forEach((button) => button.addEventListener("click", () => {
+    this.controls("[data-role=date-preset]").forEach((button) => button.addEventListener("click", () => {
       const days = Number(button.dataset.days)
       const today = new Date()
       const from = new Date(today)
@@ -545,31 +551,31 @@ export const SelfNotesBoard = {
       const formatDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
       this.dateFrom = formatDate(from)
       this.dateTo = formatDate(today)
-      const fromInput = this.el.querySelector("[data-role=date-from]")
-      const toInput = this.el.querySelector("[data-role=date-to]")
+      const fromInput = this.control("[data-role=date-from]")
+      const toInput = this.control("[data-role=date-to]")
       if (fromInput) fromInput.value = this.dateFrom
       if (toInput) toInput.value = this.dateTo
-      this.el.querySelectorAll("[data-role=date-preset]").forEach((control) => control.setAttribute("aria-pressed", String(control === button)))
+      this.controls("[data-role=date-preset]").forEach((control) => control.setAttribute("aria-pressed", String(control === button)))
       this.applyFilters()
     }))
-    this.el.querySelector("[data-role=clear-dates]")?.addEventListener("click", () => {
+    this.control("[data-role=clear-dates]")?.addEventListener("click", () => {
       this.dateFrom = ""
       this.dateTo = ""
-      const from = this.el.querySelector("[data-role=date-from]")
-      const to = this.el.querySelector("[data-role=date-to]")
+      const from = this.control("[data-role=date-from]")
+      const to = this.control("[data-role=date-to]")
       if (from) from.value = ""
       if (to) to.value = ""
-      this.el.querySelectorAll("[data-role=date-preset]").forEach((control) => control.setAttribute("aria-pressed", "false"))
+      this.controls("[data-role=date-preset]").forEach((control) => control.setAttribute("aria-pressed", "false"))
       this.applyFilters()
     })
-    this.el.querySelectorAll("[data-role=filter]").forEach((button) => button.addEventListener("click", () => {
+    this.controls("[data-role=filter]").forEach((button) => button.addEventListener("click", () => {
       this.filter = button.dataset.filter
-      this.el.querySelectorAll("[data-role=filter]").forEach((control) => control.setAttribute("aria-pressed", String(control === button)))
+      this.controls("[data-role=filter]").forEach((control) => control.setAttribute("aria-pressed", String(control === button)))
       this.applyFilters()
     }))
-    this.el.querySelectorAll("[data-role=view]").forEach((button) => button.addEventListener("click", () => {
+    this.controls("[data-role=view]").forEach((button) => button.addEventListener("click", () => {
       this.view = button.dataset.view
-      this.el.querySelectorAll("[data-role=view]").forEach((control) => control.setAttribute("aria-pressed", String(control === button)))
+      this.controls("[data-role=view]").forEach((control) => control.setAttribute("aria-pressed", String(control === button)))
       this.applyFilters()
     }))
     this.el.querySelector("[data-role=bulk-clear]")?.addEventListener("click", () => this.clearSelection())
@@ -587,9 +593,9 @@ export const SelfNotesBoard = {
       const label = window.prompt("Add a label to selected notes")?.trim()
       if (label) this.bulk((note) => { note.labels = [...new Set([...(note.labels || []), label])].slice(0, 10) })
     })
-    this.el.querySelector("[data-role=delete-trashed]")?.addEventListener("click", () => this.deleteTrashed())
-    this.el.querySelector("[data-role=new-sheet]")?.addEventListener("click", () => this.createDocument("sheet"))
-    this.el.querySelector("[data-role=new-page]")?.addEventListener("click", () => this.createDocument("page"))
+    this.control("[data-role=delete-trashed]")?.addEventListener("click", () => this.deleteTrashed())
+    this.control("[data-role=new-sheet]")?.addEventListener("click", () => this.createDocument("sheet"))
+    this.control("[data-role=new-page]")?.addEventListener("click", () => this.createDocument("page"))
     this.onEdit = (event) => this.edit(event.detail)
     this.onEditDocument = (event) => this.editDocument(event.detail)
     this.onDocumentState = (event) => this.updateDocumentState(event.detail)
@@ -685,7 +691,7 @@ export const SelfNotesBoard = {
       ))
       .forEach((card) => grid.appendChild(card))
     const labels = [...new Set(cards.flatMap((card) => JSON.parse(card.dataset.noteLabels || "[]")))].sort()
-    const labelBar = this.el.querySelector("[data-role=labels]")
+    const labelBar = this.control("[data-role=labels]")
     if (labelBar) {
       labelBar.textContent = ""
       labels.forEach((label) => {
@@ -711,14 +717,14 @@ export const SelfNotesBoard = {
       card.hidden = !stateMatch || !labelMatch || !dateMatch || !searchMatch
       if (!card.hidden) visibleCount += 1
     })
-    const filterStatus = this.el.querySelector("[data-role=filter-status]")
+    const filterStatus = this.control("[data-role=filter-status]")
     if (filterStatus) {
       const suffix = this.filter === "reminders" ? " Reminders are not available yet." : ""
       const dateDescription = this.dateFrom || this.dateTo ? ` Updated ${this.dateFrom || "any time"} to ${this.dateTo || "today"}.` : ""
       filterStatus.textContent = `${visibleCount} note${visibleCount === 1 ? "" : "s"} shown.${dateDescription}${suffix}`
     }
     this.el.querySelector("[data-role=reminders-empty]")?.classList.toggle("hidden", this.filter !== "reminders")
-    const deleteTrashed = this.el.querySelector("[data-role=delete-trashed]")
+    const deleteTrashed = this.control("[data-role=delete-trashed]")
     if (deleteTrashed) {
       const count = cards.filter((card) => card.dataset.noteTrashed === "true").length
       deleteTrashed.disabled = count === 0
@@ -728,7 +734,7 @@ export const SelfNotesBoard = {
     }
   },
   async deleteTrashed() {
-    const button = this.el.querySelector("[data-role=delete-trashed]")
+    const button = this.control("[data-role=delete-trashed]")
     const notes = [...this.el.querySelectorAll(".self-note-card")]
       .filter((card) => card.dataset.noteTrashed === "true")
       .map((card) => card.querySelector("[data-public-id]")?.dataset.publicId)
