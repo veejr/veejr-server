@@ -21,19 +21,31 @@ defmodule VeejrWeb.MessagesLiveTest do
     %{conn: log_in_user(conn, user), user: user}
   end
 
-  test "hides secondary message tools behind a top-right gear", %{conn: conn} do
+  test "collapses the page header and preserves the secondary message tools", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
-
-    assert has_element?(view, "#back-to-contacts[href='/contacts']", "Back to contacts")
 
     assert has_element?(
              view,
-             "details#messages-tools[aria-label='Message tools']:not([open])"
+             "details#messages-page-header[aria-label='Messages header']:not([open])"
+           )
+
+    assert has_element?(view, "#messages-page-header-toggle", "Messages")
+    assert has_element?(view, "#messages-page-header-toggle", "Expand")
+
+    assert has_element?(
+             view,
+             "#messages-page-header-content #back-to-contacts[href='/contacts']",
+             "Back to contacts"
            )
 
     assert has_element?(
              view,
-             ".messages-page-header > #messages-tools > #messages-tools-toggle[aria-label='Message tools'][title='Message tools'] .hero-cog-6-tooth"
+             "#messages-page-header-content details#messages-tools[aria-label='Message tools']:not([open])"
+           )
+
+    assert has_element?(
+             view,
+             "#messages-tools > #messages-tools-toggle[aria-label='Message tools'][title='Message tools'] .hero-cog-6-tooth"
            )
 
     assert has_element?(
@@ -165,11 +177,17 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#self-note-#{note.public_id}")
   end
 
-  test "shows sticky search above the collapsed self-notes controls", %{conn: conn} do
+  test "uses the notes title and moves search into the notes pane header", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages?self_notes=true")
 
-    assert has_element?(view, "#self-notes-search-bar.sticky")
-    assert has_element?(view, "#self-notes-search[data-role='search'][aria-label='Search notes']")
+    assert has_element?(view, "#messages-page-header-toggle", "Notes to yourself")
+
+    assert has_element?(
+             view,
+             "#self-notes-pane-header > #self-notes-search-bar #self-notes-search[data-role='search'][aria-label='Search notes']"
+           )
+
+    refute has_element?(view, "#self-notes-board #self-notes-search-bar")
 
     assert has_element?(
              view,

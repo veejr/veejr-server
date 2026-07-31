@@ -31,131 +31,168 @@ defmodule VeejrWeb.MessagesLive.Components do
   attr :conversations, :list, required: true
   attr :friends, :list, required: true
   attr :groups, :list, required: true
+  attr :self_notes, :boolean, required: true
 
   def page_header(assigns) do
     ~H"""
-    <div class="messages-page-header relative z-20 rounded-t-[31px] border-b border-base-300 bg-base-100 px-4 py-4">
-      <.link
-        id="back-to-contacts"
-        navigate={~p"/contacts"}
-        class="group mb-2 inline-flex items-center gap-1 text-sm font-medium text-base-content/65 transition hover:text-primary"
+    <details
+      id="messages-page-header"
+      class="messages-page-header group/header relative z-20 rounded-t-[31px] border-b border-base-300 bg-base-100"
+      aria-label="Messages header"
+    >
+      <summary
+        id="messages-page-header-toggle"
+        class="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-2.5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
       >
+        <h1 class="text-lg font-semibold tracking-tight text-base-content">
+          {if(@self_notes, do: "Notes to yourself", else: "Messages")}
+        </h1>
+        <span class="ml-auto text-xs font-medium text-base-content/55 group-open/header:hidden">
+          Expand
+        </span>
+        <span class="ml-auto hidden text-xs font-medium text-base-content/55 group-open/header:inline">
+          Collapse
+        </span>
         <.icon
-          name="hero-arrow-left"
-          class="size-4 transition-transform group-hover:-translate-x-0.5"
-        /> Back to contacts
-      </.link>
-      <h1 class="text-2xl font-semibold tracking-tight text-base-content">Messages</h1>
-      <p class="text-sm opacity-70">End-to-end encrypted conversations</p>
+          name="hero-chevron-down"
+          class="size-4 text-base-content/55 transition duration-200 group-open/header:rotate-180"
+        />
+      </summary>
 
-      <details
-        id="messages-tools"
-        class="group"
-        aria-label="Message tools"
+      <div
+        id="messages-page-header-content"
+        class="border-t border-base-300 px-4 pt-3 pb-4"
       >
-        <summary
-          id="messages-tools-toggle"
-          aria-label="Message tools"
-          title="Message tools"
-          class="absolute top-4 right-4 flex size-10 cursor-pointer list-none items-center justify-center rounded-xl border border-base-300 bg-base-100 text-base-content/65 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/10 hover:text-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary group-open:border-primary/40 group-open:bg-primary/10 group-open:text-primary"
-        >
-          <.icon
-            name="hero-cog-6-tooth"
-            class="size-5 transition duration-300 group-open:rotate-90"
-          />
-        </summary>
-
-        <div
-          id="messages-tools-content"
-          class="mt-4 grid gap-3 rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
-        >
-          <section
-            id="messages-appearance-tool"
-            class="rounded-2xl border border-base-300 bg-base-200/45 p-3"
-            aria-labelledby="messages-appearance-title"
+        <div class="flex flex-wrap items-center gap-3">
+          <.link
+            id="back-to-contacts"
+            navigate={~p"/contacts"}
+            class="group/back inline-flex items-center gap-1 text-sm font-medium text-base-content/65 transition hover:text-primary"
           >
-            <div class="mb-2 flex items-center gap-2">
-              <span class="flex size-8 items-center justify-center rounded-lg bg-base-100 text-base-content/60">
-                <.icon name="hero-swatch" class="size-4" />
-              </span>
-              <span>
-                <span id="messages-appearance-title" class="block text-sm font-semibold">
-                  Appearance
-                </span>
-                <span class="block text-xs text-base-content/50">Choose a conversation style</span>
-              </span>
-            </div>
-            <div
-              id="chat-theme-picker"
-              class="chat-theme-picker flex flex-wrap items-center gap-1 rounded-2xl border border-base-300 bg-base-200 p-1.5"
-              role="group"
-              aria-label="Chat appearance"
-            >
-              <span class="chat-theme-picker-label">
-                <.icon name="hero-swatch" class="size-4" /> Style
-              </span>
-              <button
-                id="chat-theme-classic"
-                type="button"
-                data-chat-theme-option="classic"
-                aria-pressed="true"
-                class="chat-theme-option"
-              >
-                <span class="chat-theme-swatch" aria-hidden="true"></span>
-                <span>Classic</span>
-              </button>
-              <button
-                id="chat-theme-salon"
-                type="button"
-                data-chat-theme-option="salon"
-                aria-pressed="false"
-                class="chat-theme-option"
-              >
-                <span class="chat-theme-swatch" aria-hidden="true"></span>
-                <span>Salon</span>
-              </button>
-              <button
-                id="chat-theme-party"
-                type="button"
-                data-chat-theme-option="party"
-                aria-pressed="false"
-                class="chat-theme-option"
-              >
-                <span class="chat-theme-swatch" aria-hidden="true"></span>
-                <span>Party</span>
-              </button>
-              <button
-                id="chat-theme-comic"
-                type="button"
-                data-chat-theme-option="comic"
-                aria-pressed="false"
-                class="chat-theme-option"
-              >
-                <span class="chat-theme-swatch" aria-hidden="true"></span>
-                <span>Comic</span>
-              </button>
-            </div>
-          </section>
-
-          <div class="grid content-center gap-2 sm:grid-cols-2 lg:grid-cols-1">
-            <.link
-              id="messages-invite-person"
-              navigate={~p"/invites/new"}
-              class="btn btn-outline btn-sm justify-start"
-            >
-              <.icon name="hero-qr-code" class="size-4" /> Invite person
-            </.link>
-            <.conversation_builder
-              id="messages-conversation-builder"
-              form_id="messages-conversation-builder-form"
-              conversations={@conversations}
-              friends={@friends}
-              groups={@groups}
-            />
-          </div>
+            <.icon
+              name="hero-arrow-left"
+              class="size-4 transition-transform group-hover/back:-translate-x-0.5"
+            /> Back to contacts
+          </.link>
+          <p class="text-sm opacity-70 sm:ml-auto">
+            {if(@self_notes,
+              do: "Private, end-to-end encrypted notes",
+              else: "End-to-end encrypted conversations"
+            )}
+          </p>
         </div>
-      </details>
-    </div>
+
+        <details
+          id="messages-tools"
+          class="group/tools mt-3"
+          aria-label="Message tools"
+        >
+          <summary
+            id="messages-tools-toggle"
+            aria-label="Message tools"
+            title="Message tools"
+            class="ml-auto flex h-9 cursor-pointer list-none items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-xs font-semibold text-base-content/65 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/10 hover:text-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary group-open/tools:border-primary/40 group-open/tools:bg-primary/10 group-open/tools:text-primary"
+          >
+            <.icon
+              name="hero-cog-6-tooth"
+              class="size-4 transition duration-300 group-open/tools:rotate-90"
+            /> Tools
+          </summary>
+
+          <div
+            id="messages-tools-content"
+            class="mt-3 grid gap-3 rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+          >
+            <section
+              id="messages-appearance-tool"
+              class="rounded-2xl border border-base-300 bg-base-200/45 p-3"
+              aria-labelledby="messages-appearance-title"
+            >
+              <div class="mb-2 flex items-center gap-2">
+                <span class="flex size-8 items-center justify-center rounded-lg bg-base-100 text-base-content/60">
+                  <.icon name="hero-swatch" class="size-4" />
+                </span>
+                <span>
+                  <span id="messages-appearance-title" class="block text-sm font-semibold">
+                    Appearance
+                  </span>
+                  <span class="block text-xs text-base-content/50">
+                    Choose a conversation style
+                  </span>
+                </span>
+              </div>
+              <div
+                id="chat-theme-picker"
+                class="chat-theme-picker flex flex-wrap items-center gap-1 rounded-2xl border border-base-300 bg-base-200 p-1.5"
+                role="group"
+                aria-label="Chat appearance"
+              >
+                <span class="chat-theme-picker-label">
+                  <.icon name="hero-swatch" class="size-4" /> Style
+                </span>
+                <button
+                  id="chat-theme-classic"
+                  type="button"
+                  data-chat-theme-option="classic"
+                  aria-pressed="true"
+                  class="chat-theme-option"
+                >
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>Classic</span>
+                </button>
+                <button
+                  id="chat-theme-salon"
+                  type="button"
+                  data-chat-theme-option="salon"
+                  aria-pressed="false"
+                  class="chat-theme-option"
+                >
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>Salon</span>
+                </button>
+                <button
+                  id="chat-theme-party"
+                  type="button"
+                  data-chat-theme-option="party"
+                  aria-pressed="false"
+                  class="chat-theme-option"
+                >
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>Party</span>
+                </button>
+                <button
+                  id="chat-theme-comic"
+                  type="button"
+                  data-chat-theme-option="comic"
+                  aria-pressed="false"
+                  class="chat-theme-option"
+                >
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>Comic</span>
+                </button>
+              </div>
+            </section>
+
+            <div class="grid content-center gap-2 sm:grid-cols-2 lg:grid-cols-1">
+              <.link
+                id="messages-invite-person"
+                navigate={~p"/invites/new"}
+                class="btn btn-outline btn-sm justify-start"
+              >
+                <.icon name="hero-qr-code" class="size-4" /> Invite person
+              </.link>
+              <.conversation_builder
+                id="messages-conversation-builder"
+                form_id="messages-conversation-builder-form"
+                conversations={@conversations}
+                friends={@friends}
+                groups={@groups}
+              />
+            </div>
+          </div>
+        </details>
+      </div>
+    </details>
     """
   end
 
@@ -469,10 +506,48 @@ defmodule VeejrWeb.MessagesLive.Components do
   def self_notes_pane(assigns) do
     ~H"""
     <div :if={@self_notes} class="flex min-h-0 flex-1 flex-col">
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 bg-base-100 px-5 py-4">
-        <div>
-          <h2 class="text-lg font-semibold text-base-content">Notes to yourself</h2>
-          <p class="text-xs opacity-70">Private, end-to-end encrypted notes</p>
+      <div
+        id="self-notes-pane-header"
+        class="flex flex-wrap items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-3 sm:px-5"
+      >
+        <div
+          id="self-notes-search-bar"
+          class="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-base-300 bg-base-100/95 p-2 shadow-sm"
+        >
+          <label class="group/search flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 transition focus-within:bg-base-200/60">
+            <.icon
+              name="hero-magnifying-glass"
+              class="size-5 shrink-0 text-base-content/45 transition group-focus-within/search:text-primary"
+            />
+            <input
+              id="self-notes-search"
+              data-role="search"
+              type="search"
+              placeholder="Search notes"
+              aria-label="Search notes"
+              class="min-w-0 flex-1 bg-transparent text-sm text-base-content outline-none placeholder:text-base-content/40"
+            />
+            <kbd class="hidden rounded-lg border border-base-300 bg-base-200 px-2 py-1 text-[0.65rem] font-semibold text-base-content/55 sm:block">
+              /
+            </kbd>
+          </label>
+          <label
+            for="self-notes-sort"
+            class="flex shrink-0 items-center gap-1.5 rounded-xl border border-base-300 bg-base-100 px-2 text-base-content/60 transition focus-within:border-primary focus-within:text-primary"
+          >
+            <.icon name="hero-arrows-up-down" class="size-4" />
+            <span class="sr-only">Sort notes by</span>
+            <select
+              id="self-notes-sort"
+              data-role="sort"
+              aria-label="Sort notes by"
+              class="h-10 max-w-32 bg-transparent pr-1 text-xs font-semibold text-base-content outline-none sm:max-w-none"
+            >
+              <option value="updated" selected>Last edited</option>
+              <option value="created">Creation date</option>
+              <option value="title">Title</option>
+            </select>
+          </label>
         </div>
         <div class="flex items-center gap-2">
           <button
@@ -529,45 +604,6 @@ defmodule VeejrWeb.MessagesLive.Components do
           <button data-role="bulk-color" type="button" class="btn btn-ghost btn-xs">Color</button>
           <button data-role="bulk-label" type="button" class="btn btn-ghost btn-xs">Labels</button>
           <button data-role="bulk-clear" type="button" class="btn btn-ghost btn-xs">Clear</button>
-        </div>
-        <div
-          id="self-notes-search-bar"
-          class="sticky top-0 z-20 mb-3 flex items-center gap-2 rounded-2xl border border-base-300 bg-base-100/95 p-2 shadow-sm backdrop-blur"
-        >
-          <label class="group flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 transition focus-within:bg-base-200/60">
-            <.icon
-              name="hero-magnifying-glass"
-              class="size-5 shrink-0 text-base-content/45 transition group-focus-within:text-primary"
-            />
-            <input
-              id="self-notes-search"
-              data-role="search"
-              type="search"
-              placeholder="Search notes"
-              aria-label="Search notes"
-              class="min-w-0 flex-1 bg-transparent text-sm text-base-content outline-none placeholder:text-base-content/40"
-            />
-            <kbd class="hidden rounded-lg border border-base-300 bg-base-200 px-2 py-1 text-[0.65rem] font-semibold text-base-content/55 sm:block">
-              /
-            </kbd>
-          </label>
-          <label
-            for="self-notes-sort"
-            class="flex shrink-0 items-center gap-1.5 rounded-xl border border-base-300 bg-base-100 px-2 text-base-content/60 transition focus-within:border-primary focus-within:text-primary"
-          >
-            <.icon name="hero-arrows-up-down" class="size-4" />
-            <span class="sr-only">Sort notes by</span>
-            <select
-              id="self-notes-sort"
-              data-role="sort"
-              aria-label="Sort notes by"
-              class="h-10 max-w-32 bg-transparent pr-1 text-xs font-semibold text-base-content outline-none sm:max-w-none"
-            >
-              <option value="updated" selected>Last edited</option>
-              <option value="created">Creation date</option>
-              <option value="title">Title</option>
-            </select>
-          </label>
         </div>
         <details
           id="self-notes-command-center"
