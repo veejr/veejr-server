@@ -1741,6 +1741,39 @@ select :is(option, optgroup) {
   --self-note-fg: #173d29;
 }
 
+/* Party and Comic otherwise inherit their dark display ink on the site's
+   neutral default note surface. Give uncolored notes a deliberate dark panel
+   and a light foreground so their content stays readable in every site theme. */
+#messages-workspace[data-chat-theme="party"]
+  :is(.self-note-card, [data-role="note-editor"])[data-note-color="default"] {
+  --self-note-bg: #453653;
+  --self-note-fg: #fff8fd;
+  --self-note-border: #756184;
+  --self-note-surface: #554363;
+}
+
+#messages-workspace[data-chat-theme="comic"]
+  :is(.self-note-card, [data-role="note-editor"])[data-note-color="default"] {
+  --self-note-bg: #3a3a3a;
+  --self-note-fg: #fff7e6;
+  --self-note-border: #161616;
+  --self-note-surface: #4a4a4a;
+}
+
+#messages-workspace:is([data-chat-theme="party"], [data-chat-theme="comic"])
+  :is(.self-note-card, [data-role="note-editor"])[data-note-color="default"] {
+  background-color: var(--self-note-bg);
+  border-color: var(--self-note-border);
+  color: var(--self-note-fg);
+}
+
+#messages-workspace:is([data-chat-theme="party"], [data-chat-theme="comic"])
+  :is(.self-note-card, [data-role="note-editor"])[data-note-color="default"]
+  :is(.bg-base-200, .select) {
+  background-color: var(--self-note-surface);
+  color: var(--self-note-fg);
+}
+
 :is(.self-note-card, [data-role="note-editor"])[data-note-color]:not([data-note-color="default"]) {
   --self-note-border: color-mix(in oklab, var(--self-note-fg) 22%, var(--self-note-bg));
   --self-note-surface: color-mix(in oklab, var(--self-note-fg) 9%, var(--self-note-bg));

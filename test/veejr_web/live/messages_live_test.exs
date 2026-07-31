@@ -141,6 +141,9 @@ defmodule VeejrWeb.MessagesLiveTest do
   test "defaults the unselected composer to a self note", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 
+    assert has_element?(view, "#messages-workspace.flex.h-full.min-h-0.flex-col")
+    assert has_element?(view, "#messages-workspace > .messages-layout.flex.min-h-0.flex-1")
+    assert has_element?(view, ".messages-composer-dock.sticky.bottom-0")
     assert has_element?(view, "#message-composer[data-kind='self_note']")
     assert has_element?(view, "#message-composer input[type='hidden'][name='self']")
     assert has_element?(view, "#message-composer textarea[placeholder='Take a note…']")
