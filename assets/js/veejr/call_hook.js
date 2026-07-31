@@ -27,6 +27,7 @@ import {
 } from "./crypto.js"
 import {CallPeer} from "./call_peer.js"
 import {CallYouTube} from "./call_youtube.js"
+import {clearFaviconActivity, setFaviconActivity} from "./favicon.js"
 
 const MICROPHONE_CONSTRAINTS = {
   echoCancellation: true,
@@ -209,6 +210,8 @@ export const CallSession = {
   mounted() {
     const {callId, role, userId, localId} = this.el.dataset
     activateCallExitGuard(callId)
+    this.faviconSource = `call:${callId}`
+    setFaviconActivity(this.faviconSource, "call")
     this.role = role
     this.isGuest = this.el.dataset.isGuest === "true"
     // The mesh id, which is not the crypto key handle: a guest's identity is
@@ -741,6 +744,7 @@ export const CallSession = {
     this.closeSharePopout()
     this.chatObjectUrls.forEach((url) => URL.revokeObjectURL(url))
     this.youtube?.destroy()
+    clearFaviconActivity(this.faviconSource)
     const inPip = [...this.tiles.values()].some(
       (tile) => document.pictureInPictureElement === tile.video
     )
