@@ -101,6 +101,20 @@ export function docDocument(payload = {}) {
     : {...base, page: normalizePage(payload.page)}
 }
 
+// A saved copy must never share the source identity: document ids are part of
+// the encrypted payload and are therefore the only safe client-side identity
+// available here.
+export function documentCopy(payload) {
+  const now = new Date().toISOString()
+  return docDocument({
+    ...payload,
+    doc_id: uuid(),
+    title: payload.title ? `${payload.title} (copy)` : "",
+    created_at: now,
+    updated_at: now,
+  })
+}
+
 export function normalizeLabels(labels) {
   if (!Array.isArray(labels)) return []
   const seen = new Set()
