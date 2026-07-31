@@ -10,7 +10,7 @@
 // filled with textContent. The static chrome below (toolbar, buttons) is
 // author-written and safe, but document text never travels through innerHTML.
 
-import {docDocument} from "./document.js"
+import {docDocument, documentCopy} from "./document.js"
 import {mountSheet} from "./sheet.js"
 import {mountPage} from "./page.js"
 
@@ -23,7 +23,7 @@ const KIND_LABELS = {sheet: "Spreadsheet", page: "Document"}
  * the user's work intact and shows the failure. Resolves when the editor
  * closes, with the last saved document or null if nothing was saved.
  */
-export function openDocumentEditor({payload, save, title: initialTitle} = {}) {
+export function openDocumentEditor({payload, save, title: initialTitle, confirmSaveMode = false} = {}) {
   return new Promise((resolve) => {
     let doc = docDocument(payload || {})
     if (initialTitle && !doc.title) doc.title = initialTitle
@@ -64,7 +64,7 @@ export function openDocumentEditor({payload, save, title: initialTitle} = {}) {
     const actions = document.createElement("div")
     actions.className = "veejr-doc-actions"
 
-    const saveButton = button("Save", "btn btn-primary btn-sm", () => commit())
+    const saveButton = button("Save", "btn btn-primary btn-sm", () => requestCommit())
     const closeButton = button("Close", "btn btn-ghost btn-sm", () => requestClose())
 
     actions.append(saveButton, closeButton)
@@ -78,7 +78,24 @@ export function openDocumentEditor({payload, save, title: initialTitle} = {}) {
     error.className = "veejr-doc-error hidden"
     error.setAttribute("role", "alert")
 
-    shell.append(header, error, body)
+    const saveChoice = document.createElement("div")
+    saveChoice.className = "hidden items-center gap-2 border-b border-base-300 bg-base-100 px-4 py-3"
+    saveChoice.dataset.role = "spreadsheet-save-choice"
+    saveChoice.setAttribute("role", "group")
+    saveChoice.setAttribute("aria-label", "Choose how to save this spreadsheet")
+
+    const saveChoiceText = document.createElement("span")
+    saveChoiceText.className = "mr-auto text-sm font-medium"
+    saveChoiceText.textContent = "Save changes to this spreadsheet?"
+
+    const overwriteButton = button("Overwrite", "btn btn-primary btn-sm", () => commit("overwrite"))
+    const copyButton = button("Save a copy", "btn btn-outline btn-sm", () => commit("copy"))
+    const cancelSaveButton = button("Cancel", "btn btn-ghost btn-sm", () => hideSaveChoice())
+    overwriteButton.dataset.role = "overwrite-spreadsheet"
+    copyButton.dataset.role = "copy-spreadsheet"
+    saveChoice.append(saveChoiceText, overwriteButton, copyButton, cancelSaveButton)
+
+    shell.append(header, error, saveChoice, body)
     dialog.appendChild(shell)
     document.body.appendChild(dialog)
 
@@ -108,10 +125,26 @@ export function openDocumentEditor({payload, save, title: initialTitle} = {}) {
       },
     })
 
-    async function commit() {
+    function requestCommit() {
+      if (!confirmSaveMode) return commit("overwrite")
+      saveChoice.classList.remove("hidden")
+      saveChoice.classList.add("flex")
+      overwriteButton.focus()
+      return false
+    }
+
+    function hideSaveChoice() {
+      saveChoice.classList.add("hidden")
+      saveChoice.classList.remove("flex")
+      saveButton.focus()
+    }
+
+    async function commit(mode) {
       if (saving) return true
       saving = true
       saveButton.disabled = true
+      overwriteButton.disabled = true
+      copyButton.disabled = true
       showError("")
       status.textContent = "Saving…"
       status.dataset.state = "saving"
@@ -121,12 +154,15 @@ export function openDocumentEditor({payload, save, title: initialTitle} = {}) {
         // block) before serializing, so Save never loses the current edit.
         doc = controller.flush() || doc
         const next = docDocument({...doc, title: title.value})
-        await save(next)
-        doc = next
-        saved = next
+        const persisted = mode === "copy" ? documentCopy(next) : next
+        await save(persisted, {mode})
+        doc = persisted
+        saved = persisted
         dirty = false
-        status.textContent = "Saved"
+        status.textContent = mode === "copy" ? "Copy saved" : "Saved"
         status.dataset.state = "saved"
+        hideSaveChoice()
+        if (mode === "copy") await requestClose({force: true})
         return true
       } catch (failure) {
         showError(failure?.message || "Could not save. Your work is still here.")
@@ -136,6 +172,8 @@ export function openDocumentEditor({payload, save, title: initialTitle} = {}) {
       } finally {
         saving = false
         saveButton.disabled = false
+        overwriteButton.disabled = false
+        copyButton.disabled = false
       }
     }
 
@@ -158,7 +196,7 @@ export function openDocumentEditor({payload, save, title: initialTitle} = {}) {
       // Ctrl/Cmd+S saves without closing, the way every editor does.
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault()
-        commit()
+        requestCommit()
       }
     }
 

@@ -587,6 +587,7 @@ export const SelfNotesBoard = {
     this.el.querySelector("[data-role=new-page]")?.addEventListener("click", () => this.createDocument("page"))
     this.onEdit = (event) => this.edit(event.detail)
     this.onEditDocument = (event) => this.editDocument(event.detail)
+    this.onDocumentState = (event) => this.updateDocumentState(event.detail)
     this.onSave = (event) => this.save(event.detail)
     this.onRendered = () => this.applyFilters()
     this.onSelected = (event) => this.setSelected(event.detail)
@@ -607,6 +608,7 @@ export const SelfNotesBoard = {
     }
     window.addEventListener("veejr:self-note-edit", this.onEdit)
     window.addEventListener("veejr:self-doc-edit", this.onEditDocument)
+    window.addEventListener("veejr:self-doc-state", this.onDocumentState)
     window.addEventListener("veejr:self-note-save", this.onSave)
     window.addEventListener("veejr:self-note-rendered", this.onRendered)
     window.addEventListener("veejr:self-note-selected", this.onSelected)
@@ -620,6 +622,7 @@ export const SelfNotesBoard = {
   destroyed() {
     window.removeEventListener("veejr:self-note-edit", this.onEdit)
     window.removeEventListener("veejr:self-doc-edit", this.onEditDocument)
+    window.removeEventListener("veejr:self-doc-state", this.onDocumentState)
     window.removeEventListener("veejr:self-note-save", this.onSave)
     window.removeEventListener("veejr:self-note-rendered", this.onRendered)
     window.removeEventListener("veejr:self-note-selected", this.onSelected)
@@ -887,32 +890,62 @@ export const SelfNotesBoard = {
       const {openDocumentEditor} = await loadDocumentEditor()
       await openDocumentEditor({
         payload,
-        save: async (doc) => {
-          const {copies} = await pushWithReply(this, "prepare_edit", {id: element.dataset.publicId})
-          const envelopes = copies.map((copy) => ({
-            public_id: copy.public_id,
-            ...sealFor(copy.public_key, doc, secret),
-          }))
-
-          await pushWithReply(this, "edit_batch", {
-            id: element.dataset.publicId,
-            envelopes,
-            expected_updated_at: element.dataset.updatedAt,
-          })
-
-          // Keep the card's ciphertext current so a second save in the same
-          // session is not rejected as stale.
-          const current = envelopes.find((entry) => entry.public_id === element.dataset.publicId)
-          if (current) {
-            element.dataset.ciphertext = current.ciphertext
-            element.dataset.nonce = current.nonce
-            element.dataset.updatedAt = new Date().toISOString()
+        confirmSaveMode: payload.doc_kind === "sheet",
+        save: async (doc, {mode}) => {
+          if (mode === "copy") {
+            const {userId, peerKey} = this.el.dataset
+            await pushWithReply(this, "send_batch", {
+              kind: "self_doc",
+              envelopes: [{recipient_id: Number(userId), ...sealFor(peerKey, doc, secret)}],
+            })
+            this.pushEvent("refresh_self_notes", {})
+          } else {
+            await this.persistDocument(doc, element, secret)
           }
         },
       })
       element.dispatchEvent(new CustomEvent("self-notes:refresh"))
     } catch (error) {
       window.alert(error.message || "The document could not be opened.")
+    }
+  },
+  async persistDocument(doc, element, secret = getSecretKey(element.dataset.userId)) {
+    if (!secret) throw new Error("Unlock your keys before saving a document.")
+    const {copies} = await pushWithReply(this, "prepare_edit", {id: element.dataset.publicId})
+    const envelopes = copies.map((copy) => ({
+      public_id: copy.public_id,
+      ...sealFor(copy.public_key, doc, secret),
+    }))
+
+    await pushWithReply(this, "edit_batch", {
+      id: element.dataset.publicId,
+      envelopes,
+      expected_updated_at: element.dataset.updatedAt,
+    })
+
+    // Keep the card ciphertext current so another action in this session does
+    // not try to write against the stale encrypted envelope.
+    const current = envelopes.find((entry) => entry.public_id === element.dataset.publicId)
+    if (current) {
+      element.dataset.ciphertext = current.ciphertext
+      element.dataset.nonce = current.nonce
+      element.dataset.updatedAt = new Date().toISOString()
+    }
+  },
+  async updateDocumentState({payload, element, action}) {
+    const previous = payload.trashed_at
+    const previousUpdatedAt = payload.updated_at
+    payload.trashed_at = action === "restore" ? null : new Date().toISOString()
+    payload.updated_at = new Date().toISOString()
+
+    try {
+      await this.persistDocument(payload, element)
+      element.dispatchEvent(new CustomEvent("self-notes:refresh"))
+    } catch (error) {
+      payload.trashed_at = previous
+      payload.updated_at = previousUpdatedAt
+      element.dispatchEvent(new CustomEvent("self-notes:refresh"))
+      window.alert(error.message || "The document could not be updated.")
     }
   },
   edit({payload, element}) {
@@ -1099,6 +1132,45 @@ export const SelfNotes = {
     const actions = document.createElement("div")
     actions.className = "mt-3 flex flex-wrap items-center gap-2"
     actions.append(open, this.reminderButton())
+
+    const trash = document.createElement("button")
+    trash.type = "button"
+    trash.className = "btn btn-ghost btn-xs"
+    trash.dataset.role = "document-trash"
+    trash.textContent = payload.trashed_at ? "Restore" : "Trash"
+    trash.addEventListener("click", (event) => {
+      event.stopPropagation()
+      trash.disabled = true
+      window.dispatchEvent(new CustomEvent("veejr:self-doc-state", {
+        detail: {
+          payload,
+          element: this.el,
+          action: payload.trashed_at ? "restore" : "trash",
+        },
+      }))
+    })
+    actions.appendChild(trash)
+
+    if (payload.trashed_at) {
+      const remove = document.createElement("button")
+      remove.type = "button"
+      remove.className = "btn btn-error btn-xs"
+      remove.dataset.role = "document-delete"
+      remove.textContent = "Delete forever"
+      remove.addEventListener("click", async (event) => {
+        event.stopPropagation()
+        const kind = summary.isSheet ? "spreadsheet" : "document"
+        if (!window.confirm(`Permanently delete this encrypted ${kind}?`)) return
+        remove.disabled = true
+        try {
+          await pushWithReply(this, "delete_self_note", {id: this.el.dataset.publicId})
+        } catch (error) {
+          remove.disabled = false
+          window.alert(error.message || `The ${kind} could not be deleted.`)
+        }
+      })
+      actions.appendChild(remove)
+    }
 
     this.el.append(header, preview, actions)
     window.dispatchEvent(new CustomEvent("veejr:self-note-rendered"))

@@ -141,12 +141,19 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#self-note-#{note.public_id}")
   end
 
-  test "shows the redesigned self-notes command center", %{conn: conn} do
+  test "shows sticky search above the collapsed self-notes controls", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages?self_notes=true")
 
-    assert has_element?(view, "#self-notes-command-center[aria-label='Create and find notes']")
+    assert has_element?(view, "#self-notes-search-bar.sticky")
+    assert has_element?(view, "#self-notes-search[data-role='search'][aria-label='Search notes']")
+
+    assert has_element?(
+             view,
+             "details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
+           )
+
+    assert has_element?(view, "#self-notes-command-center-toggle")
     assert has_element?(view, "#self-notes-quick-create[data-role='new-note']")
-    assert has_element?(view, "#self-notes-search[data-role='search']")
     assert has_element?(view, "#self-notes-date-filters")
     assert has_element?(view, "#self-notes-new-sheet[data-role='new-sheet']")
     assert has_element?(view, "#self-notes-new-page[data-role='new-page']")

@@ -11,6 +11,7 @@ import {
   cellsToCsv,
   csvToCells,
   docDocument,
+  documentCopy,
   docSearchText,
   makeBlock,
   normalizeLabels,
@@ -32,6 +33,21 @@ test("an unknown doc_kind falls back to a page rather than an empty card", () =>
   assert.equal(doc.v, 1)
   assert.ok(doc.doc_id)
   assert.equal(doc.page.blocks.length, 1)
+})
+
+test("saving a document copy gives it a fresh identity and creation time", () => {
+  const source = docDocument({
+    doc_kind: "sheet",
+    title: "Budget",
+    created_at: "2025-01-01T00:00:00.000Z",
+    sheet: {cells: {A1: {v: "kept"}}},
+  })
+  const copy = documentCopy(source)
+
+  assert.equal(copy.title, "Budget (copy)")
+  assert.notEqual(copy.doc_id, source.doc_id)
+  assert.notEqual(copy.created_at, source.created_at)
+  assert.deepEqual(copy.sheet, source.sheet)
 })
 
 test("titles and labels are clamped and de-duplicated", () => {
