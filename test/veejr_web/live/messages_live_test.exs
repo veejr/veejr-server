@@ -21,13 +21,35 @@ defmodule VeejrWeb.MessagesLiveTest do
     %{conn: log_in_user(conn, user), user: user}
   end
 
-  test "offers direct invite and new-conversation actions", %{conn: conn} do
+  test "keeps secondary message tools in a collapsed, obvious panel", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 
     assert has_element?(view, "#back-to-contacts[href='/contacts']", "Back to contacts")
-    assert has_element?(view, "#messages-invite-person[href='/invites/new']", "Invite person")
-    assert has_element?(view, "#messages-conversation-builder", "New conversation")
-    assert has_element?(view, "#messages-conversation-builder-form")
+
+    assert has_element?(
+             view,
+             "details#messages-tools[aria-label='Message tools']:not([open])"
+           )
+
+    assert has_element?(
+             view,
+             "#messages-tools-toggle",
+             "Appearance, invite people, or start a conversation"
+           )
+
+    assert has_element?(
+             view,
+             "#messages-tools-content #messages-invite-person[href='/invites/new']",
+             "Invite person"
+           )
+
+    assert has_element?(
+             view,
+             "#messages-tools-content #messages-conversation-builder",
+             "New conversation"
+           )
+
+    assert has_element?(view, "#messages-tools-content #messages-conversation-builder-form")
   end
 
   test "offers four persistent chat appearances and an arrival celebration", %{conn: conn} do
@@ -40,8 +62,8 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#chat-theme-picker[aria-label='Chat appearance'] .chat-theme-picker-label",
-             "Appearance"
+             "#messages-appearance-tool #chat-theme-picker[aria-label='Chat appearance'] .chat-theme-picker-label",
+             "Style"
            )
 
     assert has_element?(

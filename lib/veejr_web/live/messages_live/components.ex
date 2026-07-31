@@ -26,7 +26,7 @@ defmodule VeejrWeb.MessagesLive.Components do
     statics: VeejrWeb.static_paths()
 
   @doc """
-  Title, back link, chat appearance picker, and the new-conversation launcher.
+  Title and back link, followed by collapsed secondary message tools.
   """
   attr :conversations, :list, required: true
   attr :friends, :list, required: true
@@ -35,88 +35,139 @@ defmodule VeejrWeb.MessagesLive.Components do
   def page_header(assigns) do
     ~H"""
     <div class="messages-page-header relative z-20 rounded-t-[31px] border-b border-base-300 bg-base-100 px-4 py-4">
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <.link
-            id="back-to-contacts"
-            navigate={~p"/contacts"}
-            class="group mb-2 inline-flex items-center gap-1 text-sm font-medium text-base-content/65 transition hover:text-primary"
-          >
-            <.icon
-              name="hero-arrow-left"
-              class="size-4 transition-transform group-hover:-translate-x-0.5"
-            /> Back to contacts
-          </.link>
-          <h1 class="text-2xl font-semibold tracking-tight text-base-content">Messages</h1>
-          <p class="text-sm opacity-70">End-to-end encrypted conversations</p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <div
-            id="chat-theme-picker"
-            class="chat-theme-picker flex flex-wrap items-center gap-1 rounded-2xl border border-base-300 bg-base-200 p-1.5"
-            role="group"
-            aria-label="Chat appearance"
-          >
-            <span class="chat-theme-picker-label">
-              <.icon name="hero-swatch" class="size-4" /> Appearance
+      <.link
+        id="back-to-contacts"
+        navigate={~p"/contacts"}
+        class="group mb-2 inline-flex items-center gap-1 text-sm font-medium text-base-content/65 transition hover:text-primary"
+      >
+        <.icon
+          name="hero-arrow-left"
+          class="size-4 transition-transform group-hover:-translate-x-0.5"
+        /> Back to contacts
+      </.link>
+      <h1 class="text-2xl font-semibold tracking-tight text-base-content">Messages</h1>
+      <p class="text-sm opacity-70">End-to-end encrypted conversations</p>
+
+      <details
+        id="messages-tools"
+        class="group mt-4 rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+        aria-label="Message tools"
+      >
+        <summary
+          id="messages-tools-toggle"
+          class="flex cursor-pointer list-none items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-base-200/70 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary sm:px-4"
+        >
+          <span class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <.icon name="hero-adjustments-horizontal" class="size-5" />
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-semibold text-base-content">Message tools</span>
+            <span class="block truncate text-xs text-base-content/55">
+              Appearance, invite people, or start a conversation
             </span>
-            <button
-              id="chat-theme-classic"
-              type="button"
-              data-chat-theme-option="classic"
-              aria-pressed="true"
-              class="chat-theme-option"
-            >
-              <span class="chat-theme-swatch" aria-hidden="true"></span>
-              <span>Classic</span>
-            </button>
-            <button
-              id="chat-theme-salon"
-              type="button"
-              data-chat-theme-option="salon"
-              aria-pressed="false"
-              class="chat-theme-option"
-            >
-              <span class="chat-theme-swatch" aria-hidden="true"></span>
-              <span>Salon</span>
-            </button>
-            <button
-              id="chat-theme-party"
-              type="button"
-              data-chat-theme-option="party"
-              aria-pressed="false"
-              class="chat-theme-option"
-            >
-              <span class="chat-theme-swatch" aria-hidden="true"></span>
-              <span>Party</span>
-            </button>
-            <button
-              id="chat-theme-comic"
-              type="button"
-              data-chat-theme-option="comic"
-              aria-pressed="false"
-              class="chat-theme-option"
-            >
-              <span class="chat-theme-swatch" aria-hidden="true"></span>
-              <span>Comic</span>
-            </button>
-          </div>
-          <.link
-            id="messages-invite-person"
-            navigate={~p"/invites/new"}
-            class="btn btn-outline btn-sm"
-          >
-            <.icon name="hero-qr-code" class="size-4" /> Invite person
-          </.link>
-          <.conversation_builder
-            id="messages-conversation-builder"
-            form_id="messages-conversation-builder-form"
-            conversations={@conversations}
-            friends={@friends}
-            groups={@groups}
+          </span>
+          <span class="hidden text-xs font-semibold text-base-content/45 sm:inline group-open:hidden">
+            Open
+          </span>
+          <span class="hidden text-xs font-semibold text-primary sm:group-open:inline">
+            Close
+          </span>
+          <.icon
+            name="hero-chevron-down"
+            class="size-4 shrink-0 text-base-content/45 transition duration-200 group-open:rotate-180"
           />
+        </summary>
+
+        <div
+          id="messages-tools-content"
+          class="grid gap-3 border-t border-base-300 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+        >
+          <section
+            id="messages-appearance-tool"
+            class="rounded-2xl border border-base-300 bg-base-200/45 p-3"
+            aria-labelledby="messages-appearance-title"
+          >
+            <div class="mb-2 flex items-center gap-2">
+              <span class="flex size-8 items-center justify-center rounded-lg bg-base-100 text-base-content/60">
+                <.icon name="hero-swatch" class="size-4" />
+              </span>
+              <span>
+                <span id="messages-appearance-title" class="block text-sm font-semibold">
+                  Appearance
+                </span>
+                <span class="block text-xs text-base-content/50">Choose a conversation style</span>
+              </span>
+            </div>
+            <div
+              id="chat-theme-picker"
+              class="chat-theme-picker flex flex-wrap items-center gap-1 rounded-2xl border border-base-300 bg-base-200 p-1.5"
+              role="group"
+              aria-label="Chat appearance"
+            >
+              <span class="chat-theme-picker-label">
+                <.icon name="hero-swatch" class="size-4" /> Style
+              </span>
+              <button
+                id="chat-theme-classic"
+                type="button"
+                data-chat-theme-option="classic"
+                aria-pressed="true"
+                class="chat-theme-option"
+              >
+                <span class="chat-theme-swatch" aria-hidden="true"></span>
+                <span>Classic</span>
+              </button>
+              <button
+                id="chat-theme-salon"
+                type="button"
+                data-chat-theme-option="salon"
+                aria-pressed="false"
+                class="chat-theme-option"
+              >
+                <span class="chat-theme-swatch" aria-hidden="true"></span>
+                <span>Salon</span>
+              </button>
+              <button
+                id="chat-theme-party"
+                type="button"
+                data-chat-theme-option="party"
+                aria-pressed="false"
+                class="chat-theme-option"
+              >
+                <span class="chat-theme-swatch" aria-hidden="true"></span>
+                <span>Party</span>
+              </button>
+              <button
+                id="chat-theme-comic"
+                type="button"
+                data-chat-theme-option="comic"
+                aria-pressed="false"
+                class="chat-theme-option"
+              >
+                <span class="chat-theme-swatch" aria-hidden="true"></span>
+                <span>Comic</span>
+              </button>
+            </div>
+          </section>
+
+          <div class="grid content-center gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <.link
+              id="messages-invite-person"
+              navigate={~p"/invites/new"}
+              class="btn btn-outline btn-sm justify-start"
+            >
+              <.icon name="hero-qr-code" class="size-4" /> Invite person
+            </.link>
+            <.conversation_builder
+              id="messages-conversation-builder"
+              form_id="messages-conversation-builder-form"
+              conversations={@conversations}
+              friends={@friends}
+              groups={@groups}
+            />
+          </div>
         </div>
-      </div>
+      </details>
     </div>
     """
   end
