@@ -49,6 +49,28 @@ defmodule VeejrWeb.ContactsLiveTest do
     )
   end
 
+  test "keeps secondary contact tools in a closed disclosure", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/contacts")
+
+    assert has_element?(view, "details#contacts-tools:not([open])")
+    assert has_element?(view, "#contacts-tools-toggle", "Contact tools")
+
+    assert has_element?(
+             view,
+             "#contacts-tools-content",
+             "Conversations, friends, and groups in one place."
+           )
+
+    assert has_element?(
+             view,
+             "#contacts-tools-content label.contacts-theme-control",
+             "Appearance"
+           )
+
+    assert has_element?(view, "#contacts-tools-content #contacts-invite-person", "Invite person")
+    assert has_element?(view, "#contacts-tools-content #conversation-builder", "New conversation")
+  end
+
   test "links to a scannable invitation", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/contacts")
 

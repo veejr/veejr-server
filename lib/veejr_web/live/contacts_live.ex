@@ -21,40 +21,84 @@ defmodule VeejrWeb.ContactsLive do
         data-contacts-theme="classic"
         class="contacts-workspace space-y-6"
       >
-        <.header>
-          Contacts
-          <:subtitle>
-            Conversations, friends, and groups in one place. Your address:
-            <code>{Social.Address.full(@current_scope.user)}</code>
-          </:subtitle>
-          <:actions>
-            <label class="contacts-theme-control">
-              <span class="contacts-theme-control-label">
-                <.icon name="hero-swatch" class="size-4" /> Appearance
+        <header class="pb-4">
+          <h1 class="text-lg font-semibold leading-8">Contacts</h1>
+
+          <details
+            id="contacts-tools"
+            class="group mt-3 rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+            aria-label="Contact tools"
+          >
+            <summary
+              id="contacts-tools-toggle"
+              class="flex cursor-pointer list-none items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-base-200/70 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary sm:px-4"
+            >
+              <span class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <.icon name="hero-adjustments-horizontal" class="size-5" />
               </span>
-              <select
-                id="contacts-theme-select"
-                data-contacts-theme-select
-                aria-label="Contacts appearance"
-                class="contacts-theme-select select select-sm"
-              >
-                <optgroup :for={{group, options} <- theme_options()} label={group}>
-                  <option :for={{value, label} <- options} value={value}>{label}</option>
-                </optgroup>
-              </select>
-            </label>
-            <.link navigate={~p"/invites/new"} class="btn btn-outline btn-sm">
-              <.icon name="hero-qr-code" class="size-4" /> Invite person
-            </.link>
-            <.conversation_builder
-              id="conversation-builder"
-              form_id="conversation-builder-form"
-              conversations={@conversations}
-              friends={@friends}
-              groups={@groups}
-            />
-          </:actions>
-        </.header>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm font-semibold text-base-content">Contact tools</span>
+                <span class="block truncate text-xs text-base-content/55">
+                  Appearance, invitations, and new conversations
+                </span>
+              </span>
+              <span class="hidden text-xs font-semibold text-base-content/45 sm:inline group-open:hidden">
+                Open
+              </span>
+              <span class="hidden text-xs font-semibold text-primary sm:group-open:inline">
+                Close
+              </span>
+              <.icon
+                name="hero-chevron-down"
+                class="size-4 shrink-0 text-base-content/45 transition duration-200 group-open:rotate-180"
+              />
+            </summary>
+
+            <div
+              id="contacts-tools-content"
+              class="grid gap-3 border-t border-base-300 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+            >
+              <section class="rounded-2xl border border-base-300 bg-base-200/45 p-3">
+                <p class="text-sm text-base-content/70">
+                  Conversations, friends, and groups in one place. Your address:
+                  <code class="break-all">{Social.Address.full(@current_scope.user)}</code>
+                </p>
+                <label class="contacts-theme-control mt-3">
+                  <span class="contacts-theme-control-label">
+                    <.icon name="hero-swatch" class="size-4" /> Appearance
+                  </span>
+                  <select
+                    id="contacts-theme-select"
+                    data-contacts-theme-select
+                    aria-label="Contacts appearance"
+                    class="contacts-theme-select select select-sm"
+                  >
+                    <optgroup :for={{group, options} <- theme_options()} label={group}>
+                      <option :for={{value, label} <- options} value={value}>{label}</option>
+                    </optgroup>
+                  </select>
+                </label>
+              </section>
+
+              <div class="grid content-center gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                <.link
+                  id="contacts-invite-person"
+                  navigate={~p"/invites/new"}
+                  class="btn btn-outline btn-sm justify-start"
+                >
+                  <.icon name="hero-qr-code" class="size-4" /> Invite person
+                </.link>
+                <.conversation_builder
+                  id="conversation-builder"
+                  form_id="conversation-builder-form"
+                  conversations={@conversations}
+                  friends={@friends}
+                  groups={@groups}
+                />
+              </div>
+            </div>
+          </details>
+        </header>
 
         <section
           :if={@invitation_acceptances != []}
