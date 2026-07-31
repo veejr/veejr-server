@@ -28,7 +28,12 @@ defmodule VeejrWeb.MessagesLive do
         data-chat-theme="classic"
         class="messages-workspace flex h-full min-h-0 flex-col rounded-[32px] border border-base-300 bg-base-200 shadow-sm"
       >
-        <.page_header conversations={@conversations} friends={@friends} groups={@groups} />
+        <.page_header
+          conversations={@conversations}
+          friends={@friends}
+          groups={@groups}
+          self_notes={@self_notes}
+        />
 
         <.new_message_celebration />
 

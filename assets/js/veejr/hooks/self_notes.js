@@ -516,7 +516,7 @@ export const SelfNotesBoard = {
       event.target.value = ""
       if (file) this.importKeep(file)
     })
-    this.el.querySelector("[data-role=search]")?.addEventListener("input", (event) => {
+    document.querySelector("#self-notes-search")?.addEventListener("input", (event) => {
       this.searchTerm = event.target.value
       this.queryClauses = noteSearchClauses(this.searchTerm)
       if (this.queryClauses.length > 0 && !this.allNotesRequested && this.el.querySelector("[data-role=load-all-notes]")) {
@@ -525,7 +525,7 @@ export const SelfNotesBoard = {
       }
       this.applyFilters()
     })
-    this.el.querySelector("[data-role=sort]")?.addEventListener("change", (event) => {
+    document.querySelector("#self-notes-sort")?.addEventListener("change", (event) => {
       this.sortBy = event.target.value
       this.applyFilters()
     })
@@ -608,7 +608,7 @@ export const SelfNotesBoard = {
         if (this.selected.size > 0) this.clearSelection()
       }
       if (editing) return
-      if (event.key === "/") { event.preventDefault(); this.el.querySelector("[data-role=search]")?.focus() }
+      if (event.key === "/") { event.preventDefault(); document.querySelector("#self-notes-search")?.focus() }
       if (event.key.toLowerCase() === "c") { event.preventDefault(); this.create() }
     }
     window.addEventListener("veejr:self-note-edit", this.onEdit)
@@ -620,9 +620,9 @@ export const SelfNotesBoard = {
     window.addEventListener("keydown", this.onKeydown)
   },
   updated() {
-    const search = this.el.querySelector("[data-role=search]")
+    const search = document.querySelector("#self-notes-search")
     if (search) search.value = this.searchTerm
-    const sort = this.el.querySelector("[data-role=sort]")
+    const sort = document.querySelector("#self-notes-sort")
     if (sort) sort.value = this.sortBy
     this.applyFilters()
   },
@@ -1289,8 +1289,7 @@ export const SelfNotes = {
       chip.type = "button"; chip.className = "rounded-full bg-base-200 px-2 py-0.5 text-xs opacity-70 hover:opacity-100"; chip.textContent = `#${label}`
       chip.addEventListener("click", (event) => {
         event.stopPropagation()
-        const board = document.querySelector("#self-notes-board")
-        const search = board?.querySelector("[data-role=search]")
+        const search = document.querySelector("#self-notes-search")
         if (!search) return
         search.value = label
         search.dispatchEvent(new Event("input", {bubbles: true}))
