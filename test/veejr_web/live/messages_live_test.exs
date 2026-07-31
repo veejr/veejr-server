@@ -454,6 +454,7 @@ defmodule VeejrWeb.MessagesLiveTest do
     {:ok, view, _html} = live(conn, "/messages?conversation=#{key}")
 
     assert has_element?(view, "#message-composer[data-draft-key='#{key}']")
+    assert has_element?(view, "#message-composer textarea[placeholder='what say you?']")
     assert has_element?(view, "#message-composer [data-role='draft-status'][aria-live='polite']")
     assert has_element?(view, "#message-composer [data-role='reply-preview']")
     assert has_element?(view, "#message-composer [data-role='expiry-summary']")

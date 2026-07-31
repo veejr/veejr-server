@@ -135,8 +135,7 @@ defmodule VeejrWeb.MessagingComponents do
   attr :show_files, :boolean, default: true
   attr :draft_key, :string, default: nil
 
-  attr :text_placeholder, :string,
-    default: "Write something… it is encrypted before it leaves this browser."
+  attr :text_placeholder, :string, default: "what say you?"
 
   attr :submit_label, :string, default: "Encrypt & send"
 
