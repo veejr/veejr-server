@@ -50,37 +50,24 @@ defmodule VeejrWeb.MessagesLive.Components do
 
       <details
         id="messages-tools"
-        class="group mt-4 rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+        class="group"
         aria-label="Message tools"
       >
         <summary
           id="messages-tools-toggle"
-          class="flex cursor-pointer list-none items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-base-200/70 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary sm:px-4"
+          aria-label="Message tools"
+          title="Message tools"
+          class="absolute top-4 right-4 flex size-10 cursor-pointer list-none items-center justify-center rounded-xl border border-base-300 bg-base-100 text-base-content/65 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/10 hover:text-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary group-open:border-primary/40 group-open:bg-primary/10 group-open:text-primary"
         >
-          <span class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <.icon name="hero-adjustments-horizontal" class="size-5" />
-          </span>
-          <span class="min-w-0 flex-1">
-            <span class="block text-sm font-semibold text-base-content">Message tools</span>
-            <span class="block truncate text-xs text-base-content/55">
-              Appearance, invite people, or start a conversation
-            </span>
-          </span>
-          <span class="hidden text-xs font-semibold text-base-content/45 sm:inline group-open:hidden">
-            Open
-          </span>
-          <span class="hidden text-xs font-semibold text-primary sm:group-open:inline">
-            Close
-          </span>
           <.icon
-            name="hero-chevron-down"
-            class="size-4 shrink-0 text-base-content/45 transition duration-200 group-open:rotate-180"
+            name="hero-cog-6-tooth"
+            class="size-5 transition duration-300 group-open:rotate-90"
           />
         </summary>
 
         <div
           id="messages-tools-content"
-          class="grid gap-3 border-t border-base-300 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+          class="mt-4 grid gap-3 rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
         >
           <section
             id="messages-appearance-tool"

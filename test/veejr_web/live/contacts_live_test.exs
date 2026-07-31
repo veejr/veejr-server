@@ -49,11 +49,15 @@ defmodule VeejrWeb.ContactsLiveTest do
     )
   end
 
-  test "keeps secondary contact tools in a closed disclosure", %{conn: conn} do
+  test "hides secondary contact tools behind a top-right gear", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/contacts")
 
     assert has_element?(view, "details#contacts-tools:not([open])")
-    assert has_element?(view, "#contacts-tools-toggle", "Contact tools")
+
+    assert has_element?(
+             view,
+             "header > #contacts-tools > #contacts-tools-toggle[aria-label='Contact tools'][title='Contact tools'] .hero-cog-6-tooth"
+           )
 
     assert has_element?(
              view,

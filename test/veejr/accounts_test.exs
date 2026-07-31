@@ -350,6 +350,35 @@ defmodule Veejr.AccountsTest do
     end
   end
 
+  describe "setup_user_keys_and_password/3" do
+    test "stores initial keys and a login password atomically" do
+      user = user_fixture()
+      password = valid_user_password()
+
+      assert {:ok, updated_user} =
+               Accounts.setup_user_keys_and_password(user, valid_key_attributes(), %{
+                 "password" => password,
+                 "password_confirmation" => password
+               })
+
+      assert updated_user.public_key
+      assert Accounts.get_user_by_email_and_password(user.email, password)
+    end
+
+    test "does not store keys when the requested password is invalid" do
+      user = user_fixture()
+
+      assert {:error, changeset} =
+               Accounts.setup_user_keys_and_password(user, valid_key_attributes(), %{
+                 "password" => "too short",
+                 "password_confirmation" => "different"
+               })
+
+      assert %{password: [_ | _], password_confirmation: [_ | _]} = errors_on(changeset)
+      assert is_nil(Accounts.get_user!(user.id).public_key)
+    end
+  end
+
   describe "generate_user_session_token/1" do
     setup do
       %{user: user_fixture()}
@@ -546,5 +575,14 @@ defmodule Veejr.AccountsTest do
     test "does not include password" do
       refute inspect(%User{password: "123456"}) =~ "password: \"123456\""
     end
+  end
+
+  defp valid_key_attributes do
+    %{
+      "public_key" => Base.encode64(:binary.copy(<<1>>, 32)),
+      "enc_secret_key" => Base.encode64(:binary.copy(<<2>>, 48)),
+      "key_salt" => Base.encode64(:binary.copy(<<3>>, 16)),
+      "key_nonce" => Base.encode64(:binary.copy(<<4>>, 24))
+    }
   end
 end

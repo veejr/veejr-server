@@ -190,6 +190,43 @@ defmodule VeejrWeb.KeysLive do
               role="confirm"
               autocomplete="new-password"
             />
+
+            <section
+              id="initial-password-setup"
+              class="rounded-2xl border border-primary/20 bg-primary/5 p-4"
+            >
+              <h2 class="font-semibold">Add a login password (recommended)</h2>
+              <p class="mt-1 text-sm text-base-content/70">
+                A password lets you sign in directly next time instead of requesting another
+                email link. It is separate from your encryption passphrase; use a password
+                manager to create a strong, unique password.
+              </p>
+              <div class="mt-3">
+                <.input
+                  id="key-setup-password"
+                  name="password"
+                  value=""
+                  type="password"
+                  label="Login password (optional, 12–72 characters)"
+                  autocomplete="new-password"
+                  minlength="12"
+                  maxlength="72"
+                  data-role="account-password"
+                />
+                <.input
+                  id="key-setup-password-confirmation"
+                  name="password_confirmation"
+                  value=""
+                  type="password"
+                  label="Confirm login password"
+                  autocomplete="new-password"
+                  minlength="12"
+                  maxlength="72"
+                  data-role="account-password-confirmation"
+                />
+              </div>
+            </section>
+
             <button type="submit" class="btn btn-primary w-full">Generate my keys</button>
             <p class="text-xs opacity-70">
               Write your passphrase down. If you lose it, previously received messages
@@ -247,18 +284,28 @@ defmodule VeejrWeb.KeysLive do
 
   @impl true
   def handle_event("keys_generated", params, socket) do
-    case Accounts.setup_user_keys(socket.assigns.user, params) do
+    password_params = Map.take(params, ["password", "password_confirmation"])
+    key_params = Map.drop(params, ["password", "password_confirmation"])
+
+    result =
+      if Enum.any?(password_params, fn {_key, value} -> value != "" end) do
+        Accounts.setup_user_keys_and_password(socket.assigns.user, key_params, password_params)
+      else
+        Accounts.setup_user_keys(socket.assigns.user, key_params)
+      end
+
+    case result do
       {:ok, _user} ->
-        {:noreply,
+        {:reply, %{ok: true},
          socket
          |> put_flash(:info, "Encryption keys created. Welcome to veejr!")
          |> push_navigate(to: socket.assigns.return_to || ~p"/")}
 
       {:error, :keys_already_set} ->
-        {:noreply, put_flash(socket, :error, "Keys are already set for this account.")}
+        {:reply, %{error: "Keys are already set for this account."}, socket}
 
-      {:error, %Ecto.Changeset{}} ->
-        {:noreply, put_flash(socket, :error, "Could not store keys — please try again.")}
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:reply, %{error: key_setup_error(changeset)}, socket}
     end
   end
 
@@ -327,6 +374,15 @@ defmodule VeejrWeb.KeysLive do
 
       _ ->
         {:reply, %{error: "Reset failed — nothing was changed."}, socket}
+    end
+  end
+
+  defp key_setup_error(changeset) do
+    if Keyword.has_key?(changeset.errors, :password) or
+         Keyword.has_key?(changeset.errors, :password_confirmation) do
+      "Use a login password of 12–72 characters and make sure both entries match."
+    else
+      "Could not store keys — please try again."
     end
   end
 
