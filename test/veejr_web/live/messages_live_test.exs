@@ -21,7 +21,7 @@ defmodule VeejrWeb.MessagesLiveTest do
     %{conn: log_in_user(conn, user), user: user}
   end
 
-  test "keeps secondary message tools in a collapsed, obvious panel", %{conn: conn} do
+  test "hides secondary message tools behind a top-right gear", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 
     assert has_element?(view, "#back-to-contacts[href='/contacts']", "Back to contacts")
@@ -33,8 +33,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#messages-tools-toggle",
-             "Appearance, invite people, or start a conversation"
+             ".messages-page-header > #messages-tools > #messages-tools-toggle[aria-label='Message tools'][title='Message tools'] .hero-cog-6-tooth"
            )
 
     assert has_element?(

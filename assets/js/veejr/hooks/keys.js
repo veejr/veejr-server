@@ -26,8 +26,19 @@ export const KeySetup = {
       e.preventDefault()
       const pass = form.querySelector("[data-role=passphrase]").value
       const confirm = form.querySelector("[data-role=confirm]").value
+      const password = form.querySelector("[data-role=account-password]")?.value || ""
+      const passwordConfirmation =
+        form.querySelector("[data-role=account-password-confirmation]")?.value || ""
       if (pass.length < 8) return showError(form, "Passphrase must be at least 8 characters.")
       if (pass !== confirm) return showError(form, "Passphrases do not match.")
+      if (password || passwordConfirmation) {
+        if (password.length < 12 || password.length > 72) {
+          return showError(form, "Login password must be 12–72 characters.")
+        }
+        if (password !== passwordConfirmation) {
+          return showError(form, "Login passwords do not match.")
+        }
+      }
 
       const btn = form.querySelector("button[type=submit]")
       btn.disabled = true
@@ -35,16 +46,18 @@ export const KeySetup = {
       try {
         const id = await generateIdentity(pass)
         cacheSecretKey(this.el.dataset.userId, id.secretKey)
-        this.pushEvent("keys_generated", {
+        await pushWithReply(this, "keys_generated", {
           public_key: id.publicKey,
           enc_secret_key: id.encSecretKey,
           key_salt: id.keySalt,
           key_nonce: id.keyNonce,
+          password,
+          password_confirmation: passwordConfirmation,
         })
       } catch (err) {
         btn.disabled = false
         btn.textContent = "Generate my keys"
-        showError(form, `Key generation failed: ${err.message}`)
+        showError(form, err.reply?.error || `Key generation failed: ${err.message}`)
       }
     })
   },

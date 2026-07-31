@@ -398,6 +398,17 @@ defmodule Veejr.Accounts do
     end
   end
 
+  @doc "Stores first-time encryption keys and a login password in one update."
+  def setup_user_keys_and_password(user, key_attrs, password_attrs) do
+    if user.public_key do
+      {:error, :keys_already_set}
+    else
+      user
+      |> User.keys_and_password_changeset(key_attrs, password_attrs)
+      |> Repo.update()
+    end
+  end
+
   @doc """
   Passphrase change: replaces only the wrapped secret key (re-wrapped
   client-side under the new passphrase). The keypair itself is unchanged, so

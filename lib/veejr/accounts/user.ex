@@ -152,6 +152,13 @@ defmodule Veejr.Accounts.User do
     |> validate_password(opts)
   end
 
+  @doc "A changeset that stores initial encryption keys and a login password atomically."
+  def keys_and_password_changeset(user, key_attrs, password_attrs) do
+    user
+    |> keys_changeset(key_attrs)
+    |> password_changeset(password_attrs)
+  end
+
   defp validate_password(changeset, opts) do
     changeset
     |> validate_required([:password])
