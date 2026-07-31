@@ -7,7 +7,7 @@ import {
   openFrom,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
-import {mergeNoteDocuments, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
+import {compareSelfNotes, mergeNoteDocuments, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
 
@@ -502,6 +502,7 @@ export const SelfNotesBoard = {
     this.view = "grid"
     this.label = null
     this.searchTerm = ""
+    this.sortBy = "updated"
     this.queryClauses = []
     this.allNotesRequested = false
     this.dateFrom = ""
@@ -522,6 +523,10 @@ export const SelfNotesBoard = {
         this.allNotesRequested = true
         this.pushEvent("load_all_notes", {}, () => { this.allNotesRequested = false })
       }
+      this.applyFilters()
+    })
+    this.el.querySelector("[data-role=sort]")?.addEventListener("change", (event) => {
+      this.sortBy = event.target.value
       this.applyFilters()
     })
     this.el.querySelector("[data-role=date-from]")?.addEventListener("change", (event) => {
@@ -617,6 +622,8 @@ export const SelfNotesBoard = {
   updated() {
     const search = this.el.querySelector("[data-role=search]")
     if (search) search.value = this.searchTerm
+    const sort = this.el.querySelector("[data-role=sort]")
+    if (sort) sort.value = this.sortBy
     this.applyFilters()
   },
   destroyed() {
@@ -661,7 +668,21 @@ export const SelfNotesBoard = {
     const cards = [...this.el.querySelectorAll(".self-note-card")]
     grid.className = this.view === "list" ? "space-y-3" : "columns-1 gap-4 sm:columns-2 xl:columns-3"
     cards
-      .sort((left, right) => Number(right.dataset.notePinned === "true") - Number(left.dataset.notePinned === "true") || String(right.dataset.noteUpdated || "").localeCompare(String(left.dataset.noteUpdated || "")))
+      .sort((left, right) => compareSelfNotes(
+        {
+          pinned: left.dataset.notePinned === "true",
+          title: left.dataset.noteTitle,
+          createdAt: left.dataset.noteCreated,
+          updatedAt: left.dataset.noteUpdated,
+        },
+        {
+          pinned: right.dataset.notePinned === "true",
+          title: right.dataset.noteTitle,
+          createdAt: right.dataset.noteCreated,
+          updatedAt: right.dataset.noteUpdated,
+        },
+        this.sortBy,
+      ))
       .forEach((card) => grid.appendChild(card))
     const labels = [...new Set(cards.flatMap((card) => JSON.parse(card.dataset.noteLabels || "[]")))].sort()
     const labelBar = this.el.querySelector("[data-role=labels]")
@@ -1091,6 +1112,8 @@ export const SelfNotes = {
       (Array.isArray(payload.labels) ? payload.labels : []).filter((label) => typeof label === "string").slice(0, 10)
     )
     card.dataset.noteUpdated = payload.updated_at || ""
+    card.dataset.noteCreated = payload.created_at || ""
+    card.dataset.noteTitle = summary.title
     card.dataset.noteArchived = String(!!payload.archived_at)
     card.dataset.noteTrashed = String(!!payload.trashed_at)
     card.dataset.notePinned = String(!!payload.pinned)
@@ -1216,6 +1239,8 @@ export const SelfNotes = {
     ].filter((value) => value !== undefined && value !== null).join(" ")))
     card.dataset.noteLabels = JSON.stringify(payload.labels.filter((label) => typeof label === "string").slice(0, 10))
     card.dataset.noteUpdated = payload.updated_at || ""
+    card.dataset.noteCreated = payload.created_at || ""
+    card.dataset.noteTitle = payload.title || "Untitled note"
     card.dataset.noteArchived = String(!!payload.archived_at)
     card.dataset.noteTrashed = String(!!payload.trashed_at)
     card.dataset.notePinned = String(!!payload.pinned)

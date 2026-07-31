@@ -149,6 +149,20 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
+             "#self-notes-sort[data-role='sort'][aria-label='Sort notes by'] option[value='updated'][selected]",
+             "Last edited"
+           )
+
+    assert has_element?(
+             view,
+             "#self-notes-sort option[value='created']",
+             "Creation date"
+           )
+
+    assert has_element?(view, "#self-notes-sort option[value='title']", "Title")
+
+    assert has_element?(
+             view,
              "details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
            )
 
