@@ -114,6 +114,31 @@ defmodule VeejrWeb.UserLive.Settings do
 
       <div class="divider" />
 
+      <section id="presence-settings">
+        <h2 class="text-lg font-semibold">Online status</h2>
+        <p class="mt-1 text-sm opacity-70">
+          Let your friends see when you have veejr open. They see a dot and nothing
+          finer — never a log of when you come and go. Turning this off stops the
+          status being recorded at all, so there is nothing for anyone to display.
+        </p>
+        <label class="mt-3 flex cursor-pointer items-center gap-3">
+          <input
+            id="presence-sharing-toggle"
+            type="checkbox"
+            checked={@current_scope.user.presence_sharing}
+            phx-click="toggle_presence_sharing"
+            class="toggle toggle-primary toggle-sm"
+          />
+          <span class="text-sm">
+            {if @current_scope.user.presence_sharing,
+              do: "Friends can see when you're online",
+              else: "Your status is hidden"}
+          </span>
+        </label>
+      </section>
+
+      <div class="divider" />
+
       <section id="push-setup" phx-hook="PushSetup" data-vapid-key={@vapid_key}>
         <h2 class="text-lg font-semibold">Push notifications</h2>
         <p class="mt-1 text-sm opacity-70">
@@ -380,6 +405,20 @@ defmodule VeejrWeb.UserLive.Settings do
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Profile image could not be removed.")}
+    end
+  end
+
+  # Driven from the stored value, not the checkbox: `phx-click` on a checkbox
+  # reports the element's value, which is "on" whether or not it is ticked.
+  def handle_event("toggle_presence_sharing", _params, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Accounts.set_presence_sharing(user, !user.presence_sharing) do
+      {:ok, user} ->
+        {:noreply, assign(socket, :current_scope, Accounts.Scope.for_user(user))}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not change your online status.")}
     end
   end
 

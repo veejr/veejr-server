@@ -267,6 +267,91 @@ defmodule VeejrWeb.ContactsLiveTest do
     assert envelope.read_at
   end
 
+  describe "presence" do
+    test "an offline friend gets an offline dot", %{conn: conn, friend: friend} do
+      {:ok, view, _html} = live(conn, "/contacts")
+
+      assert has_element?(view, "#friend-presence-#{friend.id}[data-presence='offline']")
+    end
+
+    test "a friend with veejr open reads as online", %{conn: conn, friend: friend} do
+      open_page(friend)
+
+      {:ok, view, _html} = live(conn, "/contacts")
+
+      assert has_element?(view, "#friend-presence-#{friend.id}[data-presence='online']")
+    end
+
+    test "the dot follows a friend arriving, without a reload", %{conn: conn, friend: friend} do
+      {:ok, view, _html} = live(conn, "/contacts")
+      assert has_element?(view, "#friend-presence-#{friend.id}[data-presence='offline']")
+
+      # The broadcast is issued before track/1 returns, so it is already in the
+      # view's mailbox and render/1 processes it before replying.
+      open_page(friend)
+
+      assert has_element?(view, "#friend-presence-#{friend.id}[data-presence='online']")
+    end
+
+    test "a friend on another instance gets no dot at all", %{conn: conn, user: user} do
+      remote = remote_friend(user)
+
+      {:ok, view, _html} = live(conn, "/contacts")
+
+      # Unknown is not offline, and a dot that guesses is worse than none.
+      refute has_element?(view, "#friend-presence-#{remote.id}")
+      assert has_element?(view, "#friend-avatar-#{remote.id}")
+    end
+
+    test "a friend who turned sharing off gets no dot", %{conn: conn, friend: friend} do
+      open_page(friend)
+      {:ok, _hidden} = Accounts.set_presence_sharing(friend, false)
+
+      {:ok, view, _html} = live(conn, "/contacts")
+
+      refute has_element?(view, "#friend-presence-#{friend.id}")
+    end
+  end
+
+  # A stand-in for another person having veejr open in a browser somewhere.
+  defp open_page(user) do
+    test = self()
+
+    pid =
+      spawn(fn ->
+        Veejr.Presence.track(user)
+        send(test, :tracked)
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive :tracked
+    on_exit(fn -> Process.exit(pid, :kill) end)
+    pid
+  end
+
+  defp remote_friend(user) do
+    {:ok, remote} =
+      %Veejr.Accounts.User{}
+      |> Ecto.Changeset.change(
+        email: "remote+zoe@other.example.invalid",
+        username: "zoe",
+        host: "other.example",
+        public_key: Base.encode64(String.pad_trailing("remote-key", 32, "x"))
+      )
+      |> Repo.insert()
+
+    {:ok, _friendship} =
+      %Social.Friendship{}
+      |> Ecto.Changeset.change(
+        requester_id: user.id,
+        addressee_id: remote.id,
+        status: "accepted"
+      )
+      |> Repo.insert()
+
+    remote
+  end
+
   defp jpeg do
     <<0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 512::16, 512::16, 0::size(12)-unit(8), 0xFF,
       0xD9>>

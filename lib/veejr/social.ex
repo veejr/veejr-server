@@ -293,6 +293,25 @@ defmodule Veejr.Social do
     |> Repo.all()
   end
 
+  @doc """
+  Ids of `user_id`'s accepted friends who live on this instance.
+
+  Presence fan-out uses this: remote friends have no LiveView here to notify,
+  and loading whole structs to read one field each would be wasteful on a
+  path that runs on every online/offline transition.
+  """
+  def local_friend_ids(user_id) do
+    from(u in User,
+      join: f in Friendship,
+      on:
+        (f.requester_id == ^user_id and f.addressee_id == u.id) or
+          (f.addressee_id == ^user_id and f.requester_id == u.id),
+      where: f.status == "accepted" and is_nil(u.host),
+      select: u.id
+    )
+    |> Repo.all()
+  end
+
   @doc "Pending requests addressed to `user`, requester preloaded."
   def list_incoming_requests(%User{id: id}) do
     from(f in Friendship,

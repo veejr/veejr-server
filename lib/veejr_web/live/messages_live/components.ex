@@ -17,7 +17,7 @@ defmodule VeejrWeb.MessagesLive.Components do
   import VeejrWeb.CoreComponents
   import VeejrWeb.MessagingComponents
 
-  alias Veejr.Social
+  alias Veejr.{Presence, Social}
   alias Phoenix.LiveView.JS
 
   use Phoenix.VerifiedRoutes,
@@ -540,6 +540,7 @@ defmodule VeejrWeb.MessagesLive.Components do
   attr :bulk_selected_conversations, :any, required: true
   attr :available_friends, :list, required: true
   attr :available_groups, :list, required: true
+  attr :presence, :map, default: %{}
 
   def conversation_rail(assigns) do
     ~H"""
@@ -606,13 +607,15 @@ defmodule VeejrWeb.MessagesLive.Components do
             phx-value-key={conv.key}
             class="checkbox checkbox-xs shrink-0"
           />
-          <.user_avatar
-            :if={conv.avatar_user}
-            id={"rail-conversation-avatar-#{conv.key}"}
-            user={conv.avatar_user}
-            class="size-10 text-sm"
-            on_click="open_profile"
-          />
+          <span :if={conv.avatar_user} class="relative inline-flex shrink-0">
+            <.user_avatar
+              id={"rail-conversation-avatar-#{conv.key}"}
+              user={conv.avatar_user}
+              class="size-10 text-sm"
+              on_click="open_profile"
+            />
+            <.presence_dot state={Map.get(@presence, conv.avatar_user.id, :unknown)} />
+          </span>
           <span
             :if={!conv.avatar_user}
             class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary"
@@ -656,12 +659,18 @@ defmodule VeejrWeb.MessagesLive.Components do
                 "text-base-content hover:bg-base-200"
             ]}
           >
-            <.user_avatar
-              id={"message-friend-avatar-#{friend.id}"}
-              user={friend}
-              class="size-10 text-sm"
-              on_click="open_profile"
-            />
+            <span class="relative inline-flex shrink-0">
+              <.user_avatar
+                id={"message-friend-avatar-#{friend.id}"}
+                user={friend}
+                class="size-10 text-sm"
+                on_click="open_profile"
+              />
+              <.presence_dot
+                id={"start-friend-presence-#{friend.id}"}
+                state={Map.get(@presence, friend.id, :unknown)}
+              />
+            </span>
             <button
               id={"start-friend-#{friend.id}"}
               type="button"
@@ -877,6 +886,7 @@ defmodule VeejrWeb.MessagesLive.Components do
   attr :friends, :list, required: true
   attr :groups, :list, required: true
   attr :current_scope, :map, required: true
+  attr :presence, :map, default: %{}
 
   def conversation_thread(assigns) do
     ~H"""
@@ -893,12 +903,17 @@ defmodule VeejrWeb.MessagesLive.Components do
     >
       <div class="messages-chat-header flex items-center justify-between gap-3 border-b border-base-300 bg-base-100 px-5 py-4">
         <div class="flex min-w-0 items-center gap-3">
-          <.user_avatar
-            :if={@selected_conversation.avatar_user}
-            user={@selected_conversation.avatar_user}
-            class="size-11 text-sm"
-            on_click="open_profile"
-          />
+          <span :if={@selected_conversation.avatar_user} class="relative inline-flex shrink-0">
+            <.user_avatar
+              user={@selected_conversation.avatar_user}
+              class="size-11 text-sm"
+              on_click="open_profile"
+            />
+            <.presence_dot
+              id="thread-peer-presence"
+              state={thread_presence(@presence, @selected_conversation)}
+            />
+          </span>
           <span
             :if={!@selected_conversation.avatar_user}
             class="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
@@ -909,8 +924,13 @@ defmodule VeejrWeb.MessagesLive.Components do
             <h2 class="truncate text-lg font-semibold text-base-content">
               {conversation_title(@selected_conversation)}
             </h2>
-            <p class="text-xs opacity-70">
-              {@selected_conversation.message_count} messages
+            <p class="flex items-center gap-1.5 text-xs opacity-70">
+              <span>{@selected_conversation.message_count} messages</span>
+              <%!-- The header has room for words, so say it rather than
+                    making the dot carry the whole meaning. --%>
+              <span :if={presence_visible?(@presence, @selected_conversation)}>
+                · {Presence.label(thread_presence(@presence, @selected_conversation))}
+              </span>
             </p>
           </div>
         </div>
@@ -1113,7 +1133,15 @@ defmodule VeejrWeb.MessagesLive.Components do
     end
   end
 
-  def call_peer_id(_conversation), do: nil
+  # Presence belongs to a person, so a group thread never has one.
+  def thread_presence(presence, %{avatar_user: %{id: id}}), do: Map.get(presence, id, :unknown)
+  def thread_presence(_presence, _conversation), do: :unknown
+
+  # The dot still shows for offline; only a live state earns words in the
+  # header, where "Offline" next to every quiet thread would just be nagging.
+  def presence_visible?(presence, conversation) do
+    presence |> thread_presence(conversation) |> Presence.visible?()
+  end
 
   def group_initials(group) do
     group.name

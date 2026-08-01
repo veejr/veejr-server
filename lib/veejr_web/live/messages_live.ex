@@ -6,7 +6,7 @@ defmodule VeejrWeb.MessagesLive do
   # MessagingComponents are now used from that module rather than here.
   import VeejrWeb.MessagesLive.Components
 
-  alias Veejr.{Messaging, Social}
+  alias Veejr.{Messaging, Presence, Social}
   alias Veejr.Messaging.Envelope
   alias VeejrWeb.ConversationLauncher
 
@@ -48,6 +48,7 @@ defmodule VeejrWeb.MessagesLive do
             bulk_selected_conversations={@bulk_selected_conversations}
             available_friends={@available_friends}
             available_groups={@available_groups}
+            presence={@presence}
           />
 
           <main class="messages-main flex h-full min-h-0 min-w-0 flex-1 flex-col bg-base-200/80">
@@ -65,6 +66,7 @@ defmodule VeejrWeb.MessagesLive do
               friends={@friends}
               groups={@groups}
               current_scope={@current_scope}
+              presence={@presence}
             />
 
             <.empty_state
@@ -529,6 +531,12 @@ defmodule VeejrWeb.MessagesLive do
      |> refresh()}
   end
 
+  # A correspondent came or went. Only the dots change — no reason to rebuild
+  # threads or re-read envelopes.
+  def handle_info({:veejr_presence, user_id, state}, socket) do
+    {:noreply, assign(socket, :presence, Map.put(socket.assigns.presence, user_id, state))}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp send_batch_message("self_note", _deliver_at), do: "Note saved."
@@ -590,7 +598,8 @@ defmodule VeejrWeb.MessagesLive do
         has_more_messages: has_more_messages,
         selected_conversation: selected_conversation,
         selected_conversation_key: selected_key,
-        selected_recipient: selected_recipient
+        selected_recipient: selected_recipient,
+        presence: Presence.states(friends)
       )
 
     if socket.assigns.self_notes do

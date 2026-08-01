@@ -16,6 +16,11 @@ defmodule Veejr.Accounts.User do
     field :has_avatar, :boolean, default: false
     field :avatar_version, :integer, default: 0
 
+    # Whether friends may see that this account is currently online. Checked
+    # where presence is recorded (`Veejr.Presence`), so switching it off stops
+    # the data existing rather than asking viewers to hide it.
+    field :presence_sharing, :boolean, default: true
+
     # nil for local accounts; a remote user's home-instance authority
     # (e.g. "veejr.example.com", "localhost:4001") otherwise. Remote users
     # never log in here — they exist so friendships and envelopes can
@@ -77,6 +82,11 @@ defmodule Veejr.Accounts.User do
     |> validate_required([:public_key, :enc_secret_key, :key_salt, :key_nonce])
     |> validate_length(:public_key, max: 100)
     |> validate_length(:enc_secret_key, max: 200)
+  end
+
+  @doc "A changeset for the user's presence-sharing preference."
+  def presence_changeset(user, attrs) do
+    cast(user, attrs, [:presence_sharing])
   end
 
   @doc "A changeset for replacing or removing a user's public profile image."

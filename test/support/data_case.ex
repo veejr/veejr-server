@@ -37,6 +37,13 @@ defmodule Veejr.DataCase do
   """
   def setup_sandbox(tags) do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Veejr.Repo, shared: not tags[:async])
+
+    # Presence lives in ETS keyed by user id, outside the sandbox, and the
+    # rollback hands those ids straight back to the next test. Without this,
+    # a LiveView from an earlier test leaves the next test's fresh user
+    # looking like they are already online.
+    Veejr.Presence.reset()
+
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
   end
 

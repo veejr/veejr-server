@@ -31,6 +31,8 @@ defmodule Veejr.Application do
       # Live presence of call participants (which tabs sit on a call page),
       # so brief socket reconnects don't hang calls up.
       {Registry, keys: :duplicate, name: Veejr.CallRegistry},
+      # Who has veejr open, for the online dots on contacts and messages.
+      {Veejr.Presence, []},
       {Task.Supervisor, name: Veejr.TaskSupervisor},
       # Start to serve requests, typically the last entry
       VeejrWeb.Endpoint
