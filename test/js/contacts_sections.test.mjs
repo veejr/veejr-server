@@ -35,6 +35,10 @@ test("Classic leaves a reader's own expansion alone on re-render", () => {
   assert.equal(shouldReapply(CLASSIC, CLASSIC), false)
 })
 
-test("mounting straight into Classic defers to the server", () => {
-  assert.equal(shouldReapply(undefined, CLASSIC), false)
+test("arriving at Contacts always closes Friends and Groups", () => {
+  // Mount, whatever state the DOM arrived in: a fresh render, a live
+  // navigation, or a back-button restore that handed back an open <details>.
+  assert.equal(shouldReapply(undefined, CLASSIC), true)
+  assert.equal(sectionOpen(CLASSIC, false), false)
+  assert.equal(sectionOpen(CLASSIC, true), true)
 })
