@@ -267,6 +267,24 @@ defmodule VeejrWeb.ContactsLiveTest do
     assert envelope.read_at
   end
 
+  describe "section layout" do
+    test "only Conversations starts open, and it is marked for the hook", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/contacts")
+
+      # The appearance hook resets to this on arrival, so the marker is the
+      # contract between the two. Friends and Groups carrying `open` — or
+      # losing the marker on Conversations — is the bug users saw as the
+      # sections being permanently expanded.
+      assert has_element?(view, "details.contacts-section[open][data-default-open]")
+
+      assert view |> element("details.contacts-section[data-default-open] h2") |> render() =~
+               "Conversations"
+
+      refute has_element?(view, "details.contacts-section[open] h2", "Friends")
+      refute has_element?(view, "details.contacts-section[open] h2", "Groups")
+    end
+  end
+
   describe "presence" do
     test "an offline friend gets an offline dot", %{conn: conn, friend: friend} do
       {:ok, view, _html} = live(conn, "/contacts")
