@@ -293,7 +293,10 @@ defmodule VeejrWeb.ContactsLiveTest do
       assert has_element?(view, "#friend-presence-#{friend.id}[data-presence='online']")
     end
 
-    test "a friend on another instance gets no dot at all", %{conn: conn, user: user} do
+    test "a friend on another instance gets no dot until their server says so", %{
+      conn: conn,
+      user: user
+    } do
       remote = remote_friend(user)
 
       {:ok, view, _html} = live(conn, "/contacts")
@@ -301,6 +304,25 @@ defmodule VeejrWeb.ContactsLiveTest do
       # Unknown is not offline, and a dot that guesses is worse than none.
       refute has_element?(view, "#friend-presence-#{remote.id}")
       assert has_element?(view, "#friend-avatar-#{remote.id}")
+    end
+
+    test "a friend on another instance lights up when their server says so", %{
+      conn: conn,
+      user: user
+    } do
+      remote = remote_friend(user)
+      {:ok, view, _html} = live(conn, "/contacts")
+
+      {:ok, :accepted} =
+        Veejr.Federation.handle_presence(
+          %{
+            "from" => %{"authority" => "other.example"},
+            "users" => [%{"username" => "zoe", "state" => "online"}]
+          },
+          "other.example"
+        )
+
+      assert has_element?(view, "#friend-presence-#{remote.id}[data-presence='online']")
     end
 
     test "a friend who turned sharing off gets no dot", %{conn: conn, friend: friend} do

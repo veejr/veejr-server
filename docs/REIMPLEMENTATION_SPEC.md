@@ -566,6 +566,7 @@ They MUST NOT appear in push payloads or routine logs.
 | `POST /api/federation/call_update` | Relay joined, declined, busy, cancelled, ended, or disconnected state. |
 | `POST /api/federation/call_signal` | Relay one sealed SDP/ICE payload synchronously. |
 | `POST /api/federation/call_schedule` | Durably mirror scheduled, cancelled, or started call-plan state. |
+| `POST /api/federation/presence` | Assert coarse online state for the sending instance's own users. Synchronous and best-effort, never queued; each assertion carries a TTL and lapses to `unknown`. |
 
 Each write is signed with the sending instance's Ed25519 key. The signed bytes
 bind the exact request path, timestamp, and SHA-256 digest of the raw body.

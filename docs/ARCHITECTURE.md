@@ -300,6 +300,7 @@ older peers.
 | `POST /api/federation/call_update` | Relay joined/declined/busy/cancelled/ended/disconnected lifecycle state. |
 | `POST /api/federation/call_signal` | Relay one sealed SDP/ICE payload synchronously. |
 | `POST /api/federation/call_schedule` | Durably mirror scheduled-call creation and state. |
+| `POST /api/federation/presence` | Assert coarse online state for the sending instance's own users. |
 | `GET /api/envelopes/:public_id` | Fetch envelope ciphertext by capability. |
 | `GET /api/blobs/:id` | Fetch encrypted blob bytes by capability. |
 
@@ -309,6 +310,45 @@ When Alice on A sends to Carol on B, A retains the ciphertext and sends B a
 content-free notify. B creates a stub envelope and pending notification. Only
 after Carol accepts does B fetch `/api/envelopes/:public_id` from A and fill the
 stub. Declining means the ciphertext never leaves A.
+
+### Contact presence
+
+`Veejr.Presence` answers whether a contact currently has veejr open, in four
+coarse states: `online`, `recently`, `offline`, and `unknown`. Local presence
+falls out of the LiveView processes that already exist — every authenticated
+page registers through `VeejrWeb.TrackPresence` and the monitored process
+releases its slot when the tab closes. State lives in ETS, never the database:
+it is ephemeral, a write per transition would be WAL traffic for data that is
+worthless after a restart, and an empty table on boot is the honest answer.
+
+A dropped socket is not treated as a departure until a grace period expires,
+for the same reason call-page presence has one — mobile browsers reconnect
+constantly and a reconnect is not a hangup.
+
+Across instances presence is pushed, not polled. When a user's state changes,
+their instance groups that user's remote friends by authority and posts one
+`/api/federation/presence` assertion per peer, carrying every affected user
+rather than one request per contact. Polling would scale with viewers ×
+contacts and would leak *when someone opens their contacts page* to every
+server their friends use. Delivery is synchronous and best-effort and never
+enters `Veejr.Federation.Outbox`: a presence update redelivered hours later is
+not late, it is false. Only the HTTP call is detached to a task, so an
+unreachable peer cannot stall a page mount.
+
+Every assertion carries a TTL and is re-asserted on a slower heartbeat, so a
+peer that crashes mid-session decays to `unknown` rather than leaving a contact
+lit indefinitely. `unknown` is deliberately distinct from `offline`: silence
+from a peer says something about the link, not about the person, and a dot that
+guesses is a dot people learn to ignore. Peers that answer 404 predate the
+endpoint and are parked for an hour, since instances upgrade on their own
+schedule.
+
+Sharing is per user (`users.presence_sharing`, default on) and enforced where
+presence is recorded, so switching it off stops the state existing rather than
+asking peers not to display it. Nothing finer than the four states crosses the
+wire — no timestamps, and therefore no federated record of when someone is at
+their computer. Receivers store presence only for contacts a local user is
+already friends with, and never create an account from an assertion.
 
 ### Instance authentication and pinning
 
