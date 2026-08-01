@@ -159,6 +159,27 @@ defmodule Veejr.Accounts do
     end
   end
 
+  @doc """
+  Turns the user's online status on or off for their friends.
+
+  Switching off drops the live presence record immediately rather than
+  waiting for their open tabs to close, so the setting takes effect while
+  they are still looking at it.
+  """
+  def set_presence_sharing(%User{} = user, sharing?) when is_boolean(sharing?) do
+    user
+    |> User.presence_changeset(%{presence_sharing: sharing?})
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        if sharing?, do: Veejr.Presence.track(updated), else: Veejr.Presence.untrack(updated)
+        {:ok, updated}
+
+      error ->
+        error
+    end
+  end
+
   @doc false
   def get_user_avatar_image(%User{id: user_id}) do
     Repo.one(from(a in UserAvatar, where: a.user_id == ^user_id, select: a.image))

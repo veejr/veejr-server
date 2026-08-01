@@ -3,7 +3,7 @@ defmodule VeejrWeb.ContactsLive do
 
   import VeejrWeb.MessagingComponents, only: [conversation_builder: 1]
 
-  alias Veejr.{Accounts, Messaging, Social}
+  alias Veejr.{Accounts, Messaging, Presence, Social}
   alias VeejrWeb.ConversationLauncher
 
   @impl true
@@ -205,14 +205,16 @@ defmodule VeejrWeb.ContactsLive do
                     conversation.unread_count > 0 && "conversation-unread"
                   ]}
                 >
-                  <.user_avatar
-                    :if={conversation.avatar_user}
-                    id={"conversation-avatar-#{conversation.key}"}
-                    user={conversation.avatar_user}
-                    class="size-10 text-sm"
-                    on_click="open_profile"
-                    data-avatar-texture-url={avatar_texture_url(conversation.avatar_user)}
-                  />
+                  <span :if={conversation.avatar_user} class="relative inline-flex shrink-0">
+                    <.user_avatar
+                      id={"conversation-avatar-#{conversation.key}"}
+                      user={conversation.avatar_user}
+                      class="size-10 text-sm"
+                      on_click="open_profile"
+                      data-avatar-texture-url={avatar_texture_url(conversation.avatar_user)}
+                    />
+                    <.presence_dot state={Map.get(@presence, conversation.avatar_user.id, :unknown)} />
+                  </span>
                   <span
                     :if={!conversation.avatar_user}
                     class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
@@ -352,12 +354,18 @@ defmodule VeejrWeb.ContactsLive do
                 >
                   <div class="flex items-start justify-between gap-3">
                     <span class="flex min-w-0 items-center gap-3">
-                      <.user_avatar
-                        id={"friend-avatar-#{friend.id}"}
-                        user={friend}
-                        class="size-12 text-sm"
-                        on_click="open_profile"
-                      />
+                      <span class="relative inline-flex shrink-0">
+                        <.user_avatar
+                          id={"friend-avatar-#{friend.id}"}
+                          user={friend}
+                          class="size-12 text-sm"
+                          on_click="open_profile"
+                        />
+                        <.presence_dot
+                          id={"friend-presence-#{friend.id}"}
+                          state={Map.get(@presence, friend.id, :unknown)}
+                        />
+                      </span>
                       <span class="min-w-0">
                         <span class="block truncate font-medium">{friend.display_name ||
                           friend.username}</span>
@@ -591,6 +599,12 @@ defmodule VeejrWeb.ContactsLive do
   @impl true
   def handle_info({:veejr_notification, _notification}, socket) do
     {:noreply, refresh(socket)}
+  end
+
+  # A friend came or went. Only the dot changes, so patch the map rather than
+  # reloading every list on the page.
+  def handle_info({:veejr_presence, user_id, state}, socket) do
+    {:noreply, assign(socket, :presence, Map.put(socket.assigns.presence, user_id, state))}
   end
 
   # Everything else on the user's topic (schedule releases, note reminders,
@@ -893,6 +907,7 @@ defmodule VeejrWeb.ContactsLive do
         Enum.filter(friends, &(&1.pending_public_key && &1.pending_public_key != &1.public_key)),
       incoming: Social.list_incoming_requests(user),
       outgoing: Social.list_outgoing_requests(user),
+      presence: Presence.states(friends),
       conversations: build_conversations(user, friends)
     )
   end

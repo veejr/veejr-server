@@ -112,6 +112,40 @@ defmodule VeejrWeb.CoreComponents do
     """
   end
 
+  attr :state, :atom, required: true, values: [:online, :recently, :offline, :unknown]
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+
+  @doc """
+  Renders a contact's presence as a dot beside their avatar.
+
+  Place inside a `relative` wrapper alongside `user_avatar/1`.
+
+  Nothing is drawn for `:unknown` — a contact on another instance, or one who
+  turned sharing off, gives us no basis for a claim, and an absent dot says
+  that without pretending they are offline. The other three states are all
+  positively known for a local contact who shares, so all three are drawn.
+  """
+  def presence_dot(assigns) do
+    ~H"""
+    <span
+      :if={@state != :unknown}
+      id={@id}
+      data-presence={@state}
+      title={Veejr.Presence.label(@state)}
+      class={[
+        "pointer-events-none absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-base-100 transition-colors",
+        @state == :online && "bg-success",
+        @state == :recently && "bg-warning/70",
+        @state == :offline && "bg-base-300",
+        @class
+      ]}
+    >
+      <span class="sr-only">{Veejr.Presence.label(@state)}</span>
+    </span>
+    """
+  end
+
   attr :user, :any, default: nil
   attr :note, :string, default: ""
   attr :editable, :boolean, default: false

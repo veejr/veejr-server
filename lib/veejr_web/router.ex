@@ -204,7 +204,7 @@ defmodule VeejrWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :require_authenticated_user,
-      on_mount: [{VeejrWeb.UserAuth, :require_authenticated}] do
+      on_mount: [{VeejrWeb.UserAuth, :require_authenticated}, VeejrWeb.TrackPresence] do
       live "/account", UserLive.Account, :index
       live "/admin", AdminLive, :index
       live "/account/archives", UserLive.Archives, :index
@@ -218,6 +218,7 @@ defmodule VeejrWeb.Router do
         {VeejrWeb.UserAuth, :require_authenticated},
         {VeejrWeb.KeyGate, :ensure_keys},
         {VeejrWeb.ClientIp, :default},
+        VeejrWeb.TrackPresence,
         VeejrWeb.LiveNotify
       ] do
       live "/friends", FriendsLive

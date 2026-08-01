@@ -24,6 +24,28 @@ defmodule VeejrWeb.UserLive.SettingsTest do
       refute has_element?(view, "button[phx-click='delete_account']")
     end
 
+    test "turns online status off and stops recording it", %{conn: conn} do
+      user = user_fixture()
+      {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/users/settings")
+
+      # Mounting the settings page is itself an open page.
+      assert has_element?(view, "#presence-sharing-toggle[checked]")
+      assert Veejr.Presence.state(user) == :online
+
+      view |> element("#presence-sharing-toggle") |> render_click()
+
+      refute has_element?(view, "#presence-sharing-toggle[checked]")
+      refute Accounts.get_user!(user.id).presence_sharing
+      # Off means the record is gone, not merely hidden from viewers.
+      refute :ets.member(Veejr.Presence, user.id)
+
+      view |> element("#presence-sharing-toggle") |> render_click()
+
+      assert has_element?(view, "#presence-sharing-toggle[checked]")
+      assert Accounts.get_user!(user.id).presence_sharing
+      assert Veejr.Presence.state(Accounts.get_user!(user.id)) == :online
+    end
+
     test "removes an uploaded profile image", %{conn: conn} do
       user = user_fixture()
       {:ok, user} = Accounts.put_user_avatar(user, jpeg())

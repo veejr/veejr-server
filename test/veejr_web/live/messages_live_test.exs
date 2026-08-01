@@ -785,6 +785,82 @@ defmodule VeejrWeb.MessagesLiveTest do
              "#{friend_handle} · #{Calendar.strftime(envelope.inserted_at, "%b %d, %Y")}"
   end
 
+  describe "presence" do
+    setup %{user: user} do
+      friend = user_fixture(%{display_name: "Dot Friend"})
+      {:ok, request} = Social.send_friend_request(user, friend.username)
+      {:ok, _friendship} = Social.accept_friend_request(friend, request.id)
+
+      %{friend: friend}
+    end
+
+    test "the rail marks a friend who is offline", %{conn: conn, friend: friend} do
+      {:ok, view, _html} = live(conn, "/messages")
+
+      assert has_element?(view, "#start-friend-presence-#{friend.id}[data-presence='offline']")
+    end
+
+    test "the rail follows a friend arriving", %{conn: conn, friend: friend} do
+      {:ok, view, _html} = live(conn, "/messages")
+      assert has_element?(view, "#start-friend-presence-#{friend.id}[data-presence='offline']")
+
+      open_page(friend)
+
+      assert has_element?(view, "#start-friend-presence-#{friend.id}[data-presence='online']")
+    end
+
+    test "an open thread names the state in words", %{conn: conn, user: user, friend: friend} do
+      {:ok, _batch_id, []} =
+        Messaging.send_batch(user, "message", [
+          %{"recipient_id" => friend.id, "ciphertext" => "hi", "nonce" => "nonce-1"},
+          %{"recipient_id" => user.id, "ciphertext" => "hi", "nonce" => "nonce-2"}
+        ])
+
+      key = Messaging.conversation_key([Social.Address.handle(friend)])
+      open_page(friend)
+
+      {:ok, view, _html} = live(conn, "/messages?conversation=#{key}")
+
+      assert has_element?(view, "#thread-peer-presence[data-presence='online']")
+      assert render(view) =~ "Online"
+    end
+
+    test "a quiet thread shows the dot but does not nag", %{
+      conn: conn,
+      user: user,
+      friend: friend
+    } do
+      {:ok, _batch_id, []} =
+        Messaging.send_batch(user, "message", [
+          %{"recipient_id" => friend.id, "ciphertext" => "hi", "nonce" => "nonce-1"},
+          %{"recipient_id" => user.id, "ciphertext" => "hi", "nonce" => "nonce-2"}
+        ])
+
+      key = Messaging.conversation_key([Social.Address.handle(friend)])
+
+      {:ok, view, _html} = live(conn, "/messages?conversation=#{key}")
+
+      assert has_element?(view, "#thread-peer-presence[data-presence='offline']")
+      refute render(view) =~ "· Offline"
+    end
+  end
+
+  # A stand-in for the friend having veejr open in a browser somewhere.
+  defp open_page(user) do
+    test = self()
+
+    pid =
+      spawn(fn ->
+        Veejr.Presence.track(user)
+        send(test, :tracked)
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive :tracked
+    on_exit(fn -> Process.exit(pid, :kill) end)
+    pid
+  end
+
   defp jpeg do
     <<0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 512::16, 512::16, 0::size(12)-unit(8), 0xFF,
       0xD9>>
