@@ -13,6 +13,7 @@ import {
   sealFor,
 } from "../crypto.js"
 import {csrfToken, currentLocationPath, pushWithReply, sameBytes, urlB64ToBytes} from "./shared.js"
+import {CLASSIC, sectionOpen, shouldReapply} from "../contacts_sections.js"
 import {Composer} from "./composer.js"
 import {ConversationPreview} from "./messages.js"
 
@@ -257,17 +258,21 @@ export const ContactsTheme = {
   },
 
   applyTheme(theme, persist) {
-    const selected = this.allowedThemes.has(theme) ? theme : "classic"
+    const selected = this.allowedThemes.has(theme) ? theme : CLASSIC
+    const previous = this.currentTheme
     this.currentTheme = selected
     this.el.dataset.contactsTheme = selected
 
     const select = this.el.querySelector("[data-contacts-theme-select]")
     if (select && select.value !== selected) select.value = selected
 
-    // The flat themes show all sections at once; Classic keeps its default of
-    // only the first section open.
-    if (selected !== "classic") {
-      this.el.querySelectorAll(".contacts-section").forEach((s) => (s.open = true))
+    // The flat themes show every section at once. Coming back to Classic has
+    // to undo that, or the sections the flat look opened stay open — see
+    // ../contacts_sections.js for why this is not symmetric.
+    if (shouldReapply(previous, selected)) {
+      this.el.querySelectorAll(".contacts-section").forEach((section) => {
+        section.open = sectionOpen(selected, section.hasAttribute("data-default-open"))
+      })
     }
 
     if (persist) localStorage.setItem(this.storageKey, selected)
