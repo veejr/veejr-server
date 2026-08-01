@@ -312,6 +312,31 @@ defmodule Veejr.Social do
     |> Repo.all()
   end
 
+  @doc """
+  For each of `user_ids`, the instances hosting their accepted remote friends.
+
+  Returns `{user_id, username, authority}` rows — the username is the local
+  user whose presence is being announced, the authority the peer that needs
+  telling. Presence fan-out groups these by authority so a peer gets one
+  request no matter how many of its users are involved.
+  """
+  def remote_friend_authorities([]), do: []
+
+  def remote_friend_authorities(user_ids) when is_list(user_ids) do
+    from(u in User,
+      join: f in Friendship,
+      on: f.requester_id == u.id or f.addressee_id == u.id,
+      join: r in User,
+      on:
+        (f.requester_id == u.id and f.addressee_id == r.id) or
+          (f.addressee_id == u.id and f.requester_id == r.id),
+      where: u.id in ^user_ids and f.status == "accepted" and not is_nil(r.host),
+      distinct: true,
+      select: {u.id, u.username, r.host}
+    )
+    |> Repo.all()
+  end
+
   @doc "Pending requests addressed to `user`, requester preloaded."
   def list_incoming_requests(%User{id: id}) do
     from(f in Friendship,

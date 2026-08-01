@@ -334,6 +334,110 @@ defmodule Veejr.Federation do
 
   def handle_call_schedule(_, _), do: {:error, :bad_request}
 
+  # A peer speaks only for its own users, and no instance has this many
+  # people friends with one peer's users in a single heartbeat.
+  @max_presence_entries 200
+
+  ## Presence — synchronous, best-effort, never queued.
+  #
+  # Presence is even more perishable than a call invite: an update the outbox
+  # redelivers six hours later is not late, it is false. A peer that is down
+  # is simply not told, and its copy of our users decays to `:unknown` when
+  # the TTL we sent lapses.
+
+  @doc """
+  Tells one peer the current state of the local users its people are friends
+  with. One request per peer, carrying every affected user.
+
+  A 404 means the peer predates this endpoint, so it is parked for an hour
+  rather than posted to on every transition — instances upgrade on their own
+  schedule and heterogeneous versions are the normal case here.
+  """
+  def deliver_presence(authority, entries) when is_binary(authority) and is_list(entries) do
+    if entries != [] and Veejr.Presence.peer_supported?(authority) do
+      payload = %{
+        from: %{authority: Veejr.instance_authority()},
+        ttl: Veejr.Presence.ttl_seconds(),
+        users: entries
+      }
+
+      with :ok <- Peers.allow(authority) do
+        case Client.post_json(authority, "/api/federation/presence", payload) do
+          {:ok, _body} ->
+            Veejr.Presence.mark_peer_supported(authority)
+            :ok
+
+          {:error, {:http, 404}} ->
+            Veejr.Presence.mark_peer_unsupported(authority)
+            {:error, :unsupported}
+
+          {:error, reason} ->
+            # Expected and unremarkable: peers go down. Debug, not warning —
+            # presence must not fill the log of a well-run instance.
+            Logger.debug("federation: presence to #{authority} failed: #{inspect(reason)}")
+            {:error, reason}
+        end
+      end
+    else
+      :ok
+    end
+  end
+
+  @doc """
+  Records a peer's presence assertions about its own users.
+
+  The signature already proves which authority is speaking, and an instance
+  may only speak for its own users, so the payload's origin claim has to
+  match the verified authority — exactly the rule every other handler
+  applies. Users we have never heard of are ignored rather than created:
+  presence is not a reason to materialise an account, and a contact nobody
+  here is friends with is nobody's business.
+  """
+  def handle_presence(
+        %{"from" => %{"authority" => authority}, "users" => users} = params,
+        verified_authority
+      )
+      when is_list(users) do
+    with true <- authority == verified_authority || {:error, :origin_mismatch} do
+      ttl = presence_ttl(params["ttl"]) || Veejr.Presence.ttl_seconds()
+
+      # Each entry costs a lookup, so a peer does not get to choose how much
+      # work one request is worth.
+      users
+      |> Enum.take(@max_presence_entries)
+      |> Enum.each(&apply_presence_entry(&1, verified_authority, ttl))
+
+      {:ok, :accepted}
+    end
+  end
+
+  def handle_presence(_, _), do: {:error, :bad_request}
+
+  defp apply_presence_entry(
+         %{"username" => username, "state" => wire_state} = entry,
+         authority,
+         default_ttl
+       )
+       when is_binary(username) do
+    with {:ok, presence} <- Veejr.Presence.cast_state(wire_state),
+         %User{id: id} <- Repo.get_by(User, username: username, host: authority),
+         [_ | _] = friend_ids <- Veejr.Social.local_friend_ids(id) do
+      Veejr.Presence.put_remote(
+        id,
+        presence,
+        presence_ttl(entry["ttl"]) || default_ttl,
+        friend_ids
+      )
+    else
+      _ -> :ok
+    end
+  end
+
+  defp apply_presence_entry(_entry, _authority, _ttl), do: :ok
+
+  defp presence_ttl(ttl) when is_integer(ttl) and ttl > 0, do: ttl
+  defp presence_ttl(_), do: nil
+
   @doc """
   Queues a content-free envelope announcement for the remote recipient's
   instance. Only a row insert happens here, so this is safe inside the send

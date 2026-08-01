@@ -72,6 +72,36 @@ defmodule VeejrWeb.FederationAuthTest do
     assert [_request] = Veejr.Social.list_incoming_requests(alice)
   end
 
+  test "a signed presence assertion reaches the contact's local friends", %{conn: conn} do
+    peer = make_peer()
+    stub_peer_instance(peer)
+
+    alice = Accounts.get_user_by_username("alice")
+    {:ok, carol} = Veejr.Federation.ensure_remote_user("carol", @peer_authority)
+
+    {:ok, _friendship} =
+      %Veejr.Social.Friendship{}
+      |> Ecto.Changeset.change(
+        requester_id: alice.id,
+        addressee_id: carol.id,
+        status: "accepted"
+      )
+      |> Repo.insert()
+
+    Phoenix.PubSub.subscribe(Veejr.PubSub, "user:#{alice.id}")
+
+    conn =
+      signed_post(conn, peer, "/api/federation/presence", %{
+        from: %{authority: @peer_authority},
+        ttl: 300,
+        users: [%{username: "carol", state: "online"}]
+      })
+
+    assert json_response(conn, 200) == %{"ok" => true}
+    assert_receive {:veejr_presence, carol_id, :online}
+    assert carol_id == carol.id
+  end
+
   test "unsigned requests are rejected", %{conn: conn} do
     conn =
       conn

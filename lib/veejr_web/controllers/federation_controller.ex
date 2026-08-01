@@ -8,6 +8,13 @@ defmodule VeejrWeb.FederationController do
 
   alias Veejr.{Federation, Messaging}
 
+  # Presence is chattier than anything else a peer sends, so it gets its own
+  # budget on top of the pipeline's: a peer flapping its users must not be
+  # able to spend the allowance that friend requests and message notices
+  # share.
+  plug VeejrWeb.Plugs.RateLimit,
+       [bucket: :federation_presence, by: :federation_authority] when action == :presence
+
   def friend_request(conn, params),
     do: respond(conn, Federation.handle_friend_request(params, conn.assigns.federation_peer))
 
@@ -34,6 +41,9 @@ defmodule VeejrWeb.FederationController do
 
   def call_schedule(conn, params),
     do: respond(conn, Federation.handle_call_schedule(params, conn.assigns.federation_peer))
+
+  def presence(conn, params),
+    do: respond(conn, Federation.handle_presence(params, conn.assigns.federation_peer))
 
   # Capability fetch: the recipient's instance retrieves ciphertext after the
   # recipient accepted. Only envelopes addressed to remote users are served.

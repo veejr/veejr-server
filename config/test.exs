@@ -28,6 +28,17 @@ config :veejr, :message_schedule_interval_ms, :never
 # presence and end_call are exercised directly.
 config :veejr, :call_grace_ms, :never
 
+# Presence never heartbeats or expires remotes on its own in tests: the sweep
+# would outlive the DB sandbox and race every other test. The federated tests
+# drive Veejr.Presence.tick/0 directly.
+config :veejr, :presence_heartbeat_ms, :never
+
+# Nor does it post presence to peers on its own. The detached HTTP task would
+# outlive the Req.Test stub that is scoped to the test process, so the two
+# halves of the seam are driven directly: Veejr.Presence.peer_deliveries/1 for
+# the addressing, Veejr.Federation.deliver_presence/2 for the request.
+config :veejr, :presence_federation, false
+
 # Every test request arrives from 127.0.0.1 and would share one bucket, so
 # the budgets are raised out of the way here. Tests that exercise limiting set
 # their own limits via Veejr.RateLimiter.check/4, or override a bucket for the
@@ -41,7 +52,8 @@ config :veejr, :rate_limits,
   directory: {1_000_000, :timer.minutes(1)},
   invitation: {1_000_000, :timer.minutes(1)},
   upload: {1_000_000, :timer.minutes(1)},
-  federation: {1_000_000, :timer.minutes(1)}
+  federation: {1_000_000, :timer.minutes(1)},
+  federation_presence: {1_000_000, :timer.minutes(1)}
 
 # No spontaneous Web Push sends from tests; Veejr.Push.notify/1 is called directly.
 config :veejr, :push_enabled, false

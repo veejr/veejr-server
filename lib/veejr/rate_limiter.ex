@@ -44,7 +44,10 @@ defmodule Veejr.RateLimiter do
     directory: {60, :timer.minutes(1)},
     invitation: {20, :timer.hours(1)},
     upload: {60, :timer.minutes(1)},
-    federation: {120, :timer.minutes(1)}
+    federation: {120, :timer.minutes(1)},
+    # Presence is the chattiest federation traffic, so it gets its own budget
+    # rather than competing with friend requests and message notices.
+    federation_presence: {60, :timer.minutes(1)}
   ]
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)

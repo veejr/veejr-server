@@ -179,6 +179,7 @@ defmodule VeejrWeb.Router do
     post "/call_update", FederationController, :call_update
     post "/call_signal", FederationController, :call_signal
     post "/call_schedule", FederationController, :call_schedule
+    post "/presence", FederationController, :presence
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

@@ -73,9 +73,11 @@ defmodule Veejr.PresenceTest do
       assert Presence.state(user) == :online
     end
 
-    test "a remote contact is unknown, never offline" do
+    test "a remote contact whose instance has said nothing is unknown, never offline" do
       remote = %Veejr.Accounts.User{id: -1, host: "other.example", presence_sharing: true}
 
+      # What a peer has told us is covered in Veejr.FederatedPresenceTest;
+      # having heard nothing must not be reported as being offline.
       assert Presence.state(remote) == :unknown
     end
 
