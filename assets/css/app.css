@@ -1934,14 +1934,15 @@ select :is(option, optgroup) {
   box-shadow: none;
 }
 
+/* The flat looks keep their quiet uppercase label, but the sections are still
+   an accordion: Friends and Groups start closed in every appearance, so the
+   title stays clickable and keeps daisyUI's arrow. Hiding the arrow and
+   setting cursor:default here is what made them look permanently expanded and
+   left no way to collapse them. */
 #contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section > .collapse-title {
   min-height: 0;
   padding: 0 0 0.35rem;
-  cursor: default;
-}
-
-#contacts-workspace:not([data-contacts-theme="classic"]) .contacts-section > .collapse-title:after {
-  display: none;
+  cursor: pointer;
 }
 
 /* Section heading becomes a quiet uppercase label; drop the sub-line. */

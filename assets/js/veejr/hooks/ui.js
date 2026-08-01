@@ -13,7 +13,6 @@ import {
   sealFor,
 } from "../crypto.js"
 import {csrfToken, currentLocationPath, pushWithReply, sameBytes, urlB64ToBytes} from "./shared.js"
-import {CLASSIC, sectionOpen, shouldReapply} from "../contacts_sections.js"
 import {Composer} from "./composer.js"
 import {ConversationPreview} from "./messages.js"
 
@@ -215,9 +214,12 @@ export const ChatTheme = {
 
 // A Contacts-only appearance preference, modeled on ChatTheme. Classic keeps
 // the accordion cards; every other theme is a flat directory look defined
-// under [data-contacts-theme="..."] in app.css. Because the flat looks want
-// every section visible at once, we open the top-level <details> natively
-// rather than fighting daisyUI's collapse styles from CSS.
+// under [data-contacts-theme="..."] in app.css.
+//
+// Appearance is only a look. It does not decide which sections are open —
+// the flat themes used to force all of them open on every render, which made
+// Friends and Groups permanently expanded and, with their arrow hidden,
+// impossible to collapse.
 
 export const ContactsTheme = {
   mounted() {
@@ -245,6 +247,7 @@ export const ContactsTheme = {
 
     this.el.addEventListener("change", this.onThemeChange)
     window.addEventListener("storage", this.onThemeStorage)
+    this.resetSections()
     this.applyTheme(localStorage.getItem(this.storageKey) || "classic", false)
   },
 
@@ -257,23 +260,26 @@ export const ContactsTheme = {
     window.removeEventListener("storage", this.onThemeStorage)
   },
 
+  // Arriving at Contacts starts from the server's own layout, so Friends and
+  // Groups are closed however the page got here — a fresh render, a live
+  // navigation, or a back-button restore that handed back a <details> still
+  // open from last time.
+  //
+  // Only on arrival. Doing this on updated() or on a theme change would slam
+  // shut a section the reader had just expanded.
+  resetSections() {
+    this.el.querySelectorAll(".contacts-section").forEach((section) => {
+      section.open = section.hasAttribute("data-default-open")
+    })
+  },
+
   applyTheme(theme, persist) {
-    const selected = this.allowedThemes.has(theme) ? theme : CLASSIC
-    const previous = this.currentTheme
+    const selected = this.allowedThemes.has(theme) ? theme : "classic"
     this.currentTheme = selected
     this.el.dataset.contactsTheme = selected
 
     const select = this.el.querySelector("[data-contacts-theme-select]")
     if (select && select.value !== selected) select.value = selected
-
-    // The flat themes show every section at once. Coming back to Classic has
-    // to undo that, or the sections the flat look opened stay open — see
-    // ../contacts_sections.js for why this is not symmetric.
-    if (shouldReapply(previous, selected)) {
-      this.el.querySelectorAll(".contacts-section").forEach((section) => {
-        section.open = sectionOpen(selected, section.hasAttribute("data-default-open"))
-      })
-    }
 
     if (persist) localStorage.setItem(this.storageKey, selected)
   },
