@@ -4,7 +4,7 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
   import Phoenix.LiveViewTest
   import Veejr.AccountsFixtures
 
-  alias Veejr.{Accounts, Social}
+  alias Veejr.{Accounts, Repo, Social}
 
   setup %{conn: conn} do
     user = user_fixture()
@@ -37,7 +37,25 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
 
     assert has_element?(view, "#simple-contact-#{friend.id}", "@#{friend.username}")
     assert has_element?(view, "#simple-contact-#{friend.id} [aria-label*='profile image']")
-    assert has_element?(view, "#simple-contacts-full-view[href='/contacts']")
+    assert has_element?(view, "#simple-contacts-layout-simple[aria-pressed='true']")
+    assert has_element?(view, "#simple-contacts-layout-full[aria-pressed='false']")
+  end
+
+  test "switching back to the full layout saves the choice and goes there", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, _user} = Accounts.set_page_layout(user, "simple")
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    view |> element("#simple-contacts-layout-full") |> render_click()
+
+    assert_redirect(view, "/contacts")
+    assert Repo.reload!(user).page_layout == "full"
+
+    # And the full page stays put now that it is the saved layout.
+    {:ok, contacts, _html} = live(conn, "/contacts")
+    assert has_element?(contacts, "#contacts-workspace")
   end
 
   test "leaves the full page's tools, forms, and sections behind", %{conn: conn} do

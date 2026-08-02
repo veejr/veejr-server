@@ -846,6 +846,46 @@ defmodule VeejrWeb.MessagesLiveTest do
   end
 
   # A stand-in for the friend having veejr open in a browser somewhere.
+  describe "page layout preference" do
+    setup %{user: user} do
+      {:ok, user} = Accounts.set_page_layout(user, "simple")
+      %{user: user}
+    end
+
+    test "sends the plain entry points to the plain page", %{conn: conn} do
+      assert {:error, {_kind, %{to: "/messages/simple"}}} = live(conn, "/messages")
+
+      assert {:error, {_kind, %{to: "/messages/simple?conversation=abc"}}} =
+               live(conn, "/messages?conversation=abc")
+
+      assert {:error, {_kind, %{to: "/messages/simple?friend=9"}}} =
+               live(conn, "/messages?friend_id=9")
+    end
+
+    test "keeps deep links the plain page cannot serve", %{conn: conn} do
+      {:ok, notes, _html} = live(conn, "/messages?self_notes=true")
+      assert has_element?(notes, "#self-notes-board")
+
+      {:ok, group, _html} = live(conn, "/messages?group_id=1")
+      assert has_element?(group, "#messages-workspace")
+    end
+
+    test "choosing Full from the tools panel saves it and comes back", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, view, _html} = live(conn, "/messages/simple")
+
+      view |> element("#simple-messages-layout-full") |> render_click()
+
+      assert_redirect(view, "/messages")
+      assert Repo.reload!(user).page_layout == "full"
+
+      {:ok, messages, _html} = live(conn, "/messages")
+      assert has_element?(messages, "#messages-workspace")
+    end
+  end
+
   defp open_page(user) do
     test = self()
 

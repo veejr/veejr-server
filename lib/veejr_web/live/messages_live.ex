@@ -8,7 +8,7 @@ defmodule VeejrWeb.MessagesLive do
 
   alias Veejr.{Messaging, Presence, Social}
   alias Veejr.Messaging.Envelope
-  alias VeejrWeb.ConversationLauncher
+  alias VeejrWeb.{ConversationLauncher, PageLayout}
 
   @message_page_size 50
 
@@ -91,7 +91,19 @@ defmodule VeejrWeb.MessagesLive do
   end
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
+    # A notes board, a group thread or a multi-recipient draft is asking for
+    # something the plain page cannot show, so those stay here whatever the
+    # account prefers; the plain entry points redirect before rendering.
+    with true <- PageLayout.simple?(socket),
+         destination when is_binary(destination) <- PageLayout.messages_redirect(params) do
+      {:ok, push_navigate(socket, to: destination)}
+    else
+      _ -> mount_full(socket)
+    end
+  end
+
+  defp mount_full(socket) do
     {:ok,
      socket
      |> assign(
@@ -120,6 +132,10 @@ defmodule VeejrWeb.MessagesLive do
   end
 
   @impl true
+  def handle_event("set_page_layout", %{"layout" => layout}, socket) do
+    {:noreply, PageLayout.choose(socket, :messages, "full", layout)}
+  end
+
   def handle_event("request", %{"id" => id}, socket) do
     case Messaging.accept_notification(socket.assigns.current_scope.user, id) do
       {:ok, _} ->

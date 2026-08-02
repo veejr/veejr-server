@@ -369,6 +369,28 @@ defmodule VeejrWeb.ContactsLiveTest do
     pid
   end
 
+  describe "page layout preference" do
+    test "sends an account that chose the plain pages there before rendering", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, _user} = Accounts.set_page_layout(user, "simple")
+
+      assert {:error, {_kind, %{to: "/contacts/simple"}}} = live(conn, "/contacts")
+    end
+
+    test "choosing Simple from the tools panel saves it and follows", %{conn: conn, user: user} do
+      {:ok, view, _html} = live(conn, "/contacts")
+
+      assert has_element?(view, "#contacts-layout-full[aria-pressed='true']")
+
+      view |> element("#contacts-layout-simple") |> render_click()
+
+      assert_redirect(view, "/contacts/simple")
+      assert Repo.reload!(user).page_layout == "simple"
+    end
+  end
+
   defp remote_friend(user) do
     {:ok, remote} =
       %Veejr.Accounts.User{}

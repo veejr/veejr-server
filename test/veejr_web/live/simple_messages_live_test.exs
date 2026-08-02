@@ -62,7 +62,7 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
              "#simple-preview-#{key}[phx-hook='ConversationPreview'][data-ciphertext='my-copy']"
            )
 
-    assert has_element?(view, "#simple-messages-full-view[href='/messages']")
+    assert has_element?(view, "#simple-messages-layout-simple[aria-pressed='true']")
     refute has_element?(view, "#messages-page-header")
     refute has_element?(view, ".messages-rail")
   end
@@ -95,7 +95,26 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
 
     assert has_element?(view, "#simple-back[href='/messages/simple']")
     refute has_element?(view, "#simple-message-composer [data-role='toggle-options']")
-    refute has_element?(view, "#simple-message-composer [data-role='files']")
+  end
+
+  test "keeps every attachment type behind one closed paper clip", %{
+    conn: conn,
+    friend: friend
+  } do
+    {:ok, view, _html} = live(conn, "/messages/simple?friend=#{friend.id}")
+
+    menu = "#simple-message-composer-attachments"
+    assert has_element?(view, "details#{menu}:not([open]) > [data-role='attach-menu']")
+
+    for role <- ~w(files audio-toggle video-toggle video-facing-toggle) do
+      assert has_element?(view, "#{menu} [data-role='#{role}']")
+    end
+
+    # One control in the row, not five: the inline strip stays on the full page.
+    refute has_element?(
+             view,
+             "#simple-message-composer > div > label[data-role='file-toggle']"
+           )
   end
 
   test "opens an empty thread for a contact who has never written", %{

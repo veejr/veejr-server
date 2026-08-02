@@ -4,7 +4,7 @@ defmodule VeejrWeb.ContactsLive do
   import VeejrWeb.MessagingComponents, only: [conversation_builder: 1]
 
   alias Veejr.{Accounts, Messaging, Presence, Social}
-  alias VeejrWeb.ConversationLauncher
+  alias VeejrWeb.{ConversationLauncher, PageLayout}
 
   @impl true
   def render(assigns) do
@@ -50,6 +50,7 @@ defmodule VeejrWeb.ContactsLive do
                   Conversations, friends, and groups in one place. Your address:
                   <code class="break-all">{Social.Address.full(@current_scope.user)}</code>
                 </p>
+                <.page_layout_switch id="contacts-layout" showing="full" class="mt-3" />
                 <label class="contacts-theme-control mt-3">
                   <span class="contacts-theme-control-label">
                     <.icon name="hero-swatch" class="size-4" /> Appearance
@@ -68,13 +69,6 @@ defmodule VeejrWeb.ContactsLive do
               </section>
 
               <div class="grid content-center gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                <.link
-                  id="contacts-simple-view"
-                  navigate={~p"/contacts/simple"}
-                  class="btn btn-outline btn-sm justify-start"
-                >
-                  <.icon name="hero-squares-2x2" class="size-4" /> Simple view
-                </.link>
                 <.link
                   id="contacts-invite-person"
                   navigate={~p"/invites/new"}
@@ -601,10 +595,16 @@ defmodule VeejrWeb.ContactsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok,
-     socket
-     |> assign(add_username: "", page_title: "Contacts", selected_profile: nil)
-     |> refresh()}
+    # The account asked for the plain pages, so leave before loading a page
+    # it does not want: no first paint of this one, nothing fetched for it.
+    if PageLayout.simple?(socket) do
+      {:ok, push_navigate(socket, to: PageLayout.route(:contacts, "simple"))}
+    else
+      {:ok,
+       socket
+       |> assign(add_username: "", page_title: "Contacts", selected_profile: nil)
+       |> refresh()}
+    end
   end
 
   @impl true
@@ -624,6 +624,10 @@ defmodule VeejrWeb.ContactsLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_event("set_page_layout", %{"layout" => layout}, socket) do
+    {:noreply, PageLayout.choose(socket, :contacts, "full", layout)}
+  end
+
   def handle_event("start_conversation", params, socket) do
     case ConversationLauncher.destination(socket.assigns, params) do
       {:ok, destination} ->

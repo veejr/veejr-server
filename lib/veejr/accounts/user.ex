@@ -21,6 +21,11 @@ defmodule Veejr.Accounts.User do
     # the data existing rather than asking viewers to hide it.
     field :presence_sharing, :boolean, default: true
 
+    # "full" or "simple": which Contacts and Messages this account gets.
+    # Read at mount, so the canonical /contacts and /messages URLs land on
+    # the chosen pair rather than redirecting after a first paint.
+    field :page_layout, :string, default: "full"
+
     # nil for local accounts; a remote user's home-instance authority
     # (e.g. "veejr.example.com", "localhost:4001") otherwise. Remote users
     # never log in here — they exist so friendships and envelopes can
@@ -87,6 +92,13 @@ defmodule Veejr.Accounts.User do
   @doc "A changeset for the user's presence-sharing preference."
   def presence_changeset(user, attrs) do
     cast(user, attrs, [:presence_sharing])
+  end
+
+  @doc "A changeset for which Contacts and Messages the user is shown."
+  def page_layout_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:page_layout])
+    |> validate_inclusion(:page_layout, ~w(full simple))
   end
 
   @doc "A changeset for replacing or removing a user's public profile image."

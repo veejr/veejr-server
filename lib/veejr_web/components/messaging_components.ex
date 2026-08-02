@@ -9,6 +9,7 @@ defmodule VeejrWeb.MessagingComponents do
   use Phoenix.Component
   import VeejrWeb.CoreComponents, only: [icon: 1, user_avatar: 1]
 
+  alias Phoenix.LiveView.JS
   alias Veejr.Accounts.User
   alias Veejr.Messaging.Envelope
   alias Veejr.Social
@@ -133,6 +134,11 @@ defmodule VeejrWeb.MessagingComponents do
   attr :surface, :string, default: "card"
   attr :show_text, :boolean, default: true
   attr :show_files, :boolean, default: true
+
+  attr :files_layout, :string,
+    default: "inline",
+    values: ~w(inline menu),
+    doc: "\"menu\" collapses the four attachment controls behind one paper clip"
 
   attr :show_options, :boolean,
     default: true,
@@ -549,8 +555,62 @@ defmodule VeejrWeb.MessagingComponents do
           </div>
         </div>
 
+        <%!--
+        Collapsed form of the four controls below. Same data-roles, so the
+        hook neither knows nor cares which one is on the page; the status and
+        preview strips stay outside, where they remain visible after the menu
+        is closed — including the line that says a recording is still running.
+        --%>
+        <details
+          :if={@show_files && @files_layout == "menu"}
+          id={"#{@id}-attachments"}
+          class="dropdown dropdown-top order-1 shrink-0 sm:order-none"
+          phx-click-away={JS.remove_attribute("open")}
+        >
+          <summary
+            data-role="attach-menu"
+            title="Add an attachment"
+            aria-label="Add an attachment"
+            class="messages-composer-action flex size-11 cursor-pointer list-none items-center justify-center rounded-full transition [&::-webkit-details-marker]:hidden"
+          >
+            <.icon name="hero-paper-clip" class="size-5" />
+          </summary>
+          <div class="app-menu-surface dropdown-content z-30 mb-2 w-60 rounded-2xl border p-2">
+            <label
+              data-role="file-toggle"
+              class="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-base-200"
+            >
+              <.icon name="hero-paper-clip" class="size-4 shrink-0" /> Attach files
+              <input type="file" data-role="files" multiple class="sr-only" />
+            </label>
+            <button
+              type="button"
+              data-role="audio-toggle"
+              aria-pressed="false"
+              class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-base-200"
+            >
+              <.icon name="hero-microphone" class="size-4 shrink-0" /> Record voice
+            </button>
+            <button
+              type="button"
+              data-role="video-toggle"
+              aria-pressed="false"
+              class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-base-200"
+            >
+              <.icon name="hero-video-camera" class="size-4 shrink-0" /> Record video
+            </button>
+            <button
+              type="button"
+              data-role="video-facing-toggle"
+              class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-base-200"
+            >
+              <.icon name="hero-arrow-path-rounded-square" class="size-4 shrink-0" /> Switch camera
+            </button>
+          </div>
+        </details>
+
         <label
-          :if={@show_files && @surface == "messages"}
+          :if={@show_files && @files_layout == "inline" && @surface == "messages"}
           data-role="file-toggle"
           title="Attach files"
           aria-label="Attach files"
@@ -562,7 +622,7 @@ defmodule VeejrWeb.MessagingComponents do
         </label>
 
         <button
-          :if={@show_files && @surface == "messages"}
+          :if={@show_files && @files_layout == "inline" && @surface == "messages"}
           type="button"
           data-role="audio-toggle"
           title="Record voice message"
@@ -574,7 +634,7 @@ defmodule VeejrWeb.MessagingComponents do
         </button>
 
         <button
-          :if={@show_files && @surface == "messages"}
+          :if={@show_files && @files_layout == "inline" && @surface == "messages"}
           type="button"
           data-role="video-toggle"
           title="Record video message"
@@ -586,7 +646,7 @@ defmodule VeejrWeb.MessagingComponents do
         </button>
 
         <button
-          :if={@show_files && @surface == "messages"}
+          :if={@show_files && @files_layout == "inline" && @surface == "messages"}
           type="button"
           data-role="video-facing-toggle"
           title="Switch camera for next recording"
@@ -597,7 +657,7 @@ defmodule VeejrWeb.MessagingComponents do
         </button>
 
         <input
-          :if={@show_files && @surface != "messages"}
+          :if={@show_files && @files_layout == "inline" && @surface != "messages"}
           type="file"
           data-role="files"
           multiple
@@ -605,7 +665,7 @@ defmodule VeejrWeb.MessagingComponents do
         />
 
         <button
-          :if={@show_files && @surface != "messages"}
+          :if={@show_files && @files_layout == "inline" && @surface != "messages"}
           type="button"
           data-role="audio-toggle"
           aria-pressed="false"
@@ -614,7 +674,10 @@ defmodule VeejrWeb.MessagingComponents do
           <.icon name="hero-microphone" class="size-4" /> Record audio
         </button>
 
-        <div :if={@show_files && @surface != "messages"} class="flex flex-wrap gap-2">
+        <div
+          :if={@show_files && @files_layout == "inline" && @surface != "messages"}
+          class="flex flex-wrap gap-2"
+        >
           <button
             type="button"
             data-role="video-toggle"
