@@ -146,6 +146,48 @@ defmodule VeejrWeb.CoreComponents do
     """
   end
 
+  attr :showing, :string, required: true, doc: "the layout the calling page renders"
+  attr :id, :string, default: "page-layout-switch"
+  attr :class, :any, default: nil
+
+  @doc """
+  Chooses between the full Contacts and Messages pages and the plain pair.
+
+  The choice is saved on the account, so it is a preference rather than a
+  detour: picking Simple here is what makes `/contacts` and `/messages` open
+  the plain pages next time.
+  """
+  def page_layout_switch(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      role="group"
+      aria-label="Page layout"
+      class={[
+        "inline-flex items-center gap-1 rounded-xl border border-base-300 bg-base-200 p-1 text-xs font-semibold",
+        @class
+      ]}
+    >
+      <span class="px-2 text-base-content/55">Layout</span>
+      <button
+        :for={{value, label} <- [{"full", "Full"}, {"simple", "Simple"}]}
+        id={"#{@id}-#{value}"}
+        type="button"
+        phx-click="set_page_layout"
+        phx-value-layout={value}
+        aria-pressed={to_string(@showing == value)}
+        class={[
+          "rounded-lg px-2.5 py-1.5 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          @showing == value && "bg-base-100 text-base-content shadow-sm",
+          @showing != value && "text-base-content/60 hover:text-base-content"
+        ]}
+      >
+        {label}
+      </button>
+    </div>
+    """
+  end
+
   attr :user, :any, default: nil
   attr :note, :string, default: ""
   attr :editable, :boolean, default: false

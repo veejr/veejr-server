@@ -20,6 +20,7 @@ defmodule VeejrWeb.SimpleMessagesLive do
   alias Veejr.Accounts.User
   alias Veejr.Messaging.Envelope
   alias Veejr.{Messaging, Presence, Social}
+  alias VeejrWeb.PageLayout
 
   @message_limit 100
 
@@ -129,8 +130,9 @@ defmodule VeejrWeb.SimpleMessagesLive do
         </div>
 
         <div class="border-t border-base-300 py-3">
-          <%!-- One line and a send: no attachments, no expiry, no send-later.
-                The full page keeps all three. --%>
+          <%!-- A line to type in and a paper clip that opens the rest:
+                files, voice, video. Expiry, display limits and send-later
+                stay on the full page. --%>
           <.composer
             id="simple-message-composer"
             user={@current_scope.user}
@@ -139,7 +141,7 @@ defmodule VeejrWeb.SimpleMessagesLive do
             kind="message"
             surface="messages"
             show_recipients={false}
-            show_files={false}
+            files_layout="menu"
             show_options={false}
             selected_friend_ids={@thread.friend_ids}
             draft_key={"simple-#{@thread.key}"}
@@ -149,15 +151,9 @@ defmodule VeejrWeb.SimpleMessagesLive do
       </div>
 
       <div :if={!@thread} class="flex min-h-0 flex-1 flex-col py-6">
-        <header class="flex items-baseline justify-between gap-4">
+        <header class="flex flex-wrap items-center justify-between gap-4">
           <h1 class="text-lg font-semibold leading-8">Messages</h1>
-          <.link
-            id="simple-messages-full-view"
-            navigate={~p"/messages"}
-            class="text-sm font-medium text-primary hover:underline"
-          >
-            Full messages
-          </.link>
+          <.page_layout_switch id="simple-messages-layout" showing="simple" />
         </header>
 
         <p
@@ -295,6 +291,10 @@ defmodule VeejrWeb.SimpleMessagesLive do
   end
 
   @impl true
+  def handle_event("set_page_layout", %{"layout" => layout}, socket) do
+    {:noreply, PageLayout.choose(socket, :messages, "simple", layout)}
+  end
+
   def handle_event("request_notification", %{"id" => id}, socket) do
     case Messaging.accept_notification(socket.assigns.current_scope.user, id) do
       {:ok, _notification} ->
@@ -363,6 +363,9 @@ defmodule VeejrWeb.SimpleMessagesLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp selection(%{"friend" => id}), do: {:friend, id}
+  # The full page's own links say friend_id, and the layout preference sends
+  # them here unchanged rather than rewriting every caller.
+  defp selection(%{"friend_id" => id}), do: {:friend, id}
   defp selection(%{"conversation" => key}), do: {:conversation, key}
   defp selection(_params), do: nil
 

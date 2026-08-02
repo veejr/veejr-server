@@ -121,6 +121,7 @@ defmodule VeejrWeb.MessagesLive.Components do
                   </span>
                 </span>
               </div>
+              <.page_layout_switch id="messages-layout" showing="full" class="mb-2" />
               <div
                 id="chat-theme-picker"
                 class="chat-theme-picker flex flex-wrap items-center gap-1 rounded-2xl border border-base-300 bg-base-200 p-1.5"
@@ -174,13 +175,6 @@ defmodule VeejrWeb.MessagesLive.Components do
             </section>
 
             <div class="grid content-center gap-2 sm:grid-cols-2 lg:grid-cols-1">
-              <.link
-                id="messages-simple-view"
-                navigate={~p"/messages/simple"}
-                class="btn btn-outline btn-sm justify-start"
-              >
-                <.icon name="hero-squares-2x2" class="size-4" /> Simple view
-              </.link>
               <.link
                 id="messages-invite-person"
                 navigate={~p"/invites/new"}

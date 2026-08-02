@@ -180,6 +180,18 @@ defmodule Veejr.Accounts do
     end
   end
 
+  @doc """
+  Chooses between the full Contacts and Messages pages and the plain pair.
+
+  Stored on the account rather than in the browser: the layout decides which
+  LiveView renders, so the server has to know it before the first render.
+  """
+  def set_page_layout(%User{} = user, layout) when is_binary(layout) do
+    user
+    |> User.page_layout_changeset(%{page_layout: layout})
+    |> Repo.update()
+  end
+
   @doc false
   def get_user_avatar_image(%User{id: user_id}) do
     Repo.one(from(a in UserAvatar, where: a.user_id == ^user_id, select: a.image))

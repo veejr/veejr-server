@@ -10,6 +10,7 @@ defmodule VeejrWeb.SimpleContactsLive do
   use VeejrWeb, :live_view
 
   alias Veejr.{Messaging, Presence, Social}
+  alias VeejrWeb.PageLayout
 
   @impl true
   def render(assigns) do
@@ -20,15 +21,9 @@ defmodule VeejrWeb.SimpleContactsLive do
       pending_count={@pending_count}
       container_class="mx-auto max-w-3xl space-y-8"
     >
-      <header class="flex items-baseline justify-between gap-4">
+      <header class="flex flex-wrap items-center justify-between gap-4">
         <h1 class="text-lg font-semibold leading-8">Contacts</h1>
-        <.link
-          id="simple-contacts-full-view"
-          navigate={~p"/contacts"}
-          class="text-sm font-medium text-primary hover:underline"
-        >
-          Full contacts
-        </.link>
+        <.page_layout_switch id="simple-contacts-layout" showing="simple" />
       </header>
 
       <p
@@ -73,6 +68,11 @@ defmodule VeejrWeb.SimpleContactsLive do
   @impl true
   def mount(_params, _session, socket) do
     {:ok, socket |> assign(:page_title, "Contacts") |> refresh()}
+  end
+
+  @impl true
+  def handle_event("set_page_layout", %{"layout" => layout}, socket) do
+    {:noreply, PageLayout.choose(socket, :contacts, "simple", layout)}
   end
 
   # Only the dot changes, so patch the map rather than re-reading every friend.
