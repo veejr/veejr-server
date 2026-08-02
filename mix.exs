@@ -4,7 +4,7 @@ defmodule Veejr.MixProject do
   def project do
     [
       app: :veejr,
-      version: "0.3.81",
+      version: "0.3.82",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
