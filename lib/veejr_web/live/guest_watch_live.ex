@@ -59,6 +59,7 @@ defmodule VeejrWeb.GuestWatchLive do
             phx-hook="YouTubeWatch"
             phx-update="ignore"
             data-host="false"
+            data-video-id={@party.video_id}
             data-playback={@party.playback}
             data-position={@party.position}
             class="relative aspect-video w-full"
@@ -71,17 +72,26 @@ defmodule VeejrWeb.GuestWatchLive do
               allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
               allowfullscreen
               referrerpolicy="strict-origin-when-cross-origin"
-              class="pointer-events-none absolute inset-0 size-full"
+              class="absolute inset-0 size-full"
             ></iframe>
+            <div
+              id="guest-watch-youtube-guard"
+              data-role="guard"
+              aria-hidden="true"
+              class="absolute inset-0 z-20"
+            >
+            </div>
+            <.youtube_viewer_bar id="guest-watch-youtube-help" label="Controlled by the host" />
             <button
               type="button"
               data-role="unlock"
-              class="absolute inset-0 flex size-full cursor-pointer items-center justify-center bg-black/35 text-white transition hover:bg-black/25"
+              class="absolute inset-0 z-30 flex size-full cursor-pointer items-center justify-center bg-black/35 text-white transition hover:bg-black/25"
             >
               <span class="rounded-full bg-black/75 px-5 py-3 text-sm font-semibold shadow-lg backdrop-blur">
                 <.icon name="hero-play" class="mr-1 inline size-5" /> Tap to join playback
               </span>
             </button>
+            <.youtube_playback_assist id="guest-watch-youtube-assist" />
           </div>
         </div>
 
@@ -118,13 +128,19 @@ defmodule VeejrWeb.GuestWatchLive do
     """
   end
 
+  # A guest never steers, so this is the viewer half of the same URL the hosted
+  # page builds; `assets/js/veejr/youtube_embed.js` rebuilds it against
+  # `youtube.com` for anyone YouTube stops with a bot check.
   defp youtube_embed_url(video_id) do
     query =
       URI.encode_query(%{
         "enablejsapi" => "1",
         "playsinline" => "1",
         "rel" => "0",
-        "controls" => "0"
+        "controls" => "0",
+        "disablekb" => "1",
+        "fs" => "1",
+        "iv_load_policy" => "3"
       })
 
     "https://www.youtube-nocookie.com/embed/#{video_id}?#{query}"

@@ -38,10 +38,14 @@ defmodule VeejrWeb.ContentSecurityPolicyTest do
       assert directive(policy, "connect-src") == "connect-src 'self'"
     end
 
-    test "permit the embedded privacy-preserving YouTube host only", %{conn: conn} do
+    test "permit the two embedded YouTube hosts and nothing else", %{conn: conn} do
       policy = conn |> get(~p"/") |> policy_header()
 
-      assert directive(policy, "frame-src") == "frame-src https://www.youtube-nocookie.com"
+      # The privacy host is what loads; youtube.com is the escape hatch for a
+      # viewer YouTube has stopped with a bot check, which the privacy origin
+      # can never let them answer.
+      assert directive(policy, "frame-src") ==
+               "frame-src https://www.youtube-nocookie.com https://www.youtube.com"
     end
 
     test "permit federated avatar and decrypted attachment sources", %{conn: conn} do

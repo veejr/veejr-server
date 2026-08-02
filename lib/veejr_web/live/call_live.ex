@@ -232,6 +232,13 @@ defmodule VeejrWeb.CallLive do
               <div class="pointer-events-auto flex gap-2">
                 <button
                   type="button"
+                  data-role="youtube-help"
+                  class="btn btn-sm border-white/20 bg-black/75 text-white hover:bg-black"
+                >
+                  Not playing?
+                </button>
+                <button
+                  type="button"
                   data-role="youtube-fullscreen"
                   class="btn btn-sm border-white/20 bg-black/75 text-white hover:bg-black"
                 >
@@ -258,6 +265,7 @@ defmodule VeejrWeb.CallLive do
                 Tap to watch together
               </span>
             </button>
+            <.youtube_playback_assist id="call-youtube-assist" />
           </section>
 
           <div
