@@ -225,11 +225,13 @@ defmodule VeejrWeb.Router do
       live "/friends", FriendsLive
       live "/groups", GroupsLive
       live "/contacts", ContactsLive
+      live "/contacts/simple", SimpleContactsLive
       live "/invites/new", InvitationLive.New, :new
       live "/guest-conferences/new", GuestConferenceLive.New, :new
       live "/guest-conferences/:public_id", GuestConferenceLive.Host, :show
       live "/guest-conferences/:public_id/call", GuestConferenceLive.HostCall, :show
       live "/messages", MessagesLive
+      live "/messages/simple", SimpleMessagesLive
       live "/map", MapLive
       live "/history", HistoryLive
       live "/watch", WatchLive, :new

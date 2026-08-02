@@ -175,6 +175,13 @@ defmodule VeejrWeb.MessagesLive.Components do
 
             <div class="grid content-center gap-2 sm:grid-cols-2 lg:grid-cols-1">
               <.link
+                id="messages-simple-view"
+                navigate={~p"/messages/simple"}
+                class="btn btn-outline btn-sm justify-start"
+              >
+                <.icon name="hero-squares-2x2" class="size-4" /> Simple view
+              </.link>
+              <.link
                 id="messages-invite-person"
                 navigate={~p"/invites/new"}
                 class="btn btn-outline btn-sm justify-start"

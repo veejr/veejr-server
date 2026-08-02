@@ -133,6 +133,11 @@ defmodule VeejrWeb.MessagingComponents do
   attr :surface, :string, default: "card"
   attr :show_text, :boolean, default: true
   attr :show_files, :boolean, default: true
+
+  attr :show_options, :boolean,
+    default: true,
+    doc: "expiry, display limits, and send-later. Off leaves plain text and its send."
+
   attr :draft_key, :string, default: nil
 
   attr :text_placeholder, :string, default: "what say you?"
@@ -231,7 +236,7 @@ defmodule VeejrWeb.MessagingComponents do
         </button>
       </div>
       <div
-        :if={@kind != "self_note"}
+        :if={@show_options && @kind != "self_note"}
         data-role="message-options"
         class="hidden rounded-2xl border border-base-300 bg-base-200 p-3"
       >
@@ -456,7 +461,7 @@ defmodule VeejrWeb.MessagingComponents do
         @surface != "messages" && "space-y-3"
       ]}>
         <button
-          :if={@surface == "messages" && @kind != "self_note"}
+          :if={@show_options && @surface == "messages" && @kind != "self_note"}
           type="button"
           data-role="toggle-options"
           title="Message options"
