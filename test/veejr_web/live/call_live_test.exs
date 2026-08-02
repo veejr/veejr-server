@@ -107,6 +107,16 @@ defmodule VeejrWeb.CallLiveTest do
     assert has_element?(view, "#call-youtube-input[data-role='call-youtube-input']")
     assert has_element?(view, "[data-role='youtube-unlock']")
     assert has_element?(view, "[data-role='end-youtube']")
+
+    # A participant who is not sharing watches through a click guard, so the
+    # way out of YouTube's bot check has to be reachable without it.
+    assert has_element?(view, "[data-role='youtube-help']")
+    assert has_element?(view, "#call-youtube-assist-signed-in[data-role='youtube-signed-in']")
+
+    assert has_element?(
+             view,
+             "#call-youtube-assist-open[data-role='youtube-open'][target='_blank']"
+           )
   end
 
   test "renders the peer-to-peer call chat and file drop target", %{

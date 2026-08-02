@@ -188,6 +188,109 @@ defmodule VeejrWeb.CoreComponents do
     """
   end
 
+  attr :id, :string, required: true, doc: "prefix for this player's assist controls"
+
+  @doc """
+  The way out when YouTube stops a viewer with its bot check.
+
+  A synchronized viewer does not steer the video, so the player sits behind a
+  click guard — and that guard is exactly what traps someone YouTube has
+  decided to challenge. The check is answered by a signed-in YouTube session in
+  the frame that shows it, which `youtube-nocookie.com` can never carry, so
+  this panel offers the two places the viewer can actually answer it: the same
+  video reloaded from `youtube.com`, or YouTube itself in another tab. Showing
+  the panel also releases the guard, because a prompt nobody can click is not a
+  prompt.
+
+  The browser hook owns the visibility, the link target, and the reload; the
+  markup is here so all three players offer the same way out.
+  """
+  def youtube_playback_assist(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      data-role="youtube-assist"
+      class="pointer-events-none absolute inset-0 z-40 hidden items-end justify-center p-3 sm:p-4"
+    >
+      <div class="pointer-events-auto w-full max-w-md rounded-2xl border border-base-300 bg-base-100/95 p-4 text-base-content shadow-2xl backdrop-blur">
+        <div class="flex items-start gap-3">
+          <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-warning/15 text-warning">
+            <.icon name="hero-exclamation-triangle" class="size-5" />
+          </span>
+          <div class="min-w-0">
+            <p class="font-semibold">This video is not playing here</p>
+            <p class="mt-1 text-sm leading-6 opacity-70">
+              YouTube sometimes asks a viewer to sign in and confirm they are not a bot.
+              The private player cannot see your YouTube account, so answer the check in
+              one of these two places — playback rejoins the group on its own afterwards.
+            </p>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button
+            id={"#{@id}-signed-in"}
+            type="button"
+            data-role="youtube-signed-in"
+            class="btn btn-primary btn-sm rounded-xl"
+          >
+            <.icon name="hero-arrow-path" class="size-4" /> Reload with sign-in
+          </button>
+          <a
+            id={"#{@id}-open"}
+            data-role="youtube-open"
+            href="https://www.youtube.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-outline btn-sm rounded-xl"
+          >
+            <.icon name="hero-arrow-top-right-on-square" class="size-4" /> Open on YouTube
+          </a>
+          <button
+            id={"#{@id}-dismiss"}
+            type="button"
+            data-role="youtube-assist-dismiss"
+            class="btn btn-ghost btn-sm rounded-xl"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true, doc: "id for the help button"
+  attr :label, :string, required: true, doc: "who is steering this video"
+  attr :label_role, :string, default: nil, doc: "data-role the hook rewrites the label through"
+
+  @doc """
+  Names whoever steers a shared video and keeps the assist panel one tap away.
+
+  The detector in the hook only sees playback that never starts. YouTube can
+  interrupt a viewer in ways that never reach it, so the way out is always
+  reachable by hand rather than only when we notice.
+  """
+  def youtube_viewer_bar(assigns) do
+    ~H"""
+    <div class="pointer-events-none absolute inset-x-3 top-3 z-30 flex items-start justify-between gap-2 sm:inset-x-4 sm:top-4">
+      <span
+        data-role={@label_role}
+        class="rounded-full bg-black/75 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur"
+      >
+        {@label}
+      </span>
+      <button
+        id={@id}
+        type="button"
+        data-role="youtube-help"
+        class="pointer-events-auto rounded-full bg-black/75 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur transition hover:bg-black/90"
+      >
+        Not playing?
+      </button>
+    </div>
+    """
+  end
+
   attr :user, :any, default: nil
   attr :note, :string, default: ""
   attr :editable, :boolean, default: false

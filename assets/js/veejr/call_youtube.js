@@ -1,7 +1,8 @@
 import {clearFaviconActivity, setFaviconActivity} from "./favicon.js"
+import {PlaybackAssist} from "./youtube_assist.js"
+import {YOUTUBE_ORIGINS, youtubeEmbedUrl} from "./youtube_embed.js"
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/u
-const YOUTUBE_ORIGINS = new Set(["https://www.youtube.com", "https://www.youtube-nocookie.com"])
 
 export function extractYouTubeVideoId(input) {
   const value = String(input || "").trim()
@@ -62,11 +63,19 @@ export class CallYouTube {
     this.controllerId = null
     this.ready = false
     this.unlocked = false
+    this.signedIn = false
     this.playback = "paused"
     this.position = 0
     this.appliedPlayback = null
     this.playerPosition = null
     this.faviconSource = `${hook.faviconSource || `call:${hook.el.dataset.callId}`}:youtube`
+
+    this.assist = new PlaybackAssist({
+      root: hook.el,
+      position: () => this.position,
+      release: () => this.releasePlayer(),
+      reload: () => this.reloadSignedIn(),
+    })
 
     this.onWindowMessage = event => this.handlePlayerMessage(event)
     window.addEventListener("message", this.onWindowMessage)
@@ -77,9 +86,31 @@ export class CallYouTube {
   destroy() {
     window.removeEventListener("message", this.onWindowMessage)
     this.clearPlayerTimers()
+    this.assist.destroy()
     this.iframe?.remove()
     this.hook.el.dataset.youtubeActive = "false"
     clearFaviconActivity(this.faviconSource)
+  }
+
+  // Hands the player back to the viewer so they can answer whatever YouTube is
+  // asking of them. Their next move may well be a pause or a seek, so the
+  // controller's applied state is forgotten and the next heartbeat resyncs.
+  releasePlayer() {
+    this.iframe?.classList.remove("pointer-events-none")
+    this.appliedPlayback = null
+  }
+
+  // The same video from the YouTube host that can see the viewer's own
+  // account, which is the only place a bot check can be answered.
+  reloadSignedIn() {
+    if (!this.active) return
+
+    this.signedIn = true
+    this.ready = false
+    this.appliedPlayback = null
+    this.playerPosition = null
+    this.createPlayer()
+    this.releasePlayer()
   }
 
   setupControls() {
@@ -233,6 +264,9 @@ export class CallYouTube {
     this.appliedPlayback = null
     this.playerPosition = null
     this.ready = false
+    // A new video deserves the privacy host again, whatever the last one needed.
+    this.signedIn = false
+    this.assist.watch(videoId)
 
     this.stage?.classList.remove("hidden")
     this.stage?.classList.add("block")
@@ -261,20 +295,18 @@ export class CallYouTube {
   }
 
   createPlayer() {
+    // A signed-in reload replaces a player that is already handshaking. The
+    // controller's heartbeat outlives it, so only the handshake is torn down.
+    this.clearListening()
     this.playerContainer?.replaceChildren()
-    const query = new URLSearchParams({
-      enablejsapi: "1",
-      playsinline: "1",
-      rel: "0",
-      controls: this.localController ? "1" : "0",
-      disablekb: this.localController ? "0" : "1",
-      fs: "0",
-      iv_load_policy: "3",
-      origin: window.location.origin,
-    })
+
     const iframe = document.createElement("iframe")
     iframe.id = `call-youtube-iframe-${this.hook.el.dataset.callId}`
-    iframe.src = `https://www.youtube-nocookie.com/embed/${this.videoId}?${query}`
+    iframe.src = youtubeEmbedUrl(this.videoId, {
+      signedIn: this.signedIn,
+      controls: this.localController,
+      origin: window.location.origin,
+    })
     iframe.title = "Shared YouTube video"
     iframe.allow = "autoplay; encrypted-media; picture-in-picture"
     iframe.referrerPolicy = "strict-origin-when-cross-origin"
@@ -311,15 +343,28 @@ export class CallYouTube {
       if (!this.localController) this.applyRemotePlayback()
     }
 
-    if (message?.event === "infoDelivery" && Number.isFinite(message.info?.currentTime)) {
-      this.playerPosition = this.validPosition(message.info.currentTime)
-      if (this.localController) this.position = this.playerPosition
+    if (message?.event === "onError") this.assist.observe({errorCode: Number(message.info)})
+
+    if (message?.event === "infoDelivery") {
+      if (Number.isFinite(message.info?.currentTime)) {
+        this.playerPosition = this.validPosition(message.info.currentTime)
+        if (this.localController) this.position = this.playerPosition
+      }
+
+      this.assist.observe({
+        state: Number(message.info?.playerState),
+        errorCode: Number(message.info?.errorCode),
+      })
     }
 
-    if (this.localController && message?.event === "onStateChange") {
-      if (message.info === 1) this.playback = "playing"
-      if (message.info === 0 || message.info === 2) this.playback = "paused"
-      if ([0, 1, 2].includes(message.info)) this.sendControl()
+    if (message?.event === "onStateChange") {
+      this.assist.observe({state: Number(message.info)})
+
+      if (this.localController) {
+        if (message.info === 1) this.playback = "playing"
+        if (message.info === 0 || message.info === 2) this.playback = "paused"
+        if ([0, 1, 2].includes(message.info)) this.sendControl()
+      }
     }
   }
 
@@ -353,6 +398,9 @@ export class CallYouTube {
     if (this.appliedPlayback !== this.playback) {
       command(this.iframe, this.playback === "playing" ? "playVideo" : "pauseVideo")
       this.appliedPlayback = this.playback
+
+      if (this.playback === "playing") this.assist.requested()
+      else this.assist.idle()
     }
   }
 
@@ -370,6 +418,7 @@ export class CallYouTube {
 
   stopShare() {
     this.clearPlayerTimers()
+    this.assist.hide()
     this.iframe?.remove()
     this.iframe = null
     this.active = false
@@ -386,12 +435,16 @@ export class CallYouTube {
     this.updateShareButton()
   }
 
-  clearPlayerTimers() {
-    window.clearInterval(this.heartbeat)
+  clearListening() {
     window.clearInterval(this.listeningTimer)
-    this.heartbeat = null
     this.listeningTimer = null
     this.iframe?.removeEventListener("load", this.listenToPlayer)
+  }
+
+  clearPlayerTimers() {
+    window.clearInterval(this.heartbeat)
+    this.heartbeat = null
+    this.clearListening()
   }
 
   // The shared video takes the stage, so the participants shrink to a strip.

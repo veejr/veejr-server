@@ -472,6 +472,12 @@ in Firebase and remove the old Docker secret.
 - Some viewers must tap once before audible autoplay is permitted.
 - Verify that the video permits embedding and is available in the viewer's
   region. Stop screen sharing before starting a 1:1 YouTube share.
+- "Sign in to confirm you're not a bot" is YouTube's own check on that viewer,
+  not an instance fault, and no setting here disables it. The player offers
+  them **Not playing?** → **Reload with sign-in**, which swaps that one
+  browser's frame to `youtube.com`, where their account is visible and the
+  check can be answered. `frame-src` therefore permits both YouTube hosts; see
+  [SECURITY.md](../SECURITY.md).
 
 ### Federated profile pictures are missing in Orbit or Soiree
 

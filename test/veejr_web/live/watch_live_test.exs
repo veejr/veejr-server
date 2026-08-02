@@ -7,21 +7,27 @@ defmodule VeejrWeb.WatchLiveTest do
   alias Veejr.{Accounts, WatchParties}
 
   setup %{conn: conn} do
-    user = user_fixture()
-
-    {:ok, user} =
-      Accounts.setup_user_keys(user, %{
-        "public_key" => Base.encode64(String.pad_trailing("public-key", 32, "x")),
-        "enc_secret_key" => Base.encode64(String.pad_trailing("wrapped-key", 48, "x")),
-        "key_salt" => Base.encode64(String.pad_trailing("salt", 16, "x")),
-        "key_nonce" => Base.encode64(String.pad_trailing("nonce", 24, "x"))
-      })
+    user = keyed_user()
 
     if party = WatchParties.active_party() do
       WatchParties.end_party(party.public_id, party.host_id)
     end
 
     %{conn: log_in_user(conn, user), user: user}
+  end
+
+  # A watch party is behind the same key gate as the rest of the account, so a
+  # second participant needs keys before they can be let in.
+  defp keyed_user do
+    {:ok, user} =
+      Accounts.setup_user_keys(user_fixture(), %{
+        "public_key" => Base.encode64(String.pad_trailing("public-key", 32, "x")),
+        "enc_secret_key" => Base.encode64(String.pad_trailing("wrapped-key", 48, "x")),
+        "key_salt" => Base.encode64(String.pad_trailing("salt", 16, "x")),
+        "key_nonce" => Base.encode64(String.pad_trailing("nonce", 24, "x"))
+      })
+
+    user
   end
 
   test "renders the watch lobby and validates YouTube input", %{conn: conn} do
@@ -104,6 +110,62 @@ defmodule VeejrWeb.WatchLiveTest do
 
     assert :ok = WatchParties.end_party(party.public_id, user.id)
     assert has_element?(guest_view, "#guest-watch-unavailable")
+  end
+
+  test "a viewer is never sealed away from the player", %{user: user} do
+    assert {:ok, party} = WatchParties.start_party(user, "dQw4w9WgXcQ")
+
+    viewer_conn = log_in_user(build_conn(), keyed_user())
+    {:ok, view, _html} = live(viewer_conn, "/watch/#{party.public_id}")
+
+    # YouTube can stop a viewer to ask them to confirm they are not a bot, and
+    # that prompt is painted inside the frame. A guard the hook can drop keeps
+    # stray clicks off the video; sealing the frame itself would leave the
+    # challenged viewer with nothing to answer.
+    assert has_element?(view, "#watch-youtube-guard[data-role='guard']")
+    refute has_element?(view, "#youtube-watch-iframe.pointer-events-none")
+
+    assert has_element?(view, "#watch-youtube-help[data-role='youtube-help']")
+    assert has_element?(view, "#watch-youtube-assist-signed-in[data-role='youtube-signed-in']")
+
+    assert has_element?(
+             view,
+             "#watch-youtube-assist-open[data-role='youtube-open'][target='_blank']"
+           )
+  end
+
+  test "the host keeps the player and the same way out", %{conn: conn, user: user} do
+    assert {:ok, party} = WatchParties.start_party(user, "dQw4w9WgXcQ")
+    {:ok, view, _html} = live(conn, "/watch/#{party.public_id}")
+
+    # Nothing stands between the host and the video, but the bot check does not
+    # spare them, so the escape hatch is theirs too.
+    refute has_element?(view, "#watch-youtube-guard")
+    refute has_element?(view, "[data-role='unlock']")
+    assert has_element?(view, "#watch-youtube-help[data-role='youtube-help']")
+    assert has_element?(view, "#watch-youtube-assist[data-role='youtube-assist']")
+  end
+
+  test "a guest is never sealed away from the player", %{user: user} do
+    assert {:ok, party} = WatchParties.start_party(user, "dQw4w9WgXcQ")
+
+    assert {:ok, [%{token: token}]} =
+             WatchParties.create_guest_invites(
+               party.public_id,
+               user.id,
+               "guest@example.com"
+             )
+
+    {:ok, view, _html} = live(build_conn(), "/watch/guest/#{token}")
+
+    assert has_element?(view, "#guest-watch-youtube-guard[data-role='guard']")
+    refute has_element?(view, "#guest-youtube-watch-iframe.pointer-events-none")
+    assert has_element?(view, "#guest-watch-youtube-help[data-role='youtube-help']")
+
+    assert has_element?(
+             view,
+             "#guest-watch-youtube-assist-signed-in[data-role='youtube-signed-in']"
+           )
   end
 
   test "an invalid outsider capability exposes no party", %{user: user} do

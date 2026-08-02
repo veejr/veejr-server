@@ -341,6 +341,27 @@ content.
 - Verify the video allows embedding and is available in the viewer's region.
 - Screen sharing must stop before YouTube sharing begins, and vice versa.
 
+### YouTube asks someone to confirm they are not a bot
+
+YouTube shows this check to viewers it finds suspicious — commonly behind a
+VPN, with strict tracker blocking, or with third-party cookies turned off. It
+is YouTube's decision and no instance setting turns it off.
+
+A viewer who is not steering the video watches through a click guard, so the
+player carries a **Not playing?** button, and the same panel appears on its own
+when playback is asked for and never arrives. It offers two ways through:
+
+- **Reload with sign-in** reloads the same video from `youtube.com` instead of
+  `youtube-nocookie.com`. The privacy host is a separate origin and never sees
+  the viewer's YouTube account, so it is the only one of the two where the
+  check can be answered at all. It applies to that viewer's browser alone.
+- **Open on YouTube** opens the video at the shared position in a new tab,
+  where the viewer is already signed in.
+
+Opening the panel hands the player back to the viewer for the rest of the
+share, so they can answer YouTube directly. Playback rejoins the group at the
+host's next synchronization message; nobody else's playback is affected.
+
 ### Shared-screen pop-out does not open
 
 Allow pop-ups for the Veejr instance. The pop-out contains the current remote

@@ -227,6 +227,7 @@ defmodule VeejrWeb.WatchLive do
               phx-hook="YouTubeWatch"
               phx-update="ignore"
               data-host={to_string(@host?)}
+              data-video-id={@party.video_id}
               data-playback={@party.playback}
               data-position={@party.position}
               class="relative aspect-video w-full"
@@ -239,18 +240,31 @@ defmodule VeejrWeb.WatchLive do
                 allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                 allowfullscreen
                 referrerpolicy="strict-origin-when-cross-origin"
-                class={["absolute inset-0 size-full", !@host? && "pointer-events-none"]}
+                class="absolute inset-0 size-full"
               ></iframe>
+              <div
+                :if={!@host?}
+                id="watch-youtube-guard"
+                data-role="guard"
+                aria-hidden="true"
+                class="absolute inset-0 z-20"
+              >
+              </div>
+              <.youtube_viewer_bar
+                id="watch-youtube-help"
+                label={if @host?, do: "You control this video", else: "Controlled by the host"}
+              />
               <button
                 :if={!@host?}
                 type="button"
                 data-role="unlock"
-                class="absolute inset-0 flex size-full cursor-pointer items-center justify-center bg-black/35 text-white transition hover:bg-black/25"
+                class="absolute inset-0 z-30 flex size-full cursor-pointer items-center justify-center bg-black/35 text-white transition hover:bg-black/25"
               >
                 <span class="rounded-full bg-black/75 px-5 py-3 text-sm font-semibold shadow-lg backdrop-blur">
                   <.icon name="hero-play" class="mr-1 inline size-5" /> Tap to join playback
                 </span>
               </button>
+              <.youtube_playback_assist id="watch-youtube-assist" />
             </div>
           </div>
 
@@ -412,13 +426,20 @@ defmodule VeejrWeb.WatchLive do
     end
   end
 
+  # Mirrors `youtubeEmbedUrl` in `assets/js/veejr/youtube_embed.js`, which
+  # rebuilds this same URL against `youtube.com` when a viewer reaches for the
+  # signed-in escape hatch. Keep the two in step or the player changes
+  # character the moment someone uses it.
   defp youtube_embed_url(video_id, host?) do
     query =
       URI.encode_query(%{
         "enablejsapi" => "1",
         "playsinline" => "1",
         "rel" => "0",
-        "controls" => if(host?, do: "1", else: "0")
+        "controls" => if(host?, do: "1", else: "0"),
+        "disablekb" => if(host?, do: "0", else: "1"),
+        "fs" => "1",
+        "iv_load_policy" => "3"
       })
 
     "https://www.youtube-nocookie.com/embed/#{video_id}?#{query}"

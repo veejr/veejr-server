@@ -43,8 +43,13 @@ defmodule VeejrWeb.ContentSecurityPolicy do
       same-origin (LiveView socket, uploads, capability fetches), so a
       successful injection has nowhere to send a stolen key. WebRTC is not
       governed by `connect-src`, so STUN/TURN keep working.
-    * `frame-src https://www.youtube-nocookie.com` — watch parties and in-call
-      shared viewing embed the privacy-preserving YouTube host.
+    * `frame-src` — the two YouTube hosts watch parties and in-call shared
+      viewing embed. `youtube-nocookie.com` is what loads; `youtube.com` is
+      only ever reached by a viewer who asks for it, because YouTube's
+      "confirm you're not a bot" check wants a signed-in session and the
+      privacy host is a separate origin that can never carry one. Both are
+      video frames from the same operator, so the policy's job — keeping an
+      injection from framing an attacker's page — is unchanged.
     * `worker-src 'self'` — the Web Push service worker at `/sw.js`.
     * `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'` — remove
       plugin embedding, base-tag hijacking, and clickjacking.
@@ -63,7 +68,7 @@ defmodule VeejrWeb.ContentSecurityPolicy do
 
   @behaviour Plug
 
-  @youtube "https://www.youtube-nocookie.com"
+  @youtube_hosts "https://www.youtube-nocookie.com https://www.youtube.com"
 
   @impl true
   def init(opts), do: opts
@@ -92,7 +97,7 @@ defmodule VeejrWeb.ContentSecurityPolicy do
       "media-src 'self' blob:",
       "font-src 'self' data:",
       "connect-src 'self'",
-      "frame-src #{@youtube}",
+      "frame-src #{@youtube_hosts}",
       "worker-src 'self'",
       "manifest-src 'self'",
       "object-src 'none'",

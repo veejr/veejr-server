@@ -516,6 +516,15 @@ video ID and state are server-readable. In a call, the same directions use the
 authenticated WebRTC data channels instead, and only the participant whose
 channel started the share may steer it.
 
+Someone who is not steering the video watches through a click guard rather than
+an inert frame, because YouTube can interrupt any viewer with a "confirm you're
+not a bot" check that is painted inside that frame. The check wants a signed-in
+YouTube session, and `youtube-nocookie.com` is a separate origin that never
+carries one, so the player offers that viewer the same video from
+`youtube.com`. Nothing about it is instance-wide: it is one browser's frame,
+chosen by the person in front of it, and the privacy host remains what every
+share loads.
+
 ## Web Push
 
 Each browser/device can register a Push API subscription. Push payloads are
@@ -627,7 +636,7 @@ the header alongside it. What it constrains is the weaker case: an injection,
 a compromised dependency, or a templating mistake cannot execute inline script
 and has no off-origin destination to send a captured key to. Federated avatars
 require `img-src` to allow arbitrary `https:` origins, and shared viewing
-requires `frame-src` for the YouTube embed host; both are content sources
+requires `frame-src` for both YouTube embed hosts; all are content sources
 rather than script or exfiltration paths.
 
 Request budgets (`Veejr.RateLimiter`) cover authentication, directory,
