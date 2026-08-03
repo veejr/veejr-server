@@ -379,12 +379,18 @@ defmodule VeejrWeb.ContactsLiveTest do
       assert {:error, {_kind, %{to: "/contacts/simple"}}} = live(conn, "/contacts")
     end
 
-    test "choosing Simple from the tools panel saves it and follows", %{conn: conn, user: user} do
+    test "turns Simple on from the header in one click", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, "/contacts")
 
-      assert has_element?(view, "#contacts-layout-full[aria-pressed='true']")
+      assert has_element?(
+               view,
+               "header #contacts-layout[role='switch'][aria-checked='false']"
+             )
 
-      view |> element("#contacts-layout-simple") |> render_click()
+      # Nothing to open first: the switch is not inside the gear panel.
+      refute has_element?(view, "#contacts-tools-content #contacts-layout")
+
+      view |> element("#contacts-layout") |> render_click()
 
       assert_redirect(view, "/contacts/simple")
       assert Repo.reload!(user).page_layout == "simple"

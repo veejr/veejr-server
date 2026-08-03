@@ -32,6 +32,14 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#messages-page-header-toggle", "Messages")
     assert has_element?(view, "#messages-page-header-toggle", "Expand")
 
+    # The layout switch rides above the collapse, not inside it.
+    assert has_element?(
+             view,
+             ".messages-page-header #messages-layout[role='switch'][aria-checked='false']"
+           )
+
+    refute has_element?(view, "#messages-page-header #messages-layout")
+
     assert has_element?(
              view,
              "#messages-page-header-content #back-to-contacts[href='/contacts']",
@@ -870,13 +878,15 @@ defmodule VeejrWeb.MessagesLiveTest do
       assert has_element?(group, "#messages-workspace")
     end
 
-    test "choosing Full from the tools panel saves it and comes back", %{
+    test "turns Simple off from the header in one click", %{
       conn: conn,
       user: user
     } do
       {:ok, view, _html} = live(conn, "/messages/simple")
 
-      view |> element("#simple-messages-layout-full") |> render_click()
+      assert has_element?(view, "#simple-messages-layout[role='switch'][aria-checked='true']")
+
+      view |> element("#simple-messages-layout") |> render_click()
 
       assert_redirect(view, "/messages")
       assert Repo.reload!(user).page_layout == "full"

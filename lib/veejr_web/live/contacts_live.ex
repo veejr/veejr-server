@@ -22,7 +22,10 @@ defmodule VeejrWeb.ContactsLive do
         class="contacts-workspace space-y-6"
       >
         <header class="relative pb-4">
-          <h1 class="pr-14 text-lg font-semibold leading-8">Contacts</h1>
+          <div class="flex items-center gap-3 pr-14">
+            <h1 class="text-lg font-semibold leading-8">Contacts</h1>
+            <.page_layout_switch id="contacts-layout" showing="full" class="ml-auto" />
+          </div>
 
           <details
             id="contacts-tools"
@@ -50,7 +53,6 @@ defmodule VeejrWeb.ContactsLive do
                   Conversations, friends, and groups in one place. Your address:
                   <code class="break-all">{Social.Address.full(@current_scope.user)}</code>
                 </p>
-                <.page_layout_switch id="contacts-layout" showing="full" class="mt-3" />
                 <label class="contacts-theme-control mt-3">
                   <span class="contacts-theme-control-label">
                     <.icon name="hero-swatch" class="size-4" /> Appearance

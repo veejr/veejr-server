@@ -151,40 +151,55 @@ defmodule VeejrWeb.CoreComponents do
   attr :class, :any, default: nil
 
   @doc """
-  Chooses between the full Contacts and Messages pages and the plain pair.
+  Turns the plain Contacts and Messages pages on and off in one click.
 
   The choice is saved on the account, so it is a preference rather than a
-  detour: picking Simple here is what makes `/contacts` and `/messages` open
-  the plain pages next time.
+  detour: switching Simple on here is what makes `/contacts` and `/messages`
+  open the plain pages next time. It belongs in the page header rather than
+  inside a tools panel — a layout you cannot leave without first finding the
+  panel you left the switch in is a trap.
   """
   def page_layout_switch(assigns) do
+    assigns = assign(assigns, :simple?, assigns.showing == "simple")
+
     ~H"""
-    <div
+    <button
       id={@id}
-      role="group"
-      aria-label="Page layout"
+      type="button"
+      role="switch"
+      aria-checked={to_string(@simple?)}
+      aria-label="Simple layout"
+      title={if(@simple?, do: "Simple layout is on", else: "Simple layout is off")}
+      phx-click="set_page_layout"
+      phx-value-layout={if(@simple?, do: "full", else: "simple")}
       class={[
-        "inline-flex items-center gap-1 rounded-xl border border-base-300 bg-base-200 p-1 text-xs font-semibold",
+        "group inline-flex shrink-0 items-center gap-2 rounded-xl border py-1 pr-1 pl-2.5 text-xs font-semibold shadow-sm transition duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        @simple? && "border-primary/40 bg-primary/10",
+        !@simple? && "border-base-300 bg-base-100 hover:border-primary/40",
         @class
       ]}
     >
-      <span class="px-2 text-base-content/55">Layout</span>
-      <button
-        :for={{value, label} <- [{"full", "Full"}, {"simple", "Simple"}]}
-        id={"#{@id}-#{value}"}
-        type="button"
-        phx-click="set_page_layout"
-        phx-value-layout={value}
-        aria-pressed={to_string(@showing == value)}
-        class={[
-          "rounded-lg px-2.5 py-1.5 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-          @showing == value && "bg-base-100 text-base-content shadow-sm",
-          @showing != value && "text-base-content/60 hover:text-base-content"
-        ]}
-      >
-        {label}
-      </button>
-    </div>
+      <%!-- The label holds its own colour rather than inheriting the button's.
+            The Messages page themes every button in its header, and that ink is
+            chosen against the themed header, not against this pill. --%>
+      <span class={[
+        @simple? && "text-primary",
+        !@simple? && "text-base-content/60 group-hover:text-base-content"
+      ]}>
+        Simple
+      </span>
+      <span class={[
+        "inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition duration-200",
+        @simple? && "border-primary bg-primary",
+        !@simple? && "border-base-300 bg-base-300"
+      ]}>
+        <span class={[
+          "size-4 rounded-full bg-white shadow-sm transition duration-200",
+          @simple? && "translate-x-4",
+          !@simple? && "translate-x-0"
+        ]} />
+      </span>
+    </button>
     """
   end
 
