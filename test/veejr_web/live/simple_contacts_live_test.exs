@@ -37,8 +37,7 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
 
     assert has_element?(view, "#simple-contact-#{friend.id}", "@#{friend.username}")
     assert has_element?(view, "#simple-contact-#{friend.id} [aria-label*='profile image']")
-    assert has_element?(view, "#simple-contacts-layout-simple[aria-pressed='true']")
-    assert has_element?(view, "#simple-contacts-layout-full[aria-pressed='false']")
+    assert has_element?(view, "#simple-contacts-layout[role='switch'][aria-checked='true']")
   end
 
   test "switching back to the full layout saves the choice and goes there", %{
@@ -48,7 +47,7 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
     {:ok, _user} = Accounts.set_page_layout(user, "simple")
     {:ok, view, _html} = live(conn, "/contacts/simple")
 
-    view |> element("#simple-contacts-layout-full") |> render_click()
+    view |> element("#simple-contacts-layout") |> render_click()
 
     assert_redirect(view, "/contacts")
     assert Repo.reload!(user).page_layout == "full"

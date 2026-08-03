@@ -62,7 +62,7 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
              "#simple-preview-#{key}[phx-hook='ConversationPreview'][data-ciphertext='my-copy']"
            )
 
-    assert has_element?(view, "#simple-messages-layout-simple[aria-pressed='true']")
+    assert has_element?(view, "#simple-messages-layout[role='switch'][aria-checked='true']")
     refute has_element?(view, "#messages-page-header")
     refute has_element?(view, ".messages-rail")
   end
