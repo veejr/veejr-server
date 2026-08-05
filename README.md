@@ -60,6 +60,12 @@ friendship, and consent rules.
 - A native Jetpack Compose Android client with portable-key unlock, consent,
   conversation messaging, filtered history, contact/group policy controls, and
   private notes. See [veejr-android](https://github.com/veejr/veejr-android).
+- Optional **add-ons**: shared programs an administrator turns on per instance
+  from the admin page. An add-on that is off is not linked, not reachable, and
+  downloads nothing. Each one declares whether the server merely relays
+  ciphertext or acts as a trusted referee, and that declaration is shown to
+  players. The first is a craps table, which is refereed by necessity and
+  defaults to fair dice.
 - Community and personal instance modes backed by SQLite.
 
 For protocol details, trust boundaries, and data flows, see

@@ -81,6 +81,101 @@ defmodule VeejrWeb.AdminLiveTest do
     refute has_element?(view, "#start-upgrade")
   end
 
+  test "offers craps from the add-ons panel, defaulting to fair dice", %{conn: conn} do
+    admin = user_fixture()
+
+    {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/admin")
+
+    assert has_element?(view, "#admin-add-ons")
+    assert has_element?(view, "#add-on-craps", "Server-refereed")
+    refute has_element?(view, "#add-ons-form input[name='add_ons[craps_enabled]'][checked]")
+    assert has_element?(view, "#add-ons-form option[value='fair'][selected]")
+    refute Veejr.AddOns.enabled?(:craps)
+
+    view
+    |> form("#add-ons-form", %{"add_ons" => %{"craps_enabled" => "true"}})
+    |> render_submit()
+
+    assert has_element?(view, "#add-ons-form input[name='add_ons[craps_enabled]'][checked]")
+    assert has_element?(view, "#admin-audit", "Settings updated")
+    assert Veejr.AddOns.enabled?(:craps)
+    assert Veejr.AddOns.craps_dice_mode() == "fair"
+
+    view
+    |> form("#add-ons-form", %{
+      "add_ons" => %{"craps_enabled" => "true", "craps_dice_mode" => "house"}
+    })
+    |> render_submit()
+
+    assert Veejr.AddOns.craps_dice_mode() == "house"
+  end
+
+  test "clearing the add-on checkbox turns it back off", %{conn: conn} do
+    admin = user_fixture()
+    {:ok, _settings} = Veejr.Admin.update_instance_settings(admin, %{"craps_enabled" => "true"})
+
+    {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/admin")
+    assert has_element?(view, "#add-ons-form input[name='add_ons[craps_enabled]'][checked]")
+
+    # An unchecked box submits nothing of its own. What actually turns the
+    # add-on off is the hidden "false" companion input the checkbox component
+    # renders alongside it.
+    view
+    |> form("#add-ons-form", %{"add_ons" => %{"craps_enabled" => "false"}})
+    |> render_submit()
+
+    refute has_element?(view, "#add-ons-form input[name='add_ons[craps_enabled]'][checked]")
+    refute Veejr.AddOns.enabled?(:craps)
+  end
+
+  test "replenishes a player's craps chips from the add-ons panel", %{conn: conn} do
+    admin = user_fixture()
+    player = user_fixture(%{username: "brokeplayer"})
+    Veejr.AddOns.Craps.put_chip_balance(player.id, 0)
+
+    {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/admin")
+
+    # A full starting stack is the default, since that is what replenishing
+    # nearly always means.
+    assert has_element?(view, "#craps-chips-form input[name='chips[amount]'][value='1000']")
+    assert has_element?(view, "#craps-chips-form option", "@brokeplayer")
+
+    view
+    |> form("#craps-chips-form", %{"chips" => %{"user_id" => "#{player.id}", "amount" => "2500"}})
+    |> render_submit()
+
+    assert Veejr.AddOns.Craps.chip_balance(player) == 2500
+    assert render(view) =~ "now has 2500 chips"
+    assert has_element?(view, "#admin-audit", "Craps chips set")
+  end
+
+  test "refuses a stack nobody meant to hand out", %{conn: conn} do
+    admin = user_fixture()
+    player = user_fixture()
+
+    {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/admin")
+
+    html =
+      view
+      |> form("#craps-chips-form", %{
+        "chips" => %{"user_id" => "#{player.id}", "amount" => "999999999"}
+      })
+      |> render_submit()
+
+    assert html =~ "Enter a whole number"
+    assert Veejr.AddOns.Craps.chip_balance(player) == 0
+  end
+
+  test "asks for a player when none was picked", %{conn: conn} do
+    admin = user_fixture()
+
+    {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/admin")
+
+    assert view
+           |> form("#craps-chips-form", %{"chips" => %{"user_id" => "", "amount" => "1000"}})
+           |> render_submit() =~ "Pick a player"
+  end
+
   test "updates instance settings and tests mail delivery", %{conn: conn} do
     admin = user_fixture()
     assert_email_sent()

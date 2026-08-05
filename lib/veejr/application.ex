@@ -16,6 +16,9 @@ defmodule Veejr.Application do
       {Phoenix.PubSub, name: Veejr.PubSub},
       # One ephemeral, host-controlled YouTube watch party per instance.
       {Veejr.WatchParties, []},
+      # The craps add-on's single table. Runs whether or not the add-on is
+      # switched on; an idle table costs nothing and the gate is on the page.
+      {Veejr.AddOns.Craps.Table, []},
       # Retries federation deliveries to unreachable instances.
       {Veejr.Federation.Outbox, []},
       # Persists and retries browser and Android push delivery.

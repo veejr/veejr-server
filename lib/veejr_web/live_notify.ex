@@ -71,6 +71,14 @@ defmodule VeejrWeb.LiveNotify do
     end
   end
 
+  defp handle_info({:craps_invite, host}, socket) do
+    if socket.view == VeejrWeb.CrapsLive do
+      {:halt, socket}
+    else
+      {:halt, push_event(socket, "craps:invite", %{host: host})}
+    end
+  end
+
   defp handle_info({:watch_party_started, party}, socket) do
     {:halt, push_watch_invite(socket, party)}
   end

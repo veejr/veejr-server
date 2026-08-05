@@ -69,6 +69,12 @@ defmodule VeejrWeb.Layouts do
     default: nil,
     doc: "number of pending encrypted-item notifications, shown on the Contacts link"
 
+  attr :add_ons, :list,
+    default: nil,
+    doc:
+      "add-ons this instance offers, listed in the navigation menu. " <>
+        "Resolved from instance settings when not supplied"
+
   attr :container_class, :string,
     default: "mx-auto max-w-3xl space-y-4",
     doc: "classes applied to the inner page container"
@@ -86,6 +92,8 @@ defmodule VeejrWeb.Layouts do
   slot :inner_block, required: true
 
   def app(assigns) do
+    assigns = assign(assigns, :add_ons, assigns.add_ons || Veejr.AddOns.enabled())
+
     ~H"""
     <div class="flex h-svh min-h-svh flex-col">
       <div
@@ -175,6 +183,15 @@ defmodule VeejrWeb.Layouts do
                   phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
                 >
                   <.icon name="hero-play-circle" class="size-4" /> Watch
+                </.link>
+              </li>
+              <li :for={add_on <- @add_ons}>
+                <.link
+                  navigate={add_on.path}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name={add_on.icon} class="size-4" />
+                  <span class="flex-1">{add_on.name}</span>
                 </.link>
               </li>
               <li

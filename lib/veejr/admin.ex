@@ -13,6 +13,8 @@ defmodule Veejr.Admin do
   alias Veejr.{InstanceSettings, Operations}
   alias Veejr.Repo
 
+  @max_craps_chips 1_000_000
+
   @doc "Returns a content-free snapshot of instance usage and health."
   def snapshot do
     now = DateTime.utc_now(:second)
@@ -207,6 +209,46 @@ defmodule Veejr.Admin do
       {:error, :unauthorized}
     end
   end
+
+  @doc """
+  Sets a member's craps stack.
+
+  The add-on tops a broke player back up on its own when they sit, so this is
+  for the cases that does not cover: somebody who wants a bigger stack than
+  the house default, or a table whose play money has drifted somewhere silly.
+
+  Audited like every other thing an administrator can do to an account, and
+  capped so a slipped keystroke cannot mint a fortune.
+  """
+  @spec set_craps_chips(User.t(), integer(), integer()) ::
+          {:ok, User.t()} | {:error, :unauthorized | :not_found | :not_local | :invalid_amount}
+  def set_craps_chips(%User{} = actor, user_id, amount) do
+    cond do
+      not Veejr.Accounts.instance_admin?(actor) ->
+        {:error, :unauthorized}
+
+      not (is_integer(amount) and amount >= 0 and amount <= @max_craps_chips) ->
+        {:error, :invalid_amount}
+
+      true ->
+        case Repo.get(User, user_id) do
+          nil ->
+            {:error, :not_found}
+
+          # A remote account's stack belongs to their own instance.
+          %User{host: host} when not is_nil(host) ->
+            {:error, :not_local}
+
+          user ->
+            Veejr.AddOns.Craps.put_chip_balance(user.id, amount)
+            audit!(actor, "craps.chips_set", "user", user.id, %{"chips" => amount})
+            {:ok, user}
+        end
+    end
+  end
+
+  @doc "The largest stack an administrator may hand out in one go."
+  def max_craps_chips, do: @max_craps_chips
 
   @doc "Returns the current lifecycle state of a tracked invitation."
   def invitation_status(%Invitation{} = invitation, now \\ DateTime.utc_now(:second)) do

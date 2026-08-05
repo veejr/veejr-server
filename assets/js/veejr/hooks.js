@@ -13,6 +13,7 @@
 //   hooks/self_notes.js      the encrypted notes board and Keep import
 //   hooks/notes_document.js  note document, merge, and search logic (no DOM)
 //   hooks/contacts_scenes.js the lazily loaded WebGL contact views
+//   hooks/craps_table.js     the lazily loaded WebGL craps table
 //   hooks/ui.js              hooks with no cryptographic role
 //   hooks/shared.js          helpers used by several of the above
 //   link_text.js             autolinking URLs found in decrypted text
@@ -22,6 +23,7 @@ import {Composer} from "./hooks/composer.js"
 import {Decrypt, ConversationPreview, MessageBubble} from "./hooks/messages.js"
 import {SelfNotes, SelfNotesBoard} from "./hooks/self_notes.js"
 import {ContactsOrbit} from "./hooks/contacts_scenes.js"
+import {CrapsTable} from "./hooks/craps_table.js"
 import {
   ScheduleTime,
   LocalTime,
@@ -57,6 +59,7 @@ export {
   SelfNotes,
   SelfNotesBoard,
   ContactsOrbit,
+  CrapsTable,
   ScheduleTime,
   LocalTime,
   MessageConsent,
@@ -85,6 +88,7 @@ export default {
   ChatTheme,
   ContactsTheme,
   ContactsOrbit,
+  CrapsTable,
   Composer,
   Decrypt,
   ConversationPreview,
