@@ -143,13 +143,19 @@ export class CallYouTube {
     })
   }
 
-  channelStateChanged() {
+  channelStateChanged(peer = null) {
     if (!this.shareButton) return
     const ready = this.hook.chatReady()
     this.shareButton.disabled = !ready
     this.shareButton.title = ready
       ? "Watch a YouTube video together"
       : "YouTube sharing is available once the call connects"
+
+    // Conference data channels open independently. If this pair came up
+    // after the share began, send the current state only to that participant;
+    // the regular broadcast would be needlessly disruptive to existing
+    // viewers and could race another peer's update.
+    if (ready && peer && this.active && this.localController) this.sendStart(peer)
   }
 
   toggleShare() {
@@ -194,7 +200,7 @@ export class CallYouTube {
     this.sendStart()
   }
 
-  sendStart() {
+  sendStart(peer = null) {
     if (!this.active || !this.localController) return
     try {
       this.hook.sendChatJson({
@@ -202,7 +208,7 @@ export class CallYouTube {
         video_id: this.videoId,
         playback: this.playback,
         position: this.position,
-      })
+      }, peer)
     } catch {
       this.hook.showCallNotice("The direct sharing connection was interrupted.")
     }

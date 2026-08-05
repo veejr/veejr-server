@@ -1602,7 +1602,10 @@ export const CallSession = {
     channel.onopen = () => {
       this.updateChatStatus()
       this.updateChatComposer()
-      this.youtube?.channelStateChanged()
+      // A participant can finish connecting after someone has already
+      // started a YouTube share. Replaying the current share on this newly
+      // opened pair keeps late and reconnecting conference clients in sync.
+      this.youtube?.channelStateChanged(peer)
     }
     channel.onclose = () => {
       this.updateChatStatus()
@@ -1897,10 +1900,17 @@ export const CallSession = {
 
   // Chat and files fan out over every open pair channel — there is no server
   // copy to relay them, so each peer is sent its own.
-  sendChatJson(payload) {
+  sendChatJson(payload, targetPeer = null) {
+    const message = JSON.stringify(payload)
+
+    if (targetPeer) {
+      if (!targetPeer.chatReady()) throw new Error("Call chat disconnected.")
+      targetPeer.chatChannel.send(message)
+      return
+    }
+
     const open = this.openChatChannels()
     if (open.length === 0) throw new Error("Call chat disconnected.")
-    const message = JSON.stringify(payload)
     for (const peer of open) peer.chatChannel.send(message)
   },
 
