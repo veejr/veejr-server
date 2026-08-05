@@ -1,6 +1,7 @@
 import {clearFaviconActivity, setFaviconActivity} from "./favicon.js"
 import {PlaybackAssist} from "./youtube_assist.js"
 import {YOUTUBE_ORIGINS, youtubeEmbedUrl} from "./youtube_embed.js"
+import {syncActions} from "./youtube_sync.js"
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/u
 
@@ -388,15 +389,12 @@ export class CallYouTube {
   applyRemotePlayback() {
     if (!this.ready || !this.unlocked || this.localController) return
 
-    if (
-      this.playerPosition === null ||
-      Math.abs(this.playerPosition - this.position) > 2
-    ) {
-      command(this.iframe, "seekTo", [this.position, true])
-    }
+    const {seek, command: next} = syncActions(this)
 
-    if (this.appliedPlayback !== this.playback) {
-      command(this.iframe, this.playback === "playing" ? "playVideo" : "pauseVideo")
+    if (seek !== null) command(this.iframe, "seekTo", [seek, true])
+
+    if (next) {
+      command(this.iframe, next)
       this.appliedPlayback = this.playback
 
       if (this.playback === "playing") this.assist.requested()
