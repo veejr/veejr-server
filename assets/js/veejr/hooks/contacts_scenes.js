@@ -1,42 +1,10 @@
-// The WebGL contact views (Orbit and Soiree) and the loader that fetches
-// three.min.js on demand.
+// The WebGL contact views, Orbit and Soiree.
 //
-// Three.js is served from this instance (priv/static/vendor) rather than a CDN
-// so the Content-Security-Policy can keep script-src pinned to 'self', and it
-// is loaded lazily because most sessions never open these views.
+// The loader itself lives in ../three_loader.js so the craps table shares one
+// download and one cached promise with these views.
 
 import {ConversationPreview} from "./messages.js"
-
-let threeLoader = null
-
-function loadThree(src) {
-  if (window.THREE) return Promise.resolve(window.THREE)
-  if (threeLoader) return threeLoader
-
-  threeLoader = new Promise((resolve, reject) => {
-    const tag = document.createElement("script")
-    tag.src = src
-    tag.async = true
-    tag.onload = () => (window.THREE ? resolve(window.THREE) : reject(new Error("three absent")))
-    tag.onerror = () => reject(new Error("three failed to load"))
-    document.head.appendChild(tag)
-  })
-
-  // Let a later attempt retry rather than caching the rejection forever.
-  threeLoader.catch(() => {
-    threeLoader = null
-  })
-  return threeLoader
-}
-
-function webglAvailable() {
-  try {
-    const c = document.createElement("canvas")
-    return !!(window.WebGLRenderingContext && (c.getContext("webgl2") || c.getContext("webgl")))
-  } catch (_e) {
-    return false
-  }
-}
+import {loadThree, webglAvailable} from "../three_loader.js"
 
 // The 3D appearances, keyed by theme name. Adding another is a matter of
 // writing a scene with the same contract and listing it here.

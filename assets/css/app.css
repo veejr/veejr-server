@@ -3068,3 +3068,98 @@ select :is(option, optgroup) {
     flex-basis: 100%;
   }
 }
+
+/* Craps dice.
+   Two CSS 3D cubes rather than a WebGL scene: for six faces and a tumble
+   this needs no vendored renderer, costs nothing to download, and keeps
+   working with reduced motion and on a phone. */
+.craps-dice {
+  display: flex;
+  gap: 1.25rem;
+  perspective: 700px;
+  justify-content: center;
+}
+
+.craps-die {
+  position: relative;
+  width: 3.5rem;
+  height: 3.5rem;
+  transform-style: preserve-3d;
+  transition: transform 1.15s cubic-bezier(0.22, 0.72, 0.24, 1);
+}
+
+.craps-die-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  padding: 0.3rem;
+  border-radius: 0.6rem;
+  background: linear-gradient(150deg, oklch(99% 0 0), oklch(91% 0.01 260));
+  box-shadow: inset 0 0 0 1px oklch(80% 0.02 260 / 0.7);
+}
+
+.craps-die-pip {
+  align-self: center;
+  justify-self: center;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: oklch(28% 0.03 265);
+}
+
+.craps-die-face:nth-child(1) { transform: translateZ(1.75rem); }
+.craps-die-face:nth-child(2) { transform: rotateX(-90deg) translateZ(1.75rem); }
+.craps-die-face:nth-child(3) { transform: rotateY(90deg) translateZ(1.75rem); }
+.craps-die-face:nth-child(4) { transform: rotateY(-90deg) translateZ(1.75rem); }
+.craps-die-face:nth-child(5) { transform: rotateX(90deg) translateZ(1.75rem); }
+.craps-die-face:nth-child(6) { transform: rotateY(180deg) translateZ(1.75rem); }
+
+@media (prefers-reduced-motion: reduce) {
+  .craps-die {
+    transition-duration: 0.01ms;
+  }
+}
+
+/* Once the WebGL felt is up the CSS dice are redundant, so they stand in
+   only when three.js is unavailable or failed to load. The flag lives on the
+   root element because LiveView reconciles the attributes of even a
+   phx-update="ignore" container. */
+.craps-webgl #craps-dice-fallback {
+  display: none;
+}
+
+/* The hover label that follows the pointer across the felt, naming the bet a
+   chip would make and greying out what the rules do not allow right now. */
+.craps-felt-label {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -180%);
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.5rem;
+  background: oklch(20% 0.02 265 / 0.92);
+  color: oklch(97% 0 0);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.craps-felt-label[data-enabled="false"] {
+  color: oklch(75% 0 0 / 0.75);
+}
+
+#craps-felt {
+  position: relative;
+}
+
+/* Full screen: the aspect-ratio box that shapes the felt in the page would
+   letterbox it against the display, so drop it and fill. */
+#craps-felt:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  aspect-ratio: auto;
+  border-radius: 0;
+  border: 0;
+}

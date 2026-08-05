@@ -15,6 +15,8 @@ defmodule Veejr.InstanceSettings do
     field :default_retention_hours, :integer
     field :mail_from_name, :string
     field :mail_from_address, :string
+    field :craps_enabled, :boolean, default: false
+    field :craps_dice_mode, :string, default: "fair"
 
     field :invitation_lifetime_days, :integer, virtual: true
     field :max_upload_mb, :integer, virtual: true
@@ -39,9 +41,12 @@ defmodule Veejr.InstanceSettings do
       :storage_quota_mb,
       :default_retention_hours,
       :mail_from_name,
-      :mail_from_address
+      :mail_from_address,
+      :craps_enabled,
+      :craps_dice_mode
     ])
     |> validate_inclusion(:registration_policy, ["mode_default", "open", "invite_only", "closed"])
+    |> validate_inclusion(:craps_dice_mode, Veejr.AddOns.dice_modes())
     |> validate_number(:invitation_lifetime_days,
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: 30

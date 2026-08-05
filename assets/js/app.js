@@ -32,6 +32,7 @@ import {
   installRingBanner,
 } from "./veejr/call_hook.js"
 import {YouTubeWatch, installWatchBanner} from "./veejr/watch_hook.js"
+import {installCrapsBanner} from "./veejr/craps_banner.js"
 import {WatchVoice} from "./veejr/watch_voice_hook.js"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
@@ -81,6 +82,7 @@ liveSocket.socket.onClose(() =>
 installRingBanner()
 installCallScheduleNotifications()
 installWatchBanner()
+installCrapsBanner()
 
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})

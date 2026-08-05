@@ -103,6 +103,35 @@ defmodule Veejr.Accounts.UserNotifier do
     )
   end
 
+  @doc "Emails a capability link for one seat at the craps table."
+  def deliver_craps_guest_invitation(host, recipient, url) do
+    host_name = host.display_name || "@#{host.username}"
+
+    deliver(
+      recipient,
+      "craps_guest_invitation",
+      "#{host_name} invited you to a game of craps",
+      """
+
+      ==============================
+
+      #{host_name} invited you to play craps on #{Veejr.instance_name()}.
+
+      You do not need an account. Open the link, pick a name, and sit down:
+
+      #{url}
+
+      The chips are play money. There is nothing to buy and nothing to cash
+      out, and your stack only lasts as long as the table does.
+
+      This invitation is yours alone and expires in a day. If you were not
+      expecting it, you can safely ignore this email.
+
+      ==============================
+      """
+    )
+  end
+
   @doc "Emails a private capability link for one active YouTube watch party."
   def deliver_guest_watch_party_invitation(host, recipient, url) do
     host_name = host.display_name || "@#{host.username}"

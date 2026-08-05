@@ -78,6 +78,111 @@ defmodule VeejrWeb.AdminLive do
       </.admin_panel>
 
       <.admin_panel
+        id="admin-add-ons"
+        title="Add-ons"
+        subtitle="Optional shared programs this instance offers"
+      >
+        <.form
+          for={@add_ons_form}
+          id="add-ons-form"
+          phx-change="validate_add_ons"
+          phx-submit="save_add_ons"
+          class="space-y-4"
+        >
+          <div
+            :for={add_on <- @add_ons}
+            id={"add-on-#{add_on.id}"}
+            class="space-y-3 rounded-xl border border-base-300 p-4"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-medium">{add_on.name}</p>
+                <p class="text-sm opacity-60">{add_on.summary}</p>
+              </div>
+              <span :if={add_on.trust == :refereed} class="badge badge-warning badge-sm shrink-0">
+                Server-refereed
+              </span>
+            </div>
+
+            <p class="text-sm opacity-70">{add_on.trust_note}</p>
+
+            <.input
+              field={@add_ons_form[add_on.setting]}
+              type="checkbox"
+              label={"Offer #{add_on.name} on this instance"}
+            />
+
+            <div :if={add_on.id == :craps} class="space-y-1">
+              <.input
+                field={@add_ons_form[:craps_dice_mode]}
+                type="select"
+                label="Dice"
+                options={[
+                  {"Fair — every combination equally likely", "fair"},
+                  {"House edge — weighted toward 7", "house"}
+                ]}
+              />
+              <p class="text-sm opacity-60">
+                Whichever you choose is shown at the table. Weighting the dice
+                without telling the players is not a house edge, it is cheating.
+              </p>
+            </div>
+          </div>
+
+          <p class="text-sm opacity-60">
+            An add-on that is off is not linked, not reachable, and downloads
+            nothing to the browser.
+          </p>
+
+          <button type="submit" class="btn btn-primary btn-sm">
+            <.icon name="hero-check" class="size-4" /> Save add-ons
+          </button>
+        </.form>
+
+        <%!-- Its own form: a form cannot be nested inside another, and this
+              is an action on one account rather than an instance setting. --%>
+        <div class="mt-5 border-t border-base-300 pt-4">
+          <h3 class="text-sm font-medium">Craps chips</h3>
+          <p class="mt-1 text-sm opacity-60">
+            A broke player is topped back up to {Veejr.AddOns.Craps.starting_stack()} on their
+            own when they sit down. Use this to set a stack outright. It is
+            recorded in the audit log like any other change to an account.
+          </p>
+
+          <.form
+            for={@chips_form}
+            id="craps-chips-form"
+            phx-submit="set_craps_chips"
+            class="mt-3 flex flex-wrap items-end gap-2"
+          >
+            <div class="min-w-48 flex-1">
+              <.input
+                field={@chips_form[:user_id]}
+                type="select"
+                label="Player"
+                prompt="Pick a member"
+                options={
+                  Enum.map(@accounts, &{&1.user.display_name || "@#{&1.user.username}", &1.user.id})
+                }
+              />
+            </div>
+            <div class="w-36">
+              <.input
+                field={@chips_form[:amount]}
+                type="number"
+                min="0"
+                max={Admin.max_craps_chips()}
+                label="Set stack to"
+              />
+            </div>
+            <button type="submit" class="btn btn-outline btn-sm">
+              <.icon name="hero-banknotes" class="size-4" /> Set stack
+            </button>
+          </.form>
+        </div>
+      </.admin_panel>
+
+      <.admin_panel
         id="admin-settings"
         title="Instance settings"
         subtitle="Registration, storage, retention, and mail defaults"
@@ -825,6 +930,60 @@ defmodule VeejrWeb.AdminLive do
     {:noreply, assign(socket, settings_form: form)}
   end
 
+  def handle_event("validate_add_ons", %{"add_ons" => params}, socket) do
+    form =
+      params
+      |> Admin.change_instance_settings()
+      |> Map.put(:action, :validate)
+      |> to_form(as: "add_ons")
+
+    {:noreply, assign(socket, add_ons_form: form)}
+  end
+
+  def handle_event("save_add_ons", %{"add_ons" => params}, socket) do
+    case Admin.update_instance_settings(socket.assigns.current_scope.user, params) do
+      {:ok, _settings} ->
+        {:noreply, socket |> put_flash(:info, "Add-ons saved.") |> load_dashboard()}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, add_ons_form: to_form(changeset, as: "add_ons"))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not save add-ons.")}
+    end
+  end
+
+  def handle_event("set_craps_chips", %{"chips" => params}, socket) do
+    with {user_id, ""} <- Integer.parse(params["user_id"] || ""),
+         {amount, ""} <- Integer.parse(String.trim(params["amount"] || "")),
+         {:ok, user} <- Admin.set_craps_chips(socket.assigns.current_scope.user, user_id, amount) do
+      name = user.display_name || "@#{user.username}"
+
+      {:noreply,
+       socket
+       |> put_flash(:info, "#{name} now has #{amount} chips.")
+       |> load_dashboard()}
+    else
+      {:error, :invalid_amount} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Enter a whole number up to #{Admin.max_craps_chips()}.")
+         |> assign(:chips_form, chips_form(params))}
+
+      {:error, reason} when reason in [:not_found, :not_local] ->
+        {:noreply, put_flash(socket, :error, "That is not a member of this instance.")}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "Could not set that stack.")}
+
+      _unparseable ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Pick a player and enter a whole number of chips.")
+         |> assign(:chips_form, chips_form(params))}
+    end
+  end
+
   def handle_event("save_settings", %{"settings" => params}, socket) do
     case Admin.update_instance_settings(socket.assigns.current_scope.user, params) do
       {:ok, _settings} ->
@@ -1149,8 +1308,19 @@ defmodule VeejrWeb.AdminLive do
       peers: Admin.list_peers(),
       pending_key_changes: Admin.list_pending_key_changes(),
       operational_failures: Admin.list_operational_failures(),
-      settings_form: to_form(Admin.change_instance_settings(), as: "settings")
+      settings_form: to_form(Admin.change_instance_settings(), as: "settings"),
+      add_ons: Veejr.AddOns.all(),
+      add_ons_form: to_form(Admin.change_instance_settings(), as: "add_ons"),
+      chips_form: chips_form()
     )
+  end
+
+  # Defaults to a full starting stack, which is what "replenish" almost
+  # always means.
+  defp chips_form(params \\ %{}) do
+    defaults = %{"user_id" => "", "amount" => Veejr.AddOns.Craps.starting_stack()}
+
+    to_form(Map.merge(defaults, params), as: "chips")
   end
 
   defp assign_software_update(socket, latest) do
@@ -1186,6 +1356,7 @@ defmodule VeejrWeb.AdminLive do
   defp account_status_class(%{confirmed_at: nil}), do: "badge-warning"
   defp account_status_class(_user), do: "badge-success"
 
+  defp audit_action_label("craps.chips_set"), do: "Craps chips set"
   defp audit_action_label("account.reactivated"), do: "Account reactivated"
   defp audit_action_label("account.suspended"), do: "Account suspended"
   defp audit_action_label("account_move.cancelled"), do: "Account move cancelled"

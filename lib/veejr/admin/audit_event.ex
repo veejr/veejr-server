@@ -13,6 +13,7 @@ defmodule Veejr.Admin.AuditEvent do
     "account_move.test_verified",
     "account.reactivated",
     "account.suspended",
+    "craps.chips_set",
     "federation.retried",
     "instance.mail_tested",
     "instance.settings_updated",

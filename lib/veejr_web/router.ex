@@ -238,6 +238,10 @@ defmodule VeejrWeb.Router do
       live "/watch/:public_id", WatchLive, :show
       live "/calls", CallsLive
       live "/call/:public_id", CallLive
+
+      # Add-on pages. Each refuses to mount unless the instance offers it —
+      # see Veejr.AddOns.
+      live "/craps", CrapsLive
     end
 
     post "/users/update-password", UserSessionController, :update_password
@@ -267,6 +271,12 @@ defmodule VeejrWeb.Router do
 
     live_session :guest_watch_party do
       live "/watch/guest/:token", GuestWatchLive, :show
+    end
+
+    # An emailed seat at the craps table. The capability in the URL is the
+    # whole of the authorization; no account is involved.
+    live_session :craps_guest do
+      live "/craps/guest/:token", CrapsGuestLive, :show
     end
 
     live_session :current_user,
