@@ -1,6 +1,7 @@
 import {clearFaviconActivity, setFaviconActivity} from "./favicon.js"
 import {PlaybackAssist} from "./youtube_assist.js"
 import {YOUTUBE_ORIGINS, youtubeEmbedUrl} from "./youtube_embed.js"
+import {syncActions} from "./youtube_sync.js"
 
 function playerCommand(iframe, func, args = []) {
   iframe?.contentWindow?.postMessage(
@@ -18,13 +19,19 @@ export const YouTubeWatch = {
     this.host = this.el.dataset.host === "true"
     this.videoId = this.el.dataset.videoId
     this.playback = this.el.dataset.playback || "paused"
+    // Where the party is: the host's own clock, or for a viewer the last
+    // thing the host told them. Kept apart from `playerPosition`, which is
+    // where this browser's player actually happens to be, because comparing
+    // the two is the only way to know whether a seek is warranted.
     this.position = Number(this.el.dataset.position) || 0
+    this.playerPosition = null
+    this.appliedPlayback = null
     this.ready = false
 
     this.assist = new PlaybackAssist({
       root: this.el,
       position: () => this.position,
-      release: () => this.guard?.classList.add("hidden"),
+      release: () => this.releasePlayer(),
       reload: () => this.reloadSignedIn(),
     })
     this.assist.watch(this.videoId)
@@ -50,7 +57,12 @@ export const YouTubeWatch = {
       if (message?.event === "onError") this.assist.observe({errorCode: Number(message.info)})
 
       if (message?.event === "infoDelivery") {
-        if (Number.isFinite(message.info?.currentTime)) this.position = message.info.currentTime
+        if (Number.isFinite(message.info?.currentTime)) {
+          this.playerPosition = message.info.currentTime
+          // Only the host's clock is the party's; a viewer's would overwrite
+          // the very target they are being measured against.
+          if (this.host) this.position = message.info.currentTime
+        }
         this.assist.observe({
           state: Number(message.info?.playerState),
           errorCode: Number(message.info?.errorCode),
@@ -129,12 +141,23 @@ export const YouTubeWatch = {
     this.listeningTimer = window.setInterval(this.listenToPlayer, 500)
   },
 
+  // Hands the player back so the viewer can answer whatever YouTube is asking
+  // of them. Their next move may well be a pause or a seek, so what was last
+  // applied is forgotten and the next report from the host puts them right.
+  releasePlayer() {
+    this.guard?.classList.add("hidden")
+    this.appliedPlayback = null
+    this.playerPosition = null
+  },
+
   // The same video, served by the YouTube host that can see the viewer's own
   // account, so a bot check finally has somewhere to be answered.
   reloadSignedIn() {
     if (!this.iframe || !this.videoId) return
 
     this.ready = false
+    this.appliedPlayback = null
+    this.playerPosition = null
     this.iframe.removeEventListener("load", this.listenToPlayer)
     this.iframe.src = youtubeEmbedUrl(this.videoId, {
       signedIn: true,
@@ -149,13 +172,27 @@ export const YouTubeWatch = {
     this.pushEvent("watch_control", {playback: this.playback, position: this.position})
   },
 
+  // Bring a viewer back in step with the host, doing as little as possible.
+  //
+  // The host reports every ten seconds and on every state change, so this
+  // runs constantly. Seeking or re-issuing play on each report makes the
+  // YouTube player surface its control bar, which is why the pause button
+  // used to blink into view on every viewer's screen for the whole party.
+  // Only an actual disagreement is worth correcting.
   applyPlayback() {
     if (!this.ready) return
-    playerCommand(this.iframe, "seekTo", [this.position, true])
-    playerCommand(this.iframe, this.playback === "playing" ? "playVideo" : "pauseVideo")
 
-    if (this.playback === "playing") this.assist.requested()
-    else this.assist.idle()
+    const {seek, command} = syncActions(this)
+
+    if (seek !== null) playerCommand(this.iframe, "seekTo", [seek, true])
+
+    if (command) {
+      playerCommand(this.iframe, command)
+      this.appliedPlayback = this.playback
+
+      if (this.playback === "playing") this.assist.requested()
+      else this.assist.idle()
+    }
   },
 }
 
