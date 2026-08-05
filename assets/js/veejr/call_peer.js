@@ -36,6 +36,12 @@ export class CallPeer {
     this.chatChannel = null
     this.remoteStream = null
     this.closed = false
+    // Media sections must be created in the same order on both sides of a
+    // connection. A camera or microphone being unavailable on one device
+    // must not make its first offer omit that section, because adding it in a
+    // later renegotiation changes the m-line order and Chromium rejects the
+    // next offer with "the order of m-lines ... doesn't match".
+    this.transceivers = new Map()
 
     // Per-pair state the session reads: what this peer says about their own
     // microphone and camera, how many recovery attempts this leg has spent,
@@ -97,10 +103,18 @@ export class CallPeer {
   // side's tracks rather than being receive-only.
   addLocalTracks(stream) {
     if (!stream || this.closed) return
-    const existing = new Set(this.pc.getSenders().map((s) => s.track).filter(Boolean))
 
-    for (const track of stream.getTracks()) {
-      if (!existing.has(track)) this.pc.addTrack(track, stream)
+    // Always establish the audio section before the video section, even when
+    // one of the tracks is missing. `addTransceiver(track)` assigns the track
+    // synchronously, so the first queued negotiation includes the settled
+    // capture state without relying on a later replaceTrack promise.
+    for (const kind of ["audio", "video"]) {
+      const track = stream.getTracks().find((item) => item.kind === kind)
+      const transceiver = this.pc.addTransceiver(track || kind, {
+        direction: "sendrecv",
+        ...(track ? {streams: [stream]} : {}),
+      })
+      this.transceivers.set(kind, transceiver)
     }
   }
 
@@ -208,7 +222,8 @@ export class CallPeer {
   }
 
   sender(kind) {
-    return this.pc.getSenders().find((s) => s.track && s.track.kind === kind)
+    return this.transceivers.get(kind)?.sender ||
+      this.pc.getSenders().find((s) => s.track?.kind === kind)
   }
 
   async replaceTrack(kind, track) {
@@ -216,7 +231,12 @@ export class CallPeer {
     if (sender) {
       await sender.replaceTrack(track)
     } else if (track && this.session.localStream) {
-      this.pc.addTrack(track, this.session.localStream)
+      // This is only a compatibility fallback for a peer created before the
+      // fixed transceiver set was installed. Keep its section order explicit
+      // rather than using addTrack, which appends an m-line opportunistically.
+      const transceiver = this.pc.addTransceiver(kind, {direction: "sendrecv"})
+      this.transceivers.set(kind, transceiver)
+      await transceiver.sender.replaceTrack(track)
     }
   }
 

@@ -30,6 +30,10 @@ defmodule VeejrWeb.Endpoint do
     from: :veejr,
     gzip: not code_reloading?,
     only: VeejrWeb.static_paths(),
+    # `~p"/manifest.webmanifest"` is rewritten to the digested
+    # `manifest-<hash>.webmanifest` in production. Keep the exact source path
+    # above for development and allow its hashed root-level form here.
+    only_matching: ["manifest-"],
     raise_on_missing_only: code_reloading?
 
   # Code reloading can be explicitly enabled under the
