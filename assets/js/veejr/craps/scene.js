@@ -13,6 +13,11 @@ const MIN_DISTANCE = 6
 const MAX_DISTANCE = 42
 const MAX_POLAR = Math.PI / 2.05
 
+// The felt is 16 units across and 5.76 deep, plus the rails and the oval end.
+const FELT_HALF_WIDTH = 9.4
+const FELT_HALF_DEPTH = 4.6
+const FIT_MARGIN = 1.06
+
 export function createScene(THREE, container) {
   const canvas = document.createElement("canvas")
   canvas.style.display = "block"
@@ -40,11 +45,20 @@ export function createScene(THREE, container) {
   scene.add(fill)
 
   // Spherical camera position, aimed a little behind centre so the near rail
-  // and the chip rack do not eat the bottom of the frame. The default radius
-  // is set to just fit the 16-unit felt at a 45 degree vertical field.
+  // and the chip rack do not eat the bottom of the frame.
   const target = new THREE.Vector3(0, 0, -0.6)
-  const orbit = {radius: 12.5, theta: 0, phi: 0.92}
+  const orbit = {radius: 14, theta: 0, phi: 0.92}
   const desired = {...orbit}
+
+  // How far back the whole felt fits at the current shape of the viewport.
+  // Going full screen changes the aspect — often from a wide strip to
+  // something nearly square — and a fixed distance would crop the table.
+  function fitRadius() {
+    const halfV = Math.tan((camera.fov * Math.PI) / 180 / 2)
+    const halfH = halfV * camera.aspect
+
+    return Math.max(FELT_HALF_WIDTH / halfH, FELT_HALF_DEPTH / halfV) * FIT_MARGIN
+  }
 
   function applyCamera() {
     // Ease toward the desired orbit so dragging feels weighted rather than rigid.
@@ -112,6 +126,12 @@ export function createScene(THREE, container) {
     camera.aspect = w / h
     camera.updateProjectionMatrix()
     renderer.setSize(w, h, false)
+
+    // Pull back far enough that the whole table is in frame again. Someone
+    // who had zoomed in keeps their view unless the new shape no longer
+    // holds it, which is what going full screen usually means.
+    const fit = fitRadius()
+    if (desired.radius < fit) desired.radius = Math.min(fit, MAX_DISTANCE)
   }
 
   const observer = new ResizeObserver(resize)

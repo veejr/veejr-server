@@ -87,16 +87,69 @@ defmodule VeejrWeb.CrapsComponents do
         <p class="mt-2 text-sm opacity-80">{dice_description(@dice_mode)}</p>
       </details>
 
-      <%!-- The felt. Everything it needs, three.js included, is fetched on
+      <%!-- The felt and the heads-up display that goes over it in full
+            screen. They are wrapped because the felt is phx-update="ignore" —
+            the scene owns that DOM — so anything that has to keep updating
+            must be a sibling rather than a child of it. --%>
+      <div id="craps-stage" class="relative">
+        <%!-- Everything the felt needs, three.js included, is fetched on
               arrival here; the CSS dice below stand in when WebGL is out. --%>
-      <div
-        id="craps-felt"
-        phx-hook="CrapsTable"
-        phx-update="ignore"
-        data-three-src={~p"/vendor/three.min.js"}
-        data-table={Jason.encode!(scene_state(@shown, @table, @player_id))}
-        class="group aspect-[16/10] w-full overflow-hidden rounded-2xl border border-base-300 bg-base-300 sm:aspect-[2/1]"
-      >
+        <div
+          id="craps-felt"
+          phx-hook="CrapsTable"
+          phx-update="ignore"
+          data-three-src={~p"/vendor/three.min.js"}
+          data-table={Jason.encode!(scene_state(@shown, @table, @player_id))}
+          class="group aspect-[16/10] w-full overflow-hidden rounded-2xl border border-base-300 bg-base-300 sm:aspect-[2/1]"
+        >
+        </div>
+
+        <%!-- Hidden until the felt fills the screen: in the page these same
+              numbers already sit underneath it. --%>
+        <div id="craps-hud" class="craps-hud" aria-hidden="true">
+          <div class="craps-hud-bar">
+            <div :if={@me} class="craps-hud-chips">
+              <span class="craps-hud-label">Chips</span>
+              <strong class="tabular-nums">{@me.chips}</strong>
+            </div>
+
+            <form :if={@me} phx-change="stake" class="craps-hud-stake">
+              <label class="craps-hud-label" for="craps-hud-stake">Chip</label>
+              <select id="craps-hud-stake" name="amount" class="select select-sm">
+                <option :for={amount <- @denominations} value={amount} selected={@stake == amount}>
+                  {amount}
+                </option>
+              </select>
+            </form>
+
+            <div :if={@me && @shooter?} class="craps-hud-roll">
+              <button
+                id="craps-hud-roll"
+                phx-click="roll"
+                class="btn btn-primary btn-sm"
+                disabled={not has_line_bet?(@my_bets) or @rolling != nil}
+              >
+                <.icon name="hero-cube" class="size-4" /> Roll
+              </button>
+            </div>
+          </div>
+
+          <div :if={@me} class="craps-hud-bets">
+            <span class="craps-hud-label">Your bets</span>
+            <p :if={@my_bets == []} class="craps-hud-empty">Nothing down yet.</p>
+            <ul>
+              <li :for={bet <- @my_bets}>
+                <span>
+                  {bet_label(bet.type)}
+                  <span :if={bet.target} class="opacity-60">
+                    &nbsp;on {bet.target}
+                  </span>
+                </span>
+                <strong class="tabular-nums">{bet.amount}</strong>
+              </li>
+            </ul>
+          </div>
+        </div>
       </div>
       <div class="-mt-2 flex flex-wrap items-center justify-center gap-3 text-xs opacity-45">
         <span>Drag to look around the table, scroll to zoom.</span>
@@ -131,7 +184,9 @@ defmodule VeejrWeb.CrapsComponents do
         // new size up on its own.
         export default {
           mounted() {
-            const felt = () => document.getElementById("craps-felt")
+            // The stage, not the felt: the heads-up display is a sibling of
+            // the canvas, and both have to come along.
+            const felt = () => document.getElementById("craps-stage")
 
             this.toggle = () => {
               if (document.fullscreenElement) {
@@ -148,6 +203,8 @@ defmodule VeejrWeb.CrapsComponents do
 
             this.paint = () => {
               const on = document.fullscreenElement === felt()
+              const hud = document.getElementById("craps-hud")
+              if (hud) hud.setAttribute("aria-hidden", on ? "false" : "true")
               this.el.setAttribute("aria-pressed", on ? "true" : "false")
               this.el.querySelector("[data-role=label]").textContent =
                 on ? "Exit full screen" : "Full screen"
@@ -243,6 +300,7 @@ defmodule VeejrWeb.CrapsComponents do
             {render_slot(@seat_control)}
             <button
               :if={@me && @shooter?}
+              id="craps-roll"
               phx-click="roll"
               class="btn btn-primary"
               disabled={not has_line_bet?(@my_bets) or @rolling != nil}

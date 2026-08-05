@@ -145,7 +145,7 @@ defmodule VeejrWeb.CrapsLiveTest do
     end
 
     test "sitting down draws a stack and the dice", %{view: view, admin: admin} do
-      refute has_element?(view, "button[phx-click='roll']")
+      refute has_element?(view, "#craps-roll")
 
       view |> element("button[phx-click='sit']") |> render_click()
 
@@ -157,12 +157,12 @@ defmodule VeejrWeb.CrapsLiveTest do
     test "the shooter cannot roll until there is a line bet", %{view: view} do
       sit(view)
 
-      assert has_element?(view, "button[phx-click='roll'][disabled]")
+      assert has_element?(view, "#craps-roll[disabled]")
       assert render(view) =~ "before you roll"
 
       drop_chip(view, "pass_line")
 
-      refute has_element?(view, "button[phx-click='roll'][disabled]")
+      refute has_element?(view, "#craps-roll[disabled]")
     end
 
     test "a chip dropped on the felt comes out of the stack", %{view: view} do
@@ -222,7 +222,7 @@ defmodule VeejrWeb.CrapsLiveTest do
       drop_chip(view, "pass_line")
       before = render(view)
 
-      view |> element("button[phx-click='roll']") |> render_click()
+      view |> element("#craps-roll") |> render_click()
       mid_air = render(view)
 
       # The server has already resolved. None of it may be on screen yet.
@@ -249,9 +249,9 @@ defmodule VeejrWeb.CrapsLiveTest do
       sit(view)
       drop_chip(view, "pass_line")
 
-      view |> element("button[phx-click='roll']") |> render_click()
+      view |> element("#craps-roll") |> render_click()
 
-      assert has_element?(view, "button[phx-click='roll'][disabled]")
+      assert has_element?(view, "#craps-roll[disabled]")
     end
 
     test "a bet landing mid-throw does not leak the outcome", %{view: view, conn: conn} do
@@ -261,7 +261,7 @@ defmodule VeejrWeb.CrapsLiveTest do
       watcher |> element("button[phx-click='sit']") |> render_click()
 
       drop_chip(view, "pass_line")
-      view |> element("button[phx-click='roll']") |> render_click()
+      view |> element("#craps-roll") |> render_click()
 
       # Another player betting broadcasts state that already carries the
       # resolved roll; the watcher must still see nothing.
@@ -274,7 +274,7 @@ defmodule VeejrWeb.CrapsLiveTest do
     test "a browser that never reports still gets its outcome", %{view: view} do
       sit(view)
       drop_chip(view, "pass_line")
-      view |> element("button[phx-click='roll']") |> render_click()
+      view |> element("#craps-roll") |> render_click()
 
       assert render(view) =~ "Dice in the air"
 
@@ -380,7 +380,7 @@ defmodule VeejrWeb.CrapsLiveTest do
       {:ok, watcher, _html} = conn |> log_in_user(other) |> live(~p"/craps")
       watcher |> element("button[phx-click='sit']") |> render_click()
 
-      view |> element("button[phx-click='roll']") |> render_click()
+      view |> element("#craps-roll") |> render_click()
       render_hook(watcher, "felt_bet", %{"bet" => "field"})
 
       # The felt must not gain a chip mid-throw either: bets ride on `shown`.
@@ -389,6 +389,54 @@ defmodule VeejrWeb.CrapsLiveTest do
       render_hook(view, "dice_settled", %{"id" => scene(view)["last_roll"]["id"]})
 
       assert Enum.any?(scene(view)["bets"], &(&1["type"] == "field"))
+    end
+
+    test "the full-screen overlay carries the chips, the stake and the bets", %{view: view} do
+      sit(view)
+      view |> element("button[phx-value-amount='25']") |> render_click()
+      drop_chip(view, "pass_line")
+
+      hud = view |> element("#craps-hud") |> render()
+
+      assert hud =~ "Chips"
+      assert hud =~ "975"
+      assert hud =~ "Your bets"
+      assert hud =~ "Pass line"
+      # The stake is a dropdown here rather than the row of buttons that fits
+      # under the felt in the page.
+      assert has_element?(view, "#craps-hud-stake option[value='25'][selected]")
+    end
+
+    test "the overlay's stake dropdown changes what a chip is worth", %{view: view} do
+      sit(view)
+
+      view
+      |> element("#craps-hud form[phx-change='stake']")
+      |> render_change(%{"amount" => "100"})
+
+      drop_chip(view, "pass_line")
+
+      assert render(view) =~ "900"
+      assert has_element?(view, "#craps-my-bets", "100")
+    end
+
+    test "the overlay is a sibling of the felt, not inside the ignored subtree", %{view: view} do
+      # The scene owns the felt's DOM, so an overlay placed inside it would
+      # never be patched again.
+      assert has_element?(view, "#craps-stage > #craps-felt[phx-update='ignore']")
+      assert has_element?(view, "#craps-stage > #craps-hud")
+      refute has_element?(view, "#craps-felt #craps-hud")
+    end
+
+    test "the overlay offers the shooter a way to roll without leaving", %{view: view} do
+      sit(view)
+
+      assert has_element?(view, "#craps-hud-roll[disabled]")
+
+      drop_chip(view, "pass_line")
+
+      assert has_element?(view, "#craps-hud-roll")
+      refute has_element?(view, "#craps-hud-roll[disabled]")
     end
 
     test "a friend can be asked to come and play", %{conn: conn, admin: admin} do

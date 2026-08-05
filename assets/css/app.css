@@ -3155,11 +3155,97 @@ select :is(option, optgroup) {
 
 /* Full screen: the aspect-ratio box that shapes the felt in the page would
    letterbox it against the display, so drop it and fill. */
-#craps-felt:fullscreen {
+#craps-stage:fullscreen,
+#craps-stage:fullscreen #craps-felt {
   width: 100vw;
   height: 100vh;
   max-width: none;
   aspect-ratio: auto;
   border-radius: 0;
   border: 0;
+}
+
+/* The heads-up display. In the page these numbers already sit under the felt,
+   so it earns its place only once the table has the whole screen. */
+.craps-hud {
+  display: none;
+}
+
+#craps-stage:fullscreen .craps-hud {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1rem clamp(1rem, 4vw, 3rem);
+  /* The felt underneath has to stay draggable and clickable, so only the
+     panels themselves take the pointer. */
+  pointer-events: none;
+}
+
+.craps-hud-bar,
+.craps-hud-bets {
+  pointer-events: auto;
+  border-radius: 1rem;
+  background: oklch(20% 0.02 265 / 0.82);
+  color: oklch(97% 0 0);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 0 oklch(100% 0 0 / 0.08) inset;
+}
+
+.craps-hud-bar {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.6rem 1rem;
+}
+
+.craps-hud-chips strong {
+  display: block;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  font-weight: 600;
+}
+
+.craps-hud-label {
+  display: block;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.craps-hud-stake {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.craps-hud-bets {
+  align-self: flex-end;
+  min-width: 13rem;
+  max-width: min(22rem, 40vw);
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+}
+
+.craps-hud-bets ul {
+  margin-top: 0.35rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.craps-hud-bets li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.craps-hud-empty {
+  margin-top: 0.35rem;
+  opacity: 0.6;
 }
