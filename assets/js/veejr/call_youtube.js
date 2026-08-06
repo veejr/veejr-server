@@ -69,6 +69,8 @@ export class CallYouTube {
     this.position = 0
     this.appliedPlayback = null
     this.playerPosition = null
+    this.playerState = null
+    this.released = false
     this.localVideoClass = null
     this.faviconSource = `${hook.faviconSource || `call:${hook.el.dataset.callId}`}:youtube`
 
@@ -100,6 +102,7 @@ export class CallYouTube {
   releasePlayer() {
     this.iframe?.classList.remove("pointer-events-none")
     this.appliedPlayback = null
+    this.released = true
   }
 
   // The same video from the YouTube host that can see the viewer's own
@@ -111,6 +114,7 @@ export class CallYouTube {
     this.ready = false
     this.appliedPlayback = null
     this.playerPosition = null
+    this.playerState = null
     this.createPlayer()
     this.releasePlayer()
   }
@@ -284,6 +288,7 @@ export class CallYouTube {
     this.position = position
     this.appliedPlayback = null
     this.playerPosition = null
+    this.playerState = null
     this.ready = false
     // A new video deserves the privacy host again, whatever the last one needed.
     this.signedIn = false
@@ -312,6 +317,17 @@ export class CallYouTube {
         command(this.iframe, "getCurrentTime")
         this.sendControl()
       }, 5_000)
+    } else {
+      // A viewer learns its own position only from `infoDelivery`, which the
+      // player volunteers while it is playing and hardly at all when it is
+      // not. Without a poll of its own, a viewer whose video never started
+      // keeps an unknown position, every controller update reads as adrift,
+      // and the player is re-seeked forever without ever being told to play
+      // again. Asking costs one postMessage every five seconds.
+      this.heartbeat = window.setInterval(() => {
+        command(this.iframe, "getCurrentTime")
+        this.applyRemotePlayback()
+      }, 5_000)
     }
   }
 
@@ -320,6 +336,10 @@ export class CallYouTube {
     // controller's heartbeat outlives it, so only the handshake is torn down.
     this.clearListening()
     this.playerContainer?.replaceChildren()
+
+    // A fresh frame starts back under this code's control, whatever the last
+    // one was handed over for.
+    this.released = false
 
     const iframe = document.createElement("iframe")
     iframe.id = `call-youtube-iframe-${this.hook.el.dataset.callId}`
@@ -366,6 +386,10 @@ export class CallYouTube {
       this.ready = true
       window.clearInterval(this.listeningTimer)
       command(this.iframe, "addEventListener", ["onStateChange"])
+      // Without this the player never pushes `onError`, so a video that
+      // refuses to embed reaches the assist only via the slower stall
+      // heuristic — and never at all if playback was not asked for yet.
+      command(this.iframe, "addEventListener", ["onError"])
       command(this.iframe, "getCurrentTime")
       if (!this.localController) this.applyRemotePlayback()
     }
@@ -378,6 +402,10 @@ export class CallYouTube {
         if (this.localController) this.position = this.playerPosition
       }
 
+      if (Number.isFinite(message.info?.playerState)) {
+        this.playerState = Number(message.info.playerState)
+      }
+
       this.assist.observe({
         state: Number(message.info?.playerState),
         errorCode: Number(message.info?.errorCode),
@@ -385,12 +413,18 @@ export class CallYouTube {
     }
 
     if (message?.event === "onStateChange") {
+      this.playerState = Number(message.info)
       this.assist.observe({state: Number(message.info)})
 
       if (this.localController) {
         if (message.info === 1) this.playback = "playing"
         if (message.info === 0 || message.info === 2) this.playback = "paused"
         if ([0, 1, 2].includes(message.info)) this.sendControl()
+      } else {
+        // The player just contradicted or confirmed what it was told. Either
+        // way this is the moment to re-check, and `syncActions` stays quiet
+        // when the two already agree.
+        this.applyRemotePlayback()
       }
     }
   }
@@ -415,7 +449,16 @@ export class CallYouTube {
   applyRemotePlayback() {
     if (!this.ready || !this.unlocked || this.localController) return
 
-    const {seek, command: next} = syncActions(this)
+    const {seek, command: next} = syncActions({
+      playerPosition: this.playerPosition,
+      position: this.position,
+      appliedPlayback: this.appliedPlayback,
+      playback: this.playback,
+      // While the player is in the viewer's own hands — they are answering a
+      // bot check — their pause has to stand. Withholding the state falls
+      // back to asking once rather than fighting them for the controls.
+      playerState: this.released ? null : this.playerState,
+    })
 
     if (seek !== null) command(this.iframe, "seekTo", [seek, true])
 
@@ -451,6 +494,8 @@ export class CallYouTube {
     this.ready = false
     this.appliedPlayback = null
     this.playerPosition = null
+    this.playerState = null
+    this.released = false
     this.hook.el.dataset.youtubeActive = "false"
     clearFaviconActivity(this.faviconSource)
     this.stage?.classList.add("hidden")

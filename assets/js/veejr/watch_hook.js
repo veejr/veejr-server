@@ -25,6 +25,8 @@ export const YouTubeWatch = {
     // the two is the only way to know whether a seek is warranted.
     this.position = Number(this.el.dataset.position) || 0
     this.playerPosition = null
+    this.playerState = null
+    this.released = false
     this.appliedPlayback = null
     this.ready = false
 
@@ -50,6 +52,10 @@ export const YouTubeWatch = {
         this.ready = true
         if (this.listeningTimer) window.clearInterval(this.listeningTimer)
         playerCommand(this.iframe, "addEventListener", ["onStateChange"])
+        // Without this the player never pushes `onError`, so a video that
+        // refuses to embed reaches the assist only via the slower stall
+        // heuristic — and never at all if playback was not asked for yet.
+        playerCommand(this.iframe, "addEventListener", ["onError"])
         playerCommand(this.iframe, "getCurrentTime")
         if (!this.host) this.applyPlayback()
       }
@@ -63,6 +69,9 @@ export const YouTubeWatch = {
           // the very target they are being measured against.
           if (this.host) this.position = message.info.currentTime
         }
+        if (Number.isFinite(message.info?.playerState)) {
+          this.playerState = Number(message.info.playerState)
+        }
         this.assist.observe({
           state: Number(message.info?.playerState),
           errorCode: Number(message.info?.errorCode),
@@ -70,12 +79,18 @@ export const YouTubeWatch = {
       }
 
       if (message?.event === "onStateChange") {
+        this.playerState = Number(message.info)
         this.assist.observe({state: Number(message.info)})
 
         if (this.host) {
           if (message.info === 1) this.playback = "playing"
           if (message.info === 0 || message.info === 2) this.playback = "paused"
           if ([0, 1, 2].includes(message.info)) this.reportPlayback()
+        } else {
+          // The player just contradicted or confirmed what it was told. Either
+          // way this is the moment to re-check, and `syncActions` stays quiet
+          // when the two already agree.
+          this.applyPlayback()
         }
       }
     }
@@ -109,6 +124,16 @@ export const YouTubeWatch = {
       this.heartbeat = window.setInterval(() => {
         playerCommand(this.iframe, "getCurrentTime")
         this.reportPlayback()
+      }, 10_000)
+    } else {
+      // A viewer learns its own position only from `infoDelivery`, which the
+      // player volunteers while it is playing and hardly at all when it is
+      // not. Without a poll of its own, a viewer whose video never started
+      // keeps an unknown position, every host report reads as adrift, and the
+      // player is re-seeked forever without ever being told to play again.
+      this.heartbeat = window.setInterval(() => {
+        playerCommand(this.iframe, "getCurrentTime")
+        this.applyPlayback()
       }, 10_000)
     }
 
@@ -148,6 +173,7 @@ export const YouTubeWatch = {
     this.guard?.classList.add("hidden")
     this.appliedPlayback = null
     this.playerPosition = null
+    this.released = true
   },
 
   // The same video, served by the YouTube host that can see the viewer's own
@@ -158,6 +184,7 @@ export const YouTubeWatch = {
     this.ready = false
     this.appliedPlayback = null
     this.playerPosition = null
+    this.playerState = null
     this.iframe.removeEventListener("load", this.listenToPlayer)
     this.iframe.src = youtubeEmbedUrl(this.videoId, {
       signedIn: true,
@@ -182,7 +209,16 @@ export const YouTubeWatch = {
   applyPlayback() {
     if (!this.ready) return
 
-    const {seek, command} = syncActions(this)
+    const {seek, command} = syncActions({
+      playerPosition: this.playerPosition,
+      position: this.position,
+      appliedPlayback: this.appliedPlayback,
+      playback: this.playback,
+      // While the player is in the viewer's own hands — they are answering a
+      // bot check — their pause has to stand. Withholding the state falls
+      // back to asking once rather than fighting them for the controls.
+      playerState: this.released ? null : this.playerState,
+    })
 
     if (seek !== null) playerCommand(this.iframe, "seekTo", [seek, true])
 
