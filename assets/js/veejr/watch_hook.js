@@ -26,6 +26,7 @@ export const YouTubeWatch = {
     this.position = Number(this.el.dataset.position) || 0
     this.playerPosition = null
     this.playerState = null
+    this.positionRequest = null
     this.released = false
     this.appliedPlayback = null
     this.ready = false
@@ -63,11 +64,16 @@ export const YouTubeWatch = {
       if (message?.event === "onError") this.assist.observe({errorCode: Number(message.info)})
 
       if (message?.event === "infoDelivery") {
+        let positionRequest = null
+
         if (Number.isFinite(message.info?.currentTime)) {
           this.playerPosition = message.info.currentTime
           // Only the host's clock is the party's; a viewer's would overwrite
           // the very target they are being measured against.
           if (this.host) this.position = message.info.currentTime
+
+          positionRequest = this.positionRequest
+          this.positionRequest = null
         }
         if (Number.isFinite(message.info?.playerState)) {
           this.playerState = Number(message.info.playerState)
@@ -76,6 +82,9 @@ export const YouTubeWatch = {
           state: Number(message.info?.playerState),
           errorCode: Number(message.info?.errorCode),
         })
+
+        if (positionRequest === "report") this.reportPlayback()
+        if (positionRequest === "sync") this.applyPlayback()
       }
 
       if (message?.event === "onStateChange") {
@@ -85,7 +94,7 @@ export const YouTubeWatch = {
         if (this.host) {
           if (message.info === 1) this.playback = "playing"
           if (message.info === 0 || message.info === 2) this.playback = "paused"
-          if ([0, 1, 2].includes(message.info)) this.reportPlayback()
+          if ([0, 1, 2].includes(message.info)) this.requestPlaybackReport()
         } else {
           // The player just contradicted or confirmed what it was told. Either
           // way this is the moment to re-check, and `syncActions` stays quiet
@@ -122,8 +131,7 @@ export const YouTubeWatch = {
 
     if (this.host) {
       this.heartbeat = window.setInterval(() => {
-        playerCommand(this.iframe, "getCurrentTime")
-        this.reportPlayback()
+        this.requestPlaybackReport()
       }, 10_000)
     } else {
       // A viewer learns its own position only from `infoDelivery`, which the
@@ -132,8 +140,8 @@ export const YouTubeWatch = {
       // keeps an unknown position, every host report reads as adrift, and the
       // player is re-seeked forever without ever being told to play again.
       this.heartbeat = window.setInterval(() => {
+        this.positionRequest = "sync"
         playerCommand(this.iframe, "getCurrentTime")
-        this.applyPlayback()
       }, 10_000)
     }
 
@@ -185,6 +193,7 @@ export const YouTubeWatch = {
     this.appliedPlayback = null
     this.playerPosition = null
     this.playerState = null
+    this.positionRequest = null
     this.iframe.removeEventListener("load", this.listenToPlayer)
     this.iframe.src = youtubeEmbedUrl(this.videoId, {
       signedIn: true,
@@ -197,6 +206,14 @@ export const YouTubeWatch = {
 
   reportPlayback() {
     this.pushEvent("watch_control", {playback: this.playback, position: this.position})
+  },
+
+  // `getCurrentTime` answers asynchronously. Reporting before its
+  // `infoDelivery` response sends the previous heartbeat's position and makes
+  // every viewer jump backwards on the next synchronization pass.
+  requestPlaybackReport() {
+    this.positionRequest = "report"
+    playerCommand(this.iframe, "getCurrentTime")
   },
 
   // Bring a viewer back in step with the host, doing as little as possible.

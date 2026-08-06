@@ -27,6 +27,7 @@ function remoteViewer(overrides = {}) {
     assist: {
       requested() {},
       idle() {},
+      observe() {},
     },
     ...overrides,
   })
@@ -47,6 +48,66 @@ test("a conference controller is never driven as a remote player", () => {
   const {viewer, messages} = remoteViewer({localController: true})
 
   viewer.applyRemotePlayback()
+
+  assert.deepEqual(messages, [])
+})
+
+test("a controller reports the fresh position returned by YouTube", () => {
+  const commands = []
+  const controls = []
+  const contentWindow = {
+    postMessage(message) {
+      commands.push(JSON.parse(message))
+    },
+  }
+  const youtube = Object.assign(Object.create(CallYouTube.prototype), {
+    active: true,
+    localController: true,
+    playback: "playing",
+    position: 10,
+    playerPosition: 10,
+    playerState: 1,
+    positionRequest: null,
+    iframe: {id: "controller-player", contentWindow},
+    assist: {observe() {}},
+    hook: {
+      chatReady: () => true,
+      sendChatJson(payload) {
+        controls.push(payload)
+      },
+    },
+  })
+
+  youtube.requestControlReport()
+
+  assert.deepEqual(commands.map(({func}) => func), ["getCurrentTime"])
+  assert.deepEqual(controls, [])
+
+  youtube.handlePlayerMessage({
+    origin: "https://www.youtube.com",
+    source: contentWindow,
+    data: {event: "infoDelivery", info: {currentTime: 15, playerState: 1}},
+  })
+
+  assert.equal(controls.length, 1)
+  assert.equal(controls[0].position, 15)
+})
+
+test("a viewer waits for its fresh position before deciding to seek", () => {
+  const {viewer, messages} = remoteViewer({
+    active: true,
+    playerPosition: 90,
+    position: 100,
+    appliedPlayback: "playing",
+    playerState: 1,
+    positionRequest: "sync",
+  })
+
+  viewer.handlePlayerMessage({
+    origin: "https://www.youtube.com",
+    source: viewer.iframe.contentWindow,
+    data: {event: "infoDelivery", info: {currentTime: 100, playerState: 1}},
+  })
 
   assert.deepEqual(messages, [])
 })
