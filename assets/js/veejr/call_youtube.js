@@ -69,6 +69,7 @@ export class CallYouTube {
     this.position = 0
     this.appliedPlayback = null
     this.playerPosition = null
+    this.localVideoClass = null
     this.faviconSource = `${hook.faviconSource || `call:${hook.el.dataset.callId}`}:youtube`
 
     this.assist = new PlaybackAssist({
@@ -259,6 +260,19 @@ export class CallYouTube {
     return false
   }
 
+  // A share ends on its controller's say-so, and that message travels the
+  // controller's own data channel. When they leave instead of stopping, no
+  // `youtube_stop` can ever arrive, so every viewer would sit on a video
+  // nobody is steering and no button of theirs can dismiss. Screen sharing
+  // already gets this treatment in the hook's `dropPeer`.
+  peerLeft(id) {
+    if (!this.active || this.localController) return
+    if (String(this.controllerId) !== String(id)) return
+
+    this.stopShare()
+    this.hook.showCallNotice("YouTube sharing ended.")
+  }
+
   showShare(videoId, localController, playback, position) {
     this.stopShare()
     this.active = true
@@ -315,7 +329,13 @@ export class CallYouTube {
       origin: window.location.origin,
     })
     iframe.title = "Shared YouTube video"
-    iframe.allow = "autoplay; encrypted-media; picture-in-picture"
+    // Matches both watch-party embeds. Without `fullscreen` in `allow` — plus
+    // the legacy attribute for engines that still consult it — a fullscreen
+    // request originating inside the frame is refused outright. `fs` stays 0:
+    // the call supplies its own fullscreen control, which keeps the
+    // participant strip on screen instead of handing the display to YouTube.
+    iframe.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen"
+    iframe.allowFullscreen = true
     iframe.referrerPolicy = "strict-origin-when-cross-origin"
     iframe.className = `size-full ${this.localController ? "" : "pointer-events-none"}`
     this.playerContainer?.appendChild(iframe)
@@ -454,17 +474,21 @@ export class CallYouTube {
   // The shared video takes the stage, so the participants shrink to a strip.
   // The tile grid's own layout belongs to the hook, which re-applies it on
   // every roster change — hence a flag rather than a saved class name.
+  //
+  // The grid follows the share whether or not this participant has a local
+  // video element of their own; gating it on one used to leave the strip
+  // layout behind after a share ended.
   compactCallVideos(compact) {
-    const local = this.hook.localVideo
-    if (!local) return
-
     this.hook.compactTiles = compact
     this.hook.renderTiles()
+
+    const local = this.hook.localVideo
+    if (!local) return
 
     if (compact) {
       this.localVideoClass = local.className
       local.className = "absolute right-3 top-16 z-20 h-24 w-32 rounded-xl border border-white/20 bg-black object-cover shadow-xl sm:right-4 sm:h-32 sm:w-44"
-    } else if (this.localVideoClass) {
+    } else if (this.localVideoClass !== null) {
       local.className = this.localVideoClass
       this.localVideoClass = null
     }
