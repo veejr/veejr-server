@@ -105,3 +105,49 @@ test("a missing position is treated as the start, not as NaN", () => {
   assert.equal(actions.seek, 0)
   assert.equal(actions.command, "pauseVideo")
 })
+
+// What the player reports about itself, which is not the same as what it was
+// told. Asking once and recording that we asked leaves a refused play — or a
+// player that never left `unstarted` — stuck with nothing to correct it.
+
+test("a player that ignored the play it was sent is asked again", () => {
+  // -1 unstarted, 0 ended, 2 paused, 5 cued: none of them are playing.
+  for (const state of [-1, 0, 2, 5]) {
+    const actions = syncActions({...agreeing, playerState: state})
+    assert.equal(actions.command, "playVideo", `state ${state}`)
+  }
+})
+
+test("a player that is actually playing is left alone", () => {
+  // 1 playing, 3 buffering — buffering is on its way, not a refusal.
+  for (const state of [1, 3]) {
+    assert.equal(syncActions({...agreeing, playerState: state}).command, null, `state ${state}`)
+  }
+})
+
+test("a player still playing after a pause is asked again", () => {
+  const actions = syncActions({
+    ...agreeing,
+    playback: "paused",
+    appliedPlayback: "paused",
+    playerState: 1,
+  })
+
+  assert.equal(actions.command, "pauseVideo")
+})
+
+test("an unknown player state decides nothing on its own", () => {
+  // Before the player has said anything, and for callers that do not track
+  // it at all, the decision stays with appliedPlayback exactly as before.
+  for (const unknown of [null, undefined, NaN]) {
+    assert.equal(syncActions({...agreeing, playerState: unknown}).command, null, String(unknown))
+  }
+})
+
+test("re-asking does not become a loop once the player complies", () => {
+  // The correction is issued while the player disagrees and stops the moment
+  // it reports that it is playing.
+  assert.equal(syncActions({...agreeing, playerState: -1}).command, "playVideo")
+  assert.equal(syncActions({...agreeing, playerState: 3}).command, null)
+  assert.equal(syncActions({...agreeing, playerState: 1}).command, null)
+})
