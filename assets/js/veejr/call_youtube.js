@@ -447,7 +447,12 @@ export class CallYouTube {
   }
 
   applyRemotePlayback() {
-    if (!this.ready || !this.unlocked || this.localController) return
+    // Match watch-party viewers: cue and synchronize beneath the consent
+    // overlay, then let the tap reveal the player. Waiting until the overlay
+    // click to send the first seek/play commands leaves some dynamically
+    // created conference frames black, even though the same video works in a
+    // watch party. The overlay still owns pointer input until the viewer taps.
+    if (!this.ready || this.localController) return
 
     const {seek, command: next} = syncActions({
       playerPosition: this.playerPosition,
