@@ -61,6 +61,7 @@ export class CallYouTube {
     this.unlockLabel = hook.el.querySelector("[data-role='youtube-unlock-label']")
     this.active = false
     this.localController = false
+    this.localShareEnded = false
     this.controllerId = null
     this.ready = false
     this.unlocked = false
@@ -149,18 +150,27 @@ export class CallYouTube {
   }
 
   channelStateChanged(peer = null) {
-    if (!this.shareButton) return
     const ready = this.hook.chatReady()
-    this.shareButton.disabled = !ready
-    this.shareButton.title = ready
-      ? "Watch a YouTube video together"
-      : "YouTube sharing is available once the call connects"
+    if (this.shareButton) {
+      this.shareButton.disabled = !ready
+      this.shareButton.title = ready
+        ? "Watch a YouTube video together"
+        : "YouTube sharing is available once the call connects"
+    }
 
     // Conference data channels open independently. If this pair came up
     // after the share began, send the current state only to that participant;
     // the regular broadcast would be needlessly disruptive to existing
     // viewers and could race another peer's update.
-    if (ready && peer && this.active && this.localController) this.sendStart(peer)
+    if (!ready || !peer) return
+    if (this.active && this.localController) this.sendStart(peer)
+
+    // Stop is state too, not merely a one-shot notification. A peer whose
+    // SCTP channel was being rebuilt when the controller ended the share
+    // missed the broadcast and otherwise kept a dead player over healthy
+    // RTP video forever. Replaying the tombstone on that pair's new channel
+    // makes channel recovery converge in both directions.
+    if (!this.active && this.localShareEnded) this.sendStop(peer)
   }
 
   toggleShare() {
@@ -296,7 +306,10 @@ export class CallYouTube {
 
     this.stage?.classList.remove("hidden")
     this.stage?.classList.add("block")
-    if (localController) this.controllerId = null
+    if (localController) {
+      this.controllerId = null
+      this.localShareEnded = false
+    }
     this.controllerLabel.textContent = localController
       ? "You control this video"
       : `Controlled by ${this.controllerName()}`
@@ -478,14 +491,20 @@ export class CallYouTube {
 
   stopLocal() {
     if (!this.active || !this.localController) return
+    this.localShareEnded = true
     if (this.hook.chatReady()) {
-      try {
-        this.hook.sendChatJson({kind: "youtube_stop"})
-      } catch {
-        // Every peer has already disconnected.
-      }
+      this.sendStop()
     }
     this.stopShare()
+  }
+
+  sendStop(peer = null) {
+    try {
+      this.hook.sendChatJson({kind: "youtube_stop"}, peer)
+    } catch {
+      // No open route to this peer yet. `channelStateChanged` replays the
+      // stopped state if that pair's data channel comes back.
+    }
   }
 
   stopShare() {

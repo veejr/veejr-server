@@ -47,6 +47,27 @@ const CHAT_FILE_ID_BYTES = 36
 const CHAT_URL_PATTERN = /https?:\/\/[^\s<>"']+/giu
 const CALL_EXIT_MESSAGE = "Are you sure? This activity will close the conference."
 
+export function sendJsonToPeers(peers, payload) {
+  const message = JSON.stringify(payload)
+  let sent = 0
+  let lastError = null
+
+  // A conference fan-out must not stop at the first channel that closes
+  // between `openChatChannels` and `send`. Media can remain healthy while one
+  // pair's SCTP channel rebuilds, and the remaining peers still need the
+  // YouTube stop/control or chat item.
+  for (const peer of peers) {
+    try {
+      peer.chatChannel.send(message)
+      sent += 1
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  if (sent === 0) throw lastError || new Error("Call chat disconnected.")
+}
+
 let activeCallExitGuard = null
 let callExitGuardInstalled = false
 
@@ -1922,7 +1943,7 @@ export const CallSession = {
 
     const open = this.openChatChannels()
     if (open.length === 0) throw new Error("Call chat disconnected.")
-    for (const peer of open) peer.chatChannel.send(message)
+    sendJsonToPeers(open, payload)
   },
 
   async sendChatFile(file) {
