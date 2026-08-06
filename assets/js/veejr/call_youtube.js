@@ -249,8 +249,7 @@ export class CallYouTube {
 
       const playback = payload.playback === "playing" ? "playing" : "paused"
       const position = this.validPosition(payload.position)
-      this.controllerId = peer.id
-      this.showShare(payload.video_id, false, playback, position)
+      this.showShare(payload.video_id, false, playback, position, peer.id)
       this.hook.showCallNotice(`${peer.name} shared a YouTube video.`)
       return true
     }
@@ -289,10 +288,14 @@ export class CallYouTube {
     this.hook.showCallNotice("YouTube sharing ended.")
   }
 
-  showShare(videoId, localController, playback, position) {
+  showShare(videoId, localController, playback, position, controllerId = null) {
     this.stopShare()
     this.active = true
     this.localController = localController
+    // `stopShare` deliberately forgets the previous owner. Establish the new
+    // owner afterwards so subsequent controls and the eventual stop from this
+    // peer are accepted instead of being silently discarded.
+    this.controllerId = localController ? null : controllerId
     this.hook.el.dataset.youtubeActive = "true"
     setFaviconActivity(this.faviconSource, "youtube")
     this.videoId = videoId
@@ -310,7 +313,6 @@ export class CallYouTube {
     this.stage?.classList.remove("hidden")
     this.stage?.classList.add("block")
     if (localController) {
-      this.controllerId = null
       this.localShareEnded = false
     }
     this.controllerLabel.textContent = localController
