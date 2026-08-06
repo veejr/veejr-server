@@ -96,7 +96,7 @@ test("a watch-party host reports only after YouTube returns a fresh position", (
   }
 })
 
-test("a current watch-party viewer is not seeked using its stale poll", () => {
+test("a watch-party viewer ignores ordinary drift", () => {
   const originalDocument = globalThis.document
   const originalWindow = globalThis.window
   globalThis.document = fakeDocument()
@@ -112,17 +112,11 @@ test("a current watch-party viewer is not seeked using its stale poll", () => {
   try {
     commands.length = 0
     watch.ready = true
-    watch.playerPosition = 90
+    watch.playerPosition = 95
     watch.position = 100
     watch.appliedPlayback = "playing"
     watch.playerState = 1
-    watch.positionRequest = "sync"
-
-    watch.onMessage({
-      origin: "https://www.youtube.com",
-      source: contentWindow,
-      data: {event: "infoDelivery", info: {currentTime: 100, playerState: 1}},
-    })
+    watch.applyPlayback()
 
     assert.deepEqual(commands, [])
   } finally {
@@ -132,7 +126,7 @@ test("a current watch-party viewer is not seeked using its stale poll", () => {
   }
 })
 
-test("a host heartbeat refreshes the viewer before deciding to seek", () => {
+test("a host heartbeat ignores ordinary drift without polling the viewer", () => {
   const originalDocument = globalThis.document
   const originalWindow = globalThis.window
   globalThis.document = fakeDocument()
@@ -143,7 +137,7 @@ test("a host heartbeat refreshes the viewer before deciding to seek", () => {
     clearInterval,
   }
 
-  const {watch, commands, handlers, contentWindow} = mountedWatch(false)
+  const {watch, commands, handlers} = mountedWatch(false)
 
   try {
     commands.length = 0
@@ -155,15 +149,7 @@ test("a host heartbeat refreshes the viewer before deciding to seek", () => {
 
     handlers["watch:control"]({playback: "playing", position: 100})
 
-    assert.deepEqual(commands.map(({func}) => func), ["getCurrentTime"])
-
-    watch.onMessage({
-      origin: "https://www.youtube.com",
-      source: contentWindow,
-      data: {event: "infoDelivery", info: {currentTime: 100, playerState: 1}},
-    })
-
-    assert.deepEqual(commands.map(({func}) => func), ["getCurrentTime"])
+    assert.deepEqual(commands, [])
   } finally {
     watch.destroyed()
     globalThis.document = originalDocument

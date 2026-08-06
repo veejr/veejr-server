@@ -30,16 +30,16 @@ test("the repeat reports of an unchanged party do nothing", () => {
   }
 })
 
-test("small drift is tolerated rather than corrected", () => {
-  for (const off of [0, 0.5, 1, 1.9, -1.9]) {
+test("ordinary multi-second drift is tolerated rather than corrected", () => {
+  for (const off of [0, 0.5, 2, 5, 9.9, -9.9]) {
     const actions = syncActions({...agreeing, playerPosition: 100 + off})
     assert.equal(actions.seek, null, `off by ${off}`)
   }
 })
 
 test("real drift is corrected, in either direction", () => {
-  assert.equal(syncActions({...agreeing, playerPosition: 90}).seek, 100)
-  assert.equal(syncActions({...agreeing, playerPosition: 130}).seek, 100)
+  assert.equal(syncActions({...agreeing, playerPosition: 89}).seek, 100)
+  assert.equal(syncActions({...agreeing, playerPosition: 111}).seek, 100)
 })
 
 test("the tolerance is the boundary, not a suggestion", () => {

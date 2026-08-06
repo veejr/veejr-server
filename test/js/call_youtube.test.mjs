@@ -93,26 +93,7 @@ test("a controller reports the fresh position returned by YouTube", () => {
   assert.equal(controls[0].position, 15)
 })
 
-test("a viewer waits for its fresh position before deciding to seek", () => {
-  const {viewer, messages} = remoteViewer({
-    active: true,
-    playerPosition: 90,
-    position: 100,
-    appliedPlayback: "playing",
-    playerState: 1,
-    positionRequest: "sync",
-  })
-
-  viewer.handlePlayerMessage({
-    origin: "https://www.youtube.com",
-    source: viewer.iframe.contentWindow,
-    data: {event: "infoDelivery", info: {currentTime: 100, playerState: 1}},
-  })
-
-  assert.deepEqual(messages, [])
-})
-
-test("a conference heartbeat refreshes the viewer before deciding to seek", () => {
+test("a conference heartbeat ignores ordinary drift without polling the viewer", () => {
   const peer = {id: "controller"}
   const {viewer, messages} = remoteViewer({
     active: true,
@@ -128,15 +109,7 @@ test("a conference heartbeat refreshes the viewer before deciding to seek", () =
     peer,
   )
 
-  assert.deepEqual(messages.map(({func}) => func), ["getCurrentTime"])
-
-  viewer.handlePlayerMessage({
-    origin: "https://www.youtube.com",
-    source: viewer.iframe.contentWindow,
-    data: {event: "infoDelivery", info: {currentTime: 100, playerState: 1}},
-  })
-
-  assert.deepEqual(messages.map(({func}) => func), ["getCurrentTime"])
+  assert.deepEqual(messages, [])
 })
 
 test("an ended share is replayed when a peer data channel reopens", () => {
