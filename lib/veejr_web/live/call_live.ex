@@ -149,42 +149,50 @@ defmodule VeejrWeb.CallLive do
               <p class="mt-2 text-center text-sm leading-relaxed opacity-65">
                 Enter your encryption passphrase to connect securely. It stays on this device.
               </p>
-              <div class="mt-5 [&_.fieldset]:mb-0">
-                <.input
-                  id="call-passphrase"
-                  name="call_passphrase"
-                  type="password"
-                  value=""
-                  data-role="call-passphrase"
-                  label="Encryption passphrase"
-                  autocomplete="current-password"
-                />
-              </div>
-              <p
-                data-role="call-unlock-error"
-                role="alert"
-                class="mt-2 hidden text-sm text-error"
-              >
-              </p>
-              <div class="mt-5 grid gap-2 sm:grid-cols-2">
-                <button
-                  id="call-unlock-submit"
-                  type="button"
-                  data-role="unlock-call"
-                  class="btn btn-primary"
+              <%!-- A password field outside a form is invisible to password
+              managers, but a submitting one here would be worse: the passphrase
+              must never leave the device, and a default GET would put it in the
+              URL. `method="dialog"` outside a <dialog> does nothing on submit,
+              so the hook's handler is the only path and a JS failure navigates
+              nowhere. --%>
+              <form method="dialog" data-role="call-unlock-form">
+                <div class="mt-5 [&_.fieldset]:mb-0">
+                  <.input
+                    id="call-passphrase"
+                    name="call_passphrase"
+                    type="password"
+                    value=""
+                    data-role="call-passphrase"
+                    label="Encryption passphrase"
+                    autocomplete="current-password"
+                  />
+                </div>
+                <p
+                  data-role="call-unlock-error"
+                  role="alert"
+                  class="mt-2 hidden text-sm text-error"
                 >
-                  Unlock and continue
-                </button>
-                <button
-                  id="call-unlock-cancel"
-                  type="button"
-                  phx-click="hangup"
-                  data-call-exit
-                  class="btn btn-ghost"
-                >
-                  Cancel call
-                </button>
-              </div>
+                </p>
+                <div class="mt-5 grid gap-2 sm:grid-cols-2">
+                  <button
+                    id="call-unlock-submit"
+                    type="submit"
+                    data-role="unlock-call"
+                    class="btn btn-primary"
+                  >
+                    Unlock and continue
+                  </button>
+                  <button
+                    id="call-unlock-cancel"
+                    type="button"
+                    phx-click="hangup"
+                    data-call-exit
+                    class="btn btn-ghost"
+                  >
+                    Cancel call
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
 

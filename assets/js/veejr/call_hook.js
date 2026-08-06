@@ -379,13 +379,17 @@ export const CallSession = {
       }
     }
 
-    button.addEventListener("click", unlock)
-    input.addEventListener("keydown", event => {
-      if (event.key === "Enter") {
+    // The submit button lives in a `method="dialog"` form, so Enter and the
+    // click arrive here as one event and the browser never navigates.
+    const form = this.el.querySelector("[data-role=call-unlock-form]")
+    if (form) {
+      form.addEventListener("submit", event => {
         event.preventDefault()
         unlock()
-      }
-    })
+      })
+    } else {
+      button.addEventListener("click", unlock)
+    }
   },
 
   // ---------------------------------------------------------------- roster
@@ -513,6 +517,7 @@ export const CallSession = {
     }
 
     if (this.sharingPeerId === key) this.setPeerShareState(peer || {id: key}, false)
+    this.youtube?.peerLeft(key)
     this.renderTiles()
     this.updateChatComposer()
     this.youtube?.channelStateChanged()
