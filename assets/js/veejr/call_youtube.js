@@ -71,6 +71,7 @@ export class CallYouTube {
     this.appliedPlayback = null
     this.playerPosition = null
     this.playerState = null
+    this.positionRequest = null
     this.released = false
     this.localVideoClass = null
     this.faviconSource = `${hook.faviconSource || `call:${hook.el.dataset.callId}`}:youtube`
@@ -116,6 +117,7 @@ export class CallYouTube {
     this.appliedPlayback = null
     this.playerPosition = null
     this.playerState = null
+    this.positionRequest = null
     this.createPlayer()
     this.releasePlayer()
   }
@@ -299,6 +301,7 @@ export class CallYouTube {
     this.appliedPlayback = null
     this.playerPosition = null
     this.playerState = null
+    this.positionRequest = null
     this.ready = false
     // A new video deserves the privacy host again, whatever the last one needed.
     this.signedIn = false
@@ -327,8 +330,7 @@ export class CallYouTube {
 
     if (localController) {
       this.heartbeat = window.setInterval(() => {
-        command(this.iframe, "getCurrentTime")
-        this.sendControl()
+        this.requestControlReport()
       }, 5_000)
     } else {
       // A viewer learns its own position only from `infoDelivery`, which the
@@ -338,8 +340,8 @@ export class CallYouTube {
       // and the player is re-seeked forever without ever being told to play
       // again. Asking costs one postMessage every five seconds.
       this.heartbeat = window.setInterval(() => {
+        this.positionRequest = "sync"
         command(this.iframe, "getCurrentTime")
-        this.applyRemotePlayback()
       }, 5_000)
     }
   }
@@ -410,9 +412,14 @@ export class CallYouTube {
     if (message?.event === "onError") this.assist.observe({errorCode: Number(message.info)})
 
     if (message?.event === "infoDelivery") {
+      let positionRequest = null
+
       if (Number.isFinite(message.info?.currentTime)) {
         this.playerPosition = this.validPosition(message.info.currentTime)
         if (this.localController) this.position = this.playerPosition
+
+        positionRequest = this.positionRequest
+        this.positionRequest = null
       }
 
       if (Number.isFinite(message.info?.playerState)) {
@@ -423,6 +430,9 @@ export class CallYouTube {
         state: Number(message.info?.playerState),
         errorCode: Number(message.info?.errorCode),
       })
+
+      if (positionRequest === "report") this.sendControl()
+      if (positionRequest === "sync") this.applyRemotePlayback()
     }
 
     if (message?.event === "onStateChange") {
@@ -432,7 +442,7 @@ export class CallYouTube {
       if (this.localController) {
         if (message.info === 1) this.playback = "playing"
         if (message.info === 0 || message.info === 2) this.playback = "paused"
-        if ([0, 1, 2].includes(message.info)) this.sendControl()
+        if ([0, 1, 2].includes(message.info)) this.requestControlReport()
       } else {
         // The player just contradicted or confirmed what it was told. Either
         // way this is the moment to re-check, and `syncActions` stays quiet
@@ -457,6 +467,15 @@ export class CallYouTube {
     } catch {
       // The call lifecycle reports a closed data channel; playback can remain local.
     }
+  }
+
+  // The iframe replies to `getCurrentTime` later through `infoDelivery`.
+  // Sending before that reply broadcasts the previous poll's timestamp and
+  // makes remote players oscillate on every heartbeat.
+  requestControlReport() {
+    if (!this.active || !this.localController) return
+    this.positionRequest = "report"
+    command(this.iframe, "getCurrentTime")
   }
 
   applyRemotePlayback() {
