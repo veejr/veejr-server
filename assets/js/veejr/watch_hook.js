@@ -97,9 +97,9 @@ export const YouTubeWatch = {
           if ([0, 1, 2].includes(message.info)) this.requestPlaybackReport()
         } else {
           // The player just contradicted or confirmed what it was told. Either
-          // way this is the moment to re-check, and `syncActions` stays quiet
-          // when the two already agree.
-          this.applyPlayback()
+          // way this is the moment to re-check. Refresh its position first so
+          // a state event cannot turn an old timestamp into another seek.
+          this.requestPlaybackSync()
         }
       }
     }
@@ -109,7 +109,7 @@ export const YouTubeWatch = {
       if (this.host) return
       this.playback = detail.playback
       this.position = Number(detail.position) || 0
-      this.applyPlayback()
+      this.requestPlaybackSync()
     })
 
     // Before this tap the browser will not let the video make a sound. The
@@ -140,8 +140,7 @@ export const YouTubeWatch = {
       // keeps an unknown position, every host report reads as adrift, and the
       // player is re-seeked forever without ever being told to play again.
       this.heartbeat = window.setInterval(() => {
-        this.positionRequest = "sync"
-        playerCommand(this.iframe, "getCurrentTime")
+        this.requestPlaybackSync()
       }, 10_000)
     }
 
@@ -213,6 +212,17 @@ export const YouTubeWatch = {
   // every viewer jump backwards on the next synchronization pass.
   requestPlaybackReport() {
     this.positionRequest = "report"
+    playerCommand(this.iframe, "getCurrentTime")
+  },
+
+  // Host updates and the viewer's own polling timer are independent. A new
+  // host position may therefore arrive just before this viewer's next poll,
+  // when `playerPosition` is almost a heartbeat old. Comparing those values
+  // immediately invents drift and makes YouTube surface its controls on every
+  // update. Always decide from the asynchronous fresh response instead.
+  requestPlaybackSync() {
+    if (!this.ready || this.host) return
+    this.positionRequest = "sync"
     playerCommand(this.iframe, "getCurrentTime")
   },
 

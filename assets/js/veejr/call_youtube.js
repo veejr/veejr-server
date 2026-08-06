@@ -261,7 +261,7 @@ export class CallYouTube {
       if (!this.active || this.localController || this.controllerId !== peer.id) return true
       this.playback = payload.playback === "playing" ? "playing" : "paused"
       this.position = this.validPosition(payload.position)
-      this.applyRemotePlayback()
+      this.requestRemoteSync()
       return true
     }
 
@@ -340,8 +340,7 @@ export class CallYouTube {
       // and the player is re-seeked forever without ever being told to play
       // again. Asking costs one postMessage every five seconds.
       this.heartbeat = window.setInterval(() => {
-        this.positionRequest = "sync"
-        command(this.iframe, "getCurrentTime")
+        this.requestRemoteSync()
       }, 5_000)
     }
   }
@@ -445,9 +444,9 @@ export class CallYouTube {
         if ([0, 1, 2].includes(message.info)) this.requestControlReport()
       } else {
         // The player just contradicted or confirmed what it was told. Either
-        // way this is the moment to re-check, and `syncActions` stays quiet
-        // when the two already agree.
-        this.applyRemotePlayback()
+        // way this is the moment to re-check. Refresh its position first so
+        // a state event cannot turn an old timestamp into another seek.
+        this.requestRemoteSync()
       }
     }
   }
@@ -475,6 +474,16 @@ export class CallYouTube {
   requestControlReport() {
     if (!this.active || !this.localController) return
     this.positionRequest = "report"
+    command(this.iframe, "getCurrentTime")
+  }
+
+  // Controller heartbeats and viewer polls do not share a clock. Comparing a
+  // fresh controller update with the viewer's previous poll invents several
+  // seconds of drift and causes a visible seek/control-bar flash every five
+  // seconds. Wait for this player's fresh response before deciding.
+  requestRemoteSync() {
+    if (!this.active || !this.ready || this.localController) return
+    this.positionRequest = "sync"
     command(this.iframe, "getCurrentTime")
   }
 

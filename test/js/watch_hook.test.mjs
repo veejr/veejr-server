@@ -6,6 +6,7 @@ import {YouTubeWatch} from "../../assets/js/veejr/watch_hook.js"
 function mountedWatch(host) {
   const commands = []
   const controls = []
+  const handlers = {}
   const contentWindow = {
     postMessage(message) {
       commands.push(JSON.parse(message))
@@ -31,7 +32,9 @@ function mountedWatch(host) {
   }
   const watch = Object.assign(Object.create(YouTubeWatch), {
     el: element,
-    handleEvent() {},
+    handleEvent(event, callback) {
+      handlers[event] = callback
+    },
     pushEvent(event, payload) {
       controls.push({event, payload})
     },
@@ -39,7 +42,7 @@ function mountedWatch(host) {
 
   watch.mounted()
 
-  return {watch, commands, controls, contentWindow}
+  return {watch, commands, controls, handlers, contentWindow}
 }
 
 function fakeDocument() {
@@ -122,6 +125,45 @@ test("a current watch-party viewer is not seeked using its stale poll", () => {
     })
 
     assert.deepEqual(commands, [])
+  } finally {
+    watch.destroyed()
+    globalThis.document = originalDocument
+    globalThis.window = originalWindow
+  }
+})
+
+test("a host heartbeat refreshes the viewer before deciding to seek", () => {
+  const originalDocument = globalThis.document
+  const originalWindow = globalThis.window
+  globalThis.document = fakeDocument()
+  globalThis.window = {
+    addEventListener() {},
+    removeEventListener() {},
+    setInterval,
+    clearInterval,
+  }
+
+  const {watch, commands, handlers, contentWindow} = mountedWatch(false)
+
+  try {
+    commands.length = 0
+    watch.ready = true
+    watch.playerPosition = 95
+    watch.position = 95
+    watch.appliedPlayback = "playing"
+    watch.playerState = 1
+
+    handlers["watch:control"]({playback: "playing", position: 100})
+
+    assert.deepEqual(commands.map(({func}) => func), ["getCurrentTime"])
+
+    watch.onMessage({
+      origin: "https://www.youtube.com",
+      source: contentWindow,
+      data: {event: "infoDelivery", info: {currentTime: 100, playerState: 1}},
+    })
+
+    assert.deepEqual(commands.map(({func}) => func), ["getCurrentTime"])
   } finally {
     watch.destroyed()
     globalThis.document = originalDocument
