@@ -11,10 +11,10 @@
 // This lives apart from both callers because it was once fixed in only one of
 // them, and the other kept flickering for months.
 
-// How far a viewer may drift before a seek is worth the interruption. Small
-// enough that nobody notices the gap, large enough that ordinary jitter
-// between two players never triggers one.
-export const DRIFT_TOLERANCE_SECONDS = 2
+// Ignore ordinary multi-second drift completely. Only a viewer more than ten
+// seconds away is far enough out of sync to justify touching the player and
+// making YouTube surface its controls.
+export const DRIFT_TOLERANCE_SECONDS = 10
 
 // The two YouTube player states that mean the video is actually going.
 // `unstarted` (-1), `ended` (0), `paused` (2) and `cued` (5) all mean it is not.
