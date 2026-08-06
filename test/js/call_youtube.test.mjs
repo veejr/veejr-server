@@ -44,6 +44,66 @@ test("a conference viewer synchronizes beneath the tap overlay", () => {
   assert.equal(viewer.appliedPlayback, "playing")
 })
 
+test("a conference share keeps its controller through start, control, and stop", () => {
+  const peer = {id: "controller", name: "Alice"}
+  const messages = []
+  const youtube = Object.assign(Object.create(CallYouTube.prototype), {
+    active: false,
+    localController: false,
+    localShareEnded: false,
+    controllerId: null,
+    unlocked: false,
+    faviconSource: null,
+    released: false,
+    heartbeat: null,
+    iframe: {
+      id: "conference-player",
+      contentWindow: {
+        postMessage(message) {
+          messages.push(JSON.parse(message))
+        },
+      },
+    },
+    hook: {
+      el: {dataset: {}},
+      rosterEntry: () => peer,
+      showCallNotice() {},
+    },
+    assist: {watch() {}, hide() {}, requested() {}, idle() {}},
+    controllerLabel: {textContent: ""},
+    unlockLabel: {textContent: ""},
+    stopShare() {
+      this.active = false
+      this.controllerId = null
+    },
+    compactCallVideos() {},
+    createPlayer() {},
+    updateShareButton() {},
+  })
+
+  youtube.handlePayload(
+    {kind: "youtube_start", video_id: "dQw4w9WgXcQ", playback: "paused", position: 0},
+    peer,
+  )
+
+  assert.equal(youtube.controllerId, peer.id)
+  assert.equal(youtube.controllerLabel.textContent, "Controlled by Alice")
+
+  youtube.ready = true
+  youtube.playerPosition = 0
+  youtube.playerState = 2
+  youtube.appliedPlayback = "paused"
+  youtube.handlePayload(
+    {kind: "youtube_control", playback: "playing", position: 20},
+    peer,
+  )
+
+  assert.deepEqual(messages.map(({func}) => func), ["seekTo", "playVideo"])
+
+  youtube.handlePayload({kind: "youtube_stop"}, peer)
+  assert.equal(youtube.active, false)
+})
+
 test("a conference controller is never driven as a remote player", () => {
   const {viewer, messages} = remoteViewer({localController: true})
 
