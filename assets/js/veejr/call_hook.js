@@ -334,6 +334,7 @@ export const CallSession = {
     if (this.secureSessionStarted || !this.mySecret) return
     this.secureSessionStarted = true
     this.el.querySelector("[data-role=call-key-unlock]")?.classList.add("hidden")
+    this.showInitialDeviceSetup()
     this.setupControls()
     this.deviceChangeHandler = () => this.refreshDeviceChoices({recoverMissing: true})
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
@@ -346,6 +347,17 @@ export const CallSession = {
 
     this.setRoster(this.roster)
     for (const signal of this.pendingSealedSignals.splice(0)) this.openCallSignal(signal)
+  },
+
+  showInitialDeviceSetup() {
+    if (!this.setupEl || this.joinedCall) return
+
+    // The call cannot negotiate until this panel resolves `mediaReady`.
+    // LiveView may preserve the hook-owned DOM while the call state changes,
+    // including the `hidden` class left behind after a previous confirmation.
+    // Make the pre-call gate explicit instead of relying on initial markup.
+    this.setupEl.classList.remove("hidden")
+    this.setupEl.classList.add("flex")
   },
 
   showCallUnlock() {
