@@ -51,6 +51,8 @@ export class CallPeer {
     this.previousInbound = null
     this.disconnectTimer = null
     this.renegotiateTimer = null
+    this.chatReopenAttempts = 0
+    this.chatReopenTimer = null
 
     this.pc = new RTCPeerConnection({iceServers})
     this.#wire()
@@ -244,11 +246,40 @@ export class CallPeer {
     return this.chatChannel && this.chatChannel.readyState === "open"
   }
 
+  chatChannelOpened() {
+    this.chatReopenAttempts = 0
+  }
+
+  // A data channel can close while the connection carrying it lives on — an
+  // SCTP hiccup, or an ICE restart that takes the association with it. Media
+  // recovers through `restartIce`; this never did. `createChatChannel` refuses
+  // while a reference survives and nothing cleared it, so a pair that lost its
+  // channel stayed mute for the rest of the call: no chat, and no YouTube
+  // start, control or stop — messages the far side has no other route for.
+  //
+  // Only the impolite side creates one. The polite side receives the
+  // replacement through `ondatachannel`, exactly as it received the first.
+  chatChannelClosed(channel) {
+    if (this.chatChannel !== channel) return
+    this.chatChannel = null
+
+    if (this.closed || this.polite) return
+    if (["closed", "failed"].includes(this.pc.connectionState)) return
+    if (this.chatReopenAttempts >= 3) return
+
+    this.chatReopenAttempts += 1
+    clearTimeout(this.chatReopenTimer)
+    this.chatReopenTimer = setTimeout(() => {
+      if (!this.closed) this.createChatChannel()
+    }, 1_000)
+  }
+
   close() {
     if (this.closed) return
     this.closed = true
     clearTimeout(this.renegotiateTimer)
     clearTimeout(this.disconnectTimer)
+    clearTimeout(this.chatReopenTimer)
     try {
       this.chatChannel?.close()
     } catch (_error) {

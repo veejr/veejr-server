@@ -1605,14 +1605,20 @@ export const CallSession = {
     channel.bufferedAmountLowThreshold = 256 * 1024
 
     channel.onopen = () => {
+      peer.chatChannelOpened()
       this.updateChatStatus()
       this.updateChatComposer()
       // A participant can finish connecting after someone has already
       // started a YouTube share. Replaying the current share on this newly
-      // opened pair keeps late and reconnecting conference clients in sync.
+      // opened pair keeps late and reconnecting conference clients in sync —
+      // including a pair whose channel dropped and was rebuilt mid-share.
       this.youtube?.channelStateChanged(peer)
     }
     channel.onclose = () => {
+      // Lets the peer forget this channel and build a replacement. Without it
+      // the reference survives, `createChatChannel` refuses, and the pair is
+      // mute for the rest of the call.
+      peer.chatChannelClosed(channel)
       this.updateChatStatus()
       this.updateChatComposer()
       this.youtube?.channelStateChanged()
