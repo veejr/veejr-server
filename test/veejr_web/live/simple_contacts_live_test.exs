@@ -38,6 +38,12 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
     assert has_element?(view, "#simple-contact-#{friend.id}", "@#{friend.username}")
     assert has_element?(view, "#simple-contact-#{friend.id} [aria-label*='profile image']")
     assert has_element?(view, "a[href='/contacts?manage=true']", "Manage")
+
+    assert has_element?(
+             view,
+             "#simple-contacts-list #simple-self-notes[href='/messages?self_notes=true']",
+             "Notes to yourself"
+           )
   end
 
   test "opens contact management without changing the saved simple mode", %{
@@ -73,6 +79,7 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
     {:ok, view, _html} = live(log_in_user(conn, stranger), "/contacts/simple")
 
     assert has_element?(view, "#simple-contacts-empty", "No contacts yet")
-    refute has_element?(view, "#simple-contacts-list")
+    assert has_element?(view, "#simple-contacts-list #simple-self-notes")
+    refute has_element?(view, "#simple-contacts-list a[id^='simple-contact-']")
   end
 end
