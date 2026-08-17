@@ -10,6 +10,7 @@ import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAt
 import {compareSelfNotes, mergeNoteDocuments, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
+import {requestKeyUnlock} from "../key_unlock.js"
 
 // The spreadsheet and word processor, and everything they pull in (the
 // document model, the formula engine), live behind this one dynamic import.
@@ -760,7 +761,10 @@ export const SelfNotesBoard = {
     if (!userId || !key) return
     const secret = getSecretKey(userId)
     const status = keepImportStatus()
-    if (!secret) return status.fail("Unlock your keys before importing.")
+    if (!secret) {
+      requestKeyUnlock()
+      return status.fail("Unlock here, then choose the archive again.")
+    }
     this._importing = true
     try {
       status.set("Reading your Takeout zip…")
@@ -884,7 +888,7 @@ export const SelfNotesBoard = {
 
     const secret = getSecretKey(userId)
     if (!secret) {
-      window.alert("Unlock your keys before creating a document.")
+      requestKeyUnlock()
       return
     }
 
@@ -909,7 +913,7 @@ export const SelfNotesBoard = {
   async editDocument({payload, element}) {
     const secret = getSecretKey(element.dataset.userId)
     if (!secret) {
-      window.alert("Unlock your keys before editing a document.")
+      requestKeyUnlock()
       return
     }
 
@@ -1209,7 +1213,16 @@ export const SelfNotes = {
     selfNoteSearchIndex.delete(card)
     const secret = getSecretKey(this.el.dataset.userId)
     this.el.textContent = ""
-    if (!secret) { this.payload = null; this.el.textContent = "Locked — unlock keys to read"; return }
+    if (!secret) {
+      this.payload = null
+      const button = document.createElement("button")
+      button.type = "button"
+      button.className = "link text-left"
+      button.textContent = "Locked — unlock here to read"
+      button.addEventListener("click", requestKeyUnlock)
+      this.el.appendChild(button)
+      return
+    }
     const payload = openFrom(this.el.dataset.ciphertext, this.el.dataset.nonce, this.el.dataset.peerKey, secret)
     if (payload && payload.kind === "self_doc") { this.renderDocument(payload, card); return }
     if (!payload || payload.v !== 2 || payload.kind !== "self_note" || !Array.isArray(payload.checklist) || !Array.isArray(payload.labels) || !Array.isArray(payload.attachments)) { this.payload = null; this.el.textContent = "Unsupported or malformed encrypted note."; return }

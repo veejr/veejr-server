@@ -12,7 +12,8 @@ import {
   openFrom,
 } from "../crypto.js"
 import {appendLinkedText} from "../link_text.js"
-import {attachmentMime, currentLocationPath, decryptAttachmentBlob, downloadAttachment, previewableMedia, pushWithReply, showLocationModal, showMediaModal} from "./shared.js"
+import {requestKeyUnlock} from "../key_unlock.js"
+import {attachmentMime, decryptAttachmentBlob, downloadAttachment, previewableMedia, pushWithReply, showLocationModal, showMediaModal} from "./shared.js"
 
 export const Decrypt = {
   mounted() {
@@ -33,11 +34,12 @@ export const Decrypt = {
     this.el.textContent = ""
 
     if (!mySecret) {
-      const a = document.createElement("a")
-      a.href = `/keys?return_to=${encodeURIComponent(currentLocationPath())}`
-      a.className = "link text-sm opacity-70"
-      a.textContent = "🔒 Locked — unlock your keys to read"
-      this.el.appendChild(a)
+      const button = document.createElement("button")
+      button.type = "button"
+      button.className = "link text-left text-sm opacity-70"
+      button.textContent = "🔒 Locked — unlock here to read"
+      button.addEventListener("click", requestKeyUnlock)
+      this.el.appendChild(button)
       return
     }
 
@@ -376,7 +378,12 @@ export const ConversationPreview = {
     const mySecret = getSecretKey(userId)
 
     if (!mySecret) {
-      this.el.textContent = "Unlock your keys to preview"
+      const button = document.createElement("button")
+      button.type = "button"
+      button.className = "link text-left"
+      button.textContent = "Unlock here to preview"
+      button.addEventListener("click", requestKeyUnlock)
+      this.el.replaceChildren(button)
       return
     }
 
@@ -471,7 +478,10 @@ export const MessageBubble = {
       if (!text) return window.alert("Message text cannot be empty.")
 
       const mySecret = getSecretKey(decryptEl.dataset.userId)
-      if (!mySecret) throw new Error("Unlock your keys before editing.")
+      if (!mySecret) {
+        requestKeyUnlock()
+        return
+      }
 
       save.disabled = true
       save.textContent = "Saving..."

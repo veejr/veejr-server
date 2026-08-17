@@ -37,24 +37,18 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
 
     assert has_element?(view, "#simple-contact-#{friend.id}", "@#{friend.username}")
     assert has_element?(view, "#simple-contact-#{friend.id} [aria-label*='profile image']")
-    assert has_element?(view, "#simple-contacts-layout[role='switch'][aria-checked='true']")
+    assert has_element?(view, "a[href='/contacts?manage=true']", "Manage")
   end
 
-  test "switching back to the full layout saves the choice and goes there", %{
+  test "opens contact management without changing the saved simple mode", %{
     conn: conn,
     user: user
   } do
     {:ok, _user} = Accounts.set_page_layout(user, "simple")
-    {:ok, view, _html} = live(conn, "/contacts/simple")
+    {:ok, view, _html} = live(conn, "/contacts?manage=true")
 
-    view |> element("#simple-contacts-layout") |> render_click()
-
-    assert_redirect(view, "/contacts")
-    assert Repo.reload!(user).page_layout == "full"
-
-    # And the full page stays put now that it is the saved layout.
-    {:ok, contacts, _html} = live(conn, "/contacts")
-    assert has_element?(contacts, "#contacts-workspace")
+    assert has_element?(view, "#contacts-workspace")
+    assert Repo.reload!(user).page_layout == "simple"
   end
 
   test "leaves the full page's tools, forms, and sections behind", %{conn: conn} do
@@ -62,7 +56,7 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
 
     refute has_element?(view, "#contacts-tools")
     refute has_element?(view, ".contacts-section")
-    refute has_element?(view, "form")
+    refute has_element?(view, "main form")
   end
 
   test "says so when there is nobody to show yet", %{conn: conn} do

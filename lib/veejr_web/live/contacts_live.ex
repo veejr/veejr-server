@@ -24,11 +24,11 @@ defmodule VeejrWeb.ContactsLive do
         <header class="relative pb-4">
           <div class="flex items-center gap-3 pr-14">
             <h1 class="text-lg font-semibold leading-8">Contacts</h1>
-            <.page_layout_switch id="contacts-layout" showing="full" class="ml-auto" />
           </div>
 
           <details
             id="contacts-tools"
+            open
             class="group"
             aria-label="Contact tools"
           >
@@ -596,10 +596,10 @@ defmodule VeejrWeb.ContactsLive do
   end
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     # The account asked for the plain pages, so leave before loading a page
     # it does not want: no first paint of this one, nothing fetched for it.
-    if PageLayout.simple?(socket) do
+    if PageLayout.simple?(socket) and params["manage"] != "true" do
       {:ok, push_navigate(socket, to: PageLayout.route(:contacts, "simple"))}
     else
       {:ok,
@@ -626,10 +626,6 @@ defmodule VeejrWeb.ContactsLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("set_page_layout", %{"layout" => layout}, socket) do
-    {:noreply, PageLayout.choose(socket, :contacts, "full", layout)}
-  end
-
   def handle_event("start_conversation", params, socket) do
     case ConversationLauncher.destination(socket.assigns, params) do
       {:ok, destination} ->

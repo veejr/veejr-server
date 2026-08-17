@@ -132,10 +132,6 @@ defmodule VeejrWeb.MessagesLive do
   end
 
   @impl true
-  def handle_event("set_page_layout", %{"layout" => layout}, socket) do
-    {:noreply, PageLayout.choose(socket, :messages, "full", layout)}
-  end
-
   def handle_event("request", %{"id" => id}, socket) do
     case Messaging.accept_notification(socket.assigns.current_scope.user, id) do
       {:ok, _} ->

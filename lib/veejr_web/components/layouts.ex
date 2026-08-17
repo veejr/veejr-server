@@ -92,7 +92,13 @@ defmodule VeejrWeb.Layouts do
   slot :inner_block, required: true
 
   def app(assigns) do
-    assigns = assign(assigns, :add_ons, assigns.add_ons || Veejr.AddOns.enabled())
+    assigns =
+      assigns
+      |> assign(:add_ons, assigns.add_ons || Veejr.AddOns.enabled())
+      |> assign(
+        :simple_mode,
+        not is_nil(assigns.current_scope) and assigns.current_scope.user.page_layout == "simple"
+      )
 
     ~H"""
     <div class="flex h-svh min-h-svh flex-col">
@@ -132,7 +138,7 @@ defmodule VeejrWeb.Layouts do
               </li>
               <li>
                 <.link
-                  navigate={~p"/contacts"}
+                  navigate={if(@simple_mode, do: ~p"/contacts/simple", else: ~p"/contacts")}
                   phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
                 >
                   <.icon name="hero-user-group" class="size-4" />
@@ -147,13 +153,13 @@ defmodule VeejrWeb.Layouts do
               </li>
               <li>
                 <.link
-                  navigate={~p"/messages"}
+                  navigate={if(@simple_mode, do: ~p"/messages/simple", else: ~p"/messages")}
                   phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
                 >
                   <.icon name="hero-chat-bubble-left-right" class="size-4" /> Messages
                 </.link>
               </li>
-              <li>
+              <li :if={!@simple_mode}>
                 <.link
                   navigate={~p"/calls"}
                   phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
@@ -161,7 +167,7 @@ defmodule VeejrWeb.Layouts do
                   <.icon name="hero-video-camera" class="size-4" /> Calls
                 </.link>
               </li>
-              <li>
+              <li :if={!@simple_mode}>
                 <.link
                   navigate={~p"/map"}
                   phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
@@ -169,7 +175,7 @@ defmodule VeejrWeb.Layouts do
                   <.icon name="hero-map" class="size-4" /> Map
                 </.link>
               </li>
-              <li>
+              <li :if={!@simple_mode}>
                 <.link
                   navigate={~p"/history"}
                   phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
@@ -177,7 +183,7 @@ defmodule VeejrWeb.Layouts do
                   <.icon name="hero-clock" class="size-4" /> History
                 </.link>
               </li>
-              <li>
+              <li :if={!@simple_mode}>
                 <.link
                   navigate={~p"/watch"}
                   phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
@@ -185,7 +191,39 @@ defmodule VeejrWeb.Layouts do
                   <.icon name="hero-play-circle" class="size-4" /> Watch
                 </.link>
               </li>
-              <li :for={add_on <- @add_ons}>
+              <li :if={!@simple_mode}>
+                <.link
+                  navigate={~p"/messages?self_notes=true"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-document-text" class="size-4" /> Notes & documents
+                </.link>
+              </li>
+              <li :if={!@simple_mode}>
+                <.link
+                  navigate={~p"/groups"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-rectangle-group" class="size-4" /> Groups
+                </.link>
+              </li>
+              <li :if={!@simple_mode}>
+                <.link
+                  navigate={~p"/invites/new"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-qr-code" class="size-4" /> Invite someone
+                </.link>
+              </li>
+              <li :if={@simple_mode}>
+                <.link
+                  navigate={~p"/contacts?manage=true"}
+                  phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
+                >
+                  <.icon name="hero-user-plus" class="size-4" /> Manage contacts
+                </.link>
+              </li>
+              <li :for={add_on <- @add_ons} :if={!@simple_mode}>
                 <.link
                   navigate={add_on.path}
                   phx-click={JS.remove_attribute("open", to: "#primary-navigation-menu")}
@@ -195,12 +233,13 @@ defmodule VeejrWeb.Layouts do
                 </.link>
               </li>
               <li
+                :if={!@simple_mode}
                 id="primary-navigation-themes"
                 class="menu-title mt-2 border-t border-base-300 px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55"
               >
                 Themes
               </li>
-              <li class="px-1 pb-1">
+              <li :if={!@simple_mode} class="px-1 pb-1">
                 <.theme_toggle />
               </li>
             </ul>
@@ -270,6 +309,49 @@ defmodule VeejrWeb.Layouts do
           {render_slot(@inner_block)}
         </div>
       </main>
+
+      <dialog
+        :if={@current_scope && @current_scope.user.public_key}
+        id="inline-key-unlock"
+        phx-hook="InlineKeyUnlock"
+        phx-update="ignore"
+        data-user-id={@current_scope.user.id}
+        data-enc-secret-key={@current_scope.user.enc_secret_key}
+        data-key-salt={@current_scope.user.key_salt}
+        data-key-nonce={@current_scope.user.key_nonce}
+        class="modal bg-transparent p-0 backdrop:bg-base-content/35 backdrop:backdrop-blur-sm"
+      >
+        <div class="modal-box max-w-md rounded-3xl border border-base-300 bg-base-100 p-6 shadow-2xl">
+          <form id="inline-key-unlock-form" class="space-y-4">
+            <div class="flex items-start gap-3">
+              <span class="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <.icon name="hero-lock-closed" class="size-5" />
+              </span>
+              <div>
+                <h2 class="text-lg font-semibold">Unlock here</h2>
+                <p class="mt-1 text-sm text-base-content/65">
+                  Enter your encryption passphrase to continue without leaving this page.
+                </p>
+              </div>
+            </div>
+            <label for="inline-key-passphrase" class="block text-sm font-medium">
+              Encryption passphrase
+            </label>
+            <input
+              id="inline-key-passphrase"
+              data-role="passphrase"
+              type="password"
+              autocomplete="current-password"
+              class="input input-bordered w-full"
+            />
+            <p data-role="unlock-error" role="alert" class="hidden text-sm text-error"></p>
+            <div class="flex justify-end gap-2">
+              <button type="button" data-role="cancel" class="btn btn-ghost">Cancel</button>
+              <button type="submit" class="btn btn-primary">Unlock and continue</button>
+            </div>
+          </form>
+        </div>
+      </dialog>
 
       <.flash_group flash={@flash} />
     </div>

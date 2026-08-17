@@ -5,6 +5,7 @@
 // composers via window.veejrPayloadProviders, never through LiveView.
 
 import {getSecretKey, openFrom} from "./crypto.js"
+import {requestKeyUnlock} from "./key_unlock.js"
 
 // Served from this instance rather than a CDN: the Content-Security-Policy
 // confines script and style to this origin, and a privacy-focused app should
@@ -78,7 +79,14 @@ export const VeejrMap = {
     this.say = say
     this.sharedCount = 0
     if (!mySecret) {
-      say("🔒 Unlock your keys to see the map content.")
+      if (status) {
+        const unlock = document.createElement("button")
+        unlock.type = "button"
+        unlock.className = "btn btn-primary btn-sm"
+        unlock.textContent = "Unlock here to see the map"
+        unlock.addEventListener("click", requestKeyUnlock)
+        status.replaceChildren(unlock)
+      }
     }
 
     const map = L.map(this.el.querySelector("[data-role=map-canvas]")).setView([20, 0], 2)
