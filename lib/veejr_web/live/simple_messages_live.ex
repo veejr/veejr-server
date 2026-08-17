@@ -20,7 +20,6 @@ defmodule VeejrWeb.SimpleMessagesLive do
   alias Veejr.Accounts.User
   alias Veejr.Messaging.Envelope
   alias Veejr.{Messaging, Presence, Social}
-  alias VeejrWeb.PageLayout
 
   @message_limit 100
 
@@ -153,7 +152,6 @@ defmodule VeejrWeb.SimpleMessagesLive do
       <div :if={!@thread} class="flex min-h-0 flex-1 flex-col py-6">
         <header class="flex flex-wrap items-center justify-between gap-4">
           <h1 class="text-lg font-semibold leading-8">Messages</h1>
-          <.page_layout_switch id="simple-messages-layout" showing="simple" />
         </header>
 
         <p
@@ -291,10 +289,6 @@ defmodule VeejrWeb.SimpleMessagesLive do
   end
 
   @impl true
-  def handle_event("set_page_layout", %{"layout" => layout}, socket) do
-    {:noreply, PageLayout.choose(socket, :messages, "simple", layout)}
-  end
-
   def handle_event("request_notification", %{"id" => id}, socket) do
     case Messaging.accept_notification(socket.assigns.current_scope.user, id) do
       {:ok, _notification} ->

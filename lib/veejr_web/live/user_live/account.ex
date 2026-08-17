@@ -1,7 +1,8 @@
 defmodule VeejrWeb.UserLive.Account do
   use VeejrWeb, :live_view
 
-  alias Veejr.Push
+  alias Veejr.{Accounts, Push}
+  alias Veejr.Accounts.Scope
 
   @impl true
   def render(assigns) do
@@ -17,6 +18,63 @@ defmodule VeejrWeb.UserLive.Account do
           {@current_scope.user.username}
           <:subtitle>Manage your account, security, and device preferences.</:subtitle>
         </.header>
+      </section>
+
+      <section
+        id="experience-mode"
+        class="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm"
+      >
+        <div class="flex items-start gap-3">
+          <span class="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <.icon name="hero-adjustments-horizontal" class="size-5" />
+          </span>
+          <div>
+            <h2 class="font-semibold">Experience mode</h2>
+            <p class="mt-1 text-sm leading-6 text-base-content/65">
+              Choose once. Simple keeps people and conversations in focus; Full puts every tool, view, and template within easy reach.
+            </p>
+          </div>
+        </div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Experience mode">
+          <button
+            id="experience-mode-simple"
+            type="button"
+            role="radio"
+            aria-checked={to_string(@current_scope.user.page_layout == "simple")}
+            phx-click="set_experience_mode"
+            phx-value-mode="simple"
+            class={[
+              "rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md",
+              @current_scope.user.page_layout == "simple" && "border-primary bg-primary/10",
+              @current_scope.user.page_layout != "simple" && "border-base-300 bg-base-200/40"
+            ]}
+          >
+            <span class="flex items-center gap-2 font-semibold"><.icon
+              name="hero-user-group"
+              class="size-5"
+            /> Simple</span>
+            <span class="mt-1 block text-sm text-base-content/60">Contacts, messages, and only the essentials.</span>
+          </button>
+          <button
+            id="experience-mode-full"
+            type="button"
+            role="radio"
+            aria-checked={to_string(@current_scope.user.page_layout == "full")}
+            phx-click="set_experience_mode"
+            phx-value-mode="full"
+            class={[
+              "rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md",
+              @current_scope.user.page_layout == "full" && "border-primary bg-primary/10",
+              @current_scope.user.page_layout != "full" && "border-base-300 bg-base-200/40"
+            ]}
+          >
+            <span class="flex items-center gap-2 font-semibold"><.icon
+              name="hero-squares-2x2"
+              class="size-5"
+            /> Full</span>
+            <span class="mt-1 block text-sm text-base-content/60">All views, themes, notes, groups, calls, and add-ons.</span>
+          </button>
+        </div>
       </section>
 
       <section
@@ -271,6 +329,28 @@ defmodule VeejrWeb.UserLive.Account do
            socket.assigns.current_session_id
          )
      )}
+  end
+
+  @impl true
+  def handle_event("set_experience_mode", %{"mode" => mode}, socket)
+      when mode in ["simple", "full"] do
+    case Accounts.set_page_layout(socket.assigns.current_scope.user, mode) do
+      {:ok, user} ->
+        {:noreply,
+         socket
+         |> assign(:current_scope, Scope.for_user(user))
+         |> put_flash(
+           :info,
+           "#{if(mode == "simple", do: "Simple", else: "Full")} mode is now active."
+         )}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not save that mode.")}
+    end
+  end
+
+  def handle_event("set_experience_mode", _params, socket) do
+    {:noreply, put_flash(socket, :error, "That mode is not available.")}
   end
 
   @impl true

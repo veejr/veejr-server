@@ -49,10 +49,10 @@ defmodule VeejrWeb.ContactsLiveTest do
     )
   end
 
-  test "hides secondary contact tools behind a top-right gear", %{conn: conn} do
+  test "opens secondary contact tools in full mode", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/contacts")
 
-    assert has_element?(view, "details#contacts-tools:not([open])")
+    assert has_element?(view, "details#contacts-tools[open]")
 
     assert has_element?(
              view,
@@ -379,21 +379,14 @@ defmodule VeejrWeb.ContactsLiveTest do
       assert {:error, {_kind, %{to: "/contacts/simple"}}} = live(conn, "/contacts")
     end
 
-    test "turns Simple on from the header in one click", %{conn: conn, user: user} do
+    test "keeps the full tools expanded and leaves mode selection in account settings", %{
+      conn: conn
+    } do
       {:ok, view, _html} = live(conn, "/contacts")
 
-      assert has_element?(
-               view,
-               "header #contacts-layout[role='switch'][aria-checked='false']"
-             )
-
-      # Nothing to open first: the switch is not inside the gear panel.
-      refute has_element?(view, "#contacts-tools-content #contacts-layout")
-
-      view |> element("#contacts-layout") |> render_click()
-
-      assert_redirect(view, "/contacts/simple")
-      assert Repo.reload!(user).page_layout == "simple"
+      assert has_element?(view, "details#contacts-tools[open]")
+      refute has_element?(view, "#contacts-layout")
+      assert has_element?(view, "a[href='/account']")
     end
   end
 

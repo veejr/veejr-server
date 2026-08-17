@@ -1,4 +1,5 @@
 import {getSecretKey, sealFor, openFrom} from "./crypto.js"
+import {requestKeyUnlock} from "./key_unlock.js"
 
 const AUDIO_CONSTRAINTS = {
   echoCancellation: true,
@@ -20,7 +21,13 @@ export const WatchVoice = {
 
     if (!this.participantId || !this.mySecret) {
       this.micButton.disabled = true
-      this.setStatus("Voice unavailable until your identity keys are unlocked.")
+      this.statusEl.textContent = ""
+      const unlock = document.createElement("button")
+      unlock.type = "button"
+      unlock.className = "link text-sm"
+      unlock.textContent = "Unlock here to use voice"
+      unlock.addEventListener("click", requestKeyUnlock)
+      this.statusEl.appendChild(unlock)
       return
     }
 

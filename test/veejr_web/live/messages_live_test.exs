@@ -21,24 +21,17 @@ defmodule VeejrWeb.MessagesLiveTest do
     %{conn: log_in_user(conn, user), user: user}
   end
 
-  test "collapses the page header and preserves the secondary message tools", %{conn: conn} do
+  test "opens the full page header and its tools for immediate access", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 
     assert has_element?(
              view,
-             "details#messages-page-header[aria-label='Messages header']:not([open])"
+             "details#messages-page-header[aria-label='Messages header'][open]"
            )
 
     assert has_element?(view, "#messages-page-header-toggle", "Messages")
-    assert has_element?(view, "#messages-page-header-toggle", "Expand")
-
-    # The layout switch rides above the collapse, not inside it.
-    assert has_element?(
-             view,
-             ".messages-page-header #messages-layout[role='switch'][aria-checked='false']"
-           )
-
-    refute has_element?(view, "#messages-page-header #messages-layout")
+    assert has_element?(view, "#messages-page-header-toggle", "Collapse")
+    refute has_element?(view, "#messages-layout")
 
     assert has_element?(
              view,
@@ -48,12 +41,17 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#messages-page-header-content details#messages-tools[aria-label='Message tools']:not([open])"
+             "#messages-page-header-content details#messages-tools[aria-label='Message tools'][open]"
            )
 
     assert has_element?(
              view,
              "#messages-tools > #messages-tools-toggle[aria-label='Message tools'][title='Message tools'] .hero-cog-6-tooth"
+           )
+
+    assert has_element?(
+             view,
+             "#inline-key-unlock[phx-hook='InlineKeyUnlock'] #inline-key-passphrase[type='password']"
            )
 
     assert has_element?(
@@ -233,7 +231,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
+             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes'][open]"
            )
 
     refute has_element?(view, "#self-notes-board #self-notes-command-center")
@@ -878,21 +876,11 @@ defmodule VeejrWeb.MessagesLiveTest do
       assert has_element?(group, "#messages-workspace")
     end
 
-    test "turns Simple off from the header in one click", %{
-      conn: conn,
-      user: user
-    } do
+    test "keeps the simple page focused without a recurring mode switch", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/messages/simple")
 
-      assert has_element?(view, "#simple-messages-layout[role='switch'][aria-checked='true']")
-
-      view |> element("#simple-messages-layout") |> render_click()
-
-      assert_redirect(view, "/messages")
-      assert Repo.reload!(user).page_layout == "full"
-
-      {:ok, messages, _html} = live(conn, "/messages")
-      assert has_element?(messages, "#messages-workspace")
+      refute has_element?(view, "#simple-messages-layout")
+      refute has_element?(view, "#messages-page-header")
     end
   end
 

@@ -4,7 +4,7 @@ defmodule VeejrWeb.UserLive.AccountTest do
   import Phoenix.LiveViewTest
   import Veejr.AccountsFixtures
 
-  alias Veejr.{Accounts, Push}
+  alias Veejr.{Accounts, Push, Repo}
 
   test "renders account links from the username destination", %{conn: conn} do
     user = user_fixture()
@@ -93,6 +93,26 @@ defmodule VeejrWeb.UserLive.AccountTest do
 
     assert has_element?(view, "#account-role", "Member")
     refute has_element?(view, "#account-admin-link")
+  end
+
+  test "chooses one persistent experience mode from the account", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/account")
+
+    assert has_element?(view, "#experience-mode")
+    assert has_element?(view, "#experience-mode-full[aria-checked='true']")
+    assert has_element?(view, "#primary-navigation-links a[href='/messages?self_notes=true']")
+    assert has_element?(view, "#primary-navigation-links a[href='/calls']")
+
+    view |> element("#experience-mode-simple") |> render_click()
+
+    assert has_element?(view, "#experience-mode-simple[aria-checked='true']")
+    assert has_element?(view, "#primary-navigation-links a[href='/contacts/simple']")
+    assert has_element?(view, "#primary-navigation-links a[href='/messages/simple']")
+    refute has_element?(view, "#primary-navigation-links a[href='/calls']")
+    refute has_element?(view, "#primary-navigation-themes")
+    assert Repo.reload!(user).page_layout == "simple"
   end
 
   test "requires authentication", %{conn: conn} do

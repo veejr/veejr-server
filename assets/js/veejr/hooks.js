@@ -41,6 +41,7 @@ import {
   GuestConferenceLobby,
 } from "./hooks/ui.js"
 import VeejrMap from "./map_hook.js"
+import {InlineKeyUnlock} from "./key_unlock.js"
 
 // Named exports preserved: this module exported these individually before the
 // split, and dropping them would be a silent API change for anything that
@@ -73,6 +74,7 @@ export {
   AutoDismissFlash,
   PasswordVisibility,
   AvatarUpload,
+  InlineKeyUnlock,
 }
 
 export default {
@@ -105,4 +107,5 @@ export default {
   MessageConsent,
   ScheduleTime,
   VeejrMap,
+  InlineKeyUnlock,
 }

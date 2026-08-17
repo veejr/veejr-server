@@ -12,9 +12,10 @@ import {
   getSecretKey,
   sealFor,
 } from "../crypto.js"
-import {csrfToken, currentLocationPath, pushWithReply, sameBytes, urlB64ToBytes} from "./shared.js"
+import {csrfToken, pushWithReply, sameBytes, urlB64ToBytes} from "./shared.js"
 import {Composer} from "./composer.js"
 import {ConversationPreview} from "./messages.js"
+import {requestKeyUnlock} from "../key_unlock.js"
 
 export const ScheduleTime = {
   mounted() {
@@ -106,7 +107,7 @@ export const MessageConsent = {
     const mySecret = getSecretKey(userId)
 
     if (!mySecret) {
-      window.location.assign(`/keys?return_to=${encodeURIComponent(currentLocationPath())}`)
+      requestKeyUnlock()
       return
     }
 
