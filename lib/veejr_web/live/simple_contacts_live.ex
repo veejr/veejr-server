@@ -38,10 +38,28 @@ defmodule VeejrWeb.SimpleContactsLive do
       </p>
 
       <ul
-        :if={@friends != []}
         id="simple-contacts-list"
         class="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4"
       >
+        <li>
+          <.link
+            id="simple-self-notes"
+            navigate={~p"/messages?self_notes=true"}
+            class="flex flex-col items-center gap-3 rounded-2xl p-3 text-center transition hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <span class="relative inline-flex">
+              <.user_avatar
+                user={@current_scope.user}
+                class="size-20 text-xl sm:size-24 sm:text-2xl"
+                ring={false}
+              />
+              <span class="absolute -right-1 -bottom-1 flex size-7 items-center justify-center rounded-full bg-primary text-primary-content ring-2 ring-base-100">
+                <.icon name="hero-pencil-square" class="size-4" />
+              </span>
+            </span>
+            <span class="w-full truncate text-sm font-medium">Notes to yourself</span>
+          </.link>
+        </li>
         <li :for={friend <- @friends}>
           <.link
             id={"simple-contact-#{friend.id}"}
