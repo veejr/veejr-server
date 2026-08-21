@@ -721,6 +721,41 @@ defmodule VeejrWeb.MessagingComponents do
         class="hidden px-2 text-xs opacity-70"
       >
       </div>
+      <section
+        :if={@show_files}
+        data-role="recording-stage"
+        class="hidden overflow-hidden rounded-2xl border border-base-300 bg-slate-950 text-white shadow-xl"
+        aria-label="Recording controls"
+      >
+        <div
+          data-role="recording-visual"
+          class="flex min-h-52 max-h-[68svh] items-center justify-center bg-black sm:min-h-80"
+        >
+        </div>
+        <div class="flex flex-wrap items-center gap-2 border-t border-white/10 bg-slate-950/95 p-3">
+          <span class="size-2.5 animate-pulse rounded-full bg-red-500" aria-hidden="true"></span>
+          <strong data-role="recording-label" class="text-sm">Recording</strong>
+          <span data-role="recording-time" class="font-mono text-sm text-white/70">0:00</span>
+          <span class="flex-1"></span>
+          <button
+            type="button"
+            data-role="recording-pause"
+            class="btn btn-sm border-white/20 bg-white/10 text-white hover:bg-white/20"
+          >
+            <.icon name="hero-pause" class="size-4" /> Pause
+          </button>
+          <button
+            type="button"
+            data-role="recording-camera"
+            class="btn btn-sm border-white/20 bg-white/10 text-white hover:bg-white/20"
+          >
+            <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Switch camera
+          </button>
+          <button type="button" data-role="recording-stop" class="btn btn-error btn-sm">
+            <span class="size-3 rounded-sm bg-current" aria-hidden="true"></span> Stop
+          </button>
+        </div>
+      </section>
       <div :if={@show_files} data-role="audio-preview" class="space-y-2"></div>
       <div
         :if={@show_files}

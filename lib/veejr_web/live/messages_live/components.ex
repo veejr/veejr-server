@@ -204,7 +204,6 @@ defmodule VeejrWeb.MessagesLive.Components do
     ~H"""
     <details
       id="self-notes-command-center"
-      open
       class="group mb-5 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-[0_18px_55px_-36px_color-mix(in_oklab,var(--color-base-content)_48%,transparent)]"
       aria-label="Create and filter notes"
     >

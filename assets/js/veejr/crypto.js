@@ -132,6 +132,24 @@ export function openLocal(value, secretKey) {
   }
 }
 
+// Large local drafts (recordings and attachments) stay in IndexedDB as
+// encrypted binary rather than being squeezed into localStorage JSON.
+export async function sealLocalBlob(blob, secretKey) {
+  const nonce = crypto.getRandomValues(new Uint8Array(nacl.secretbox.nonceLength))
+  const ciphertext = nacl.secretbox(new Uint8Array(await blob.arrayBuffer()), nonce, secretKey)
+  return {ciphertext: new Blob([ciphertext]), nonce: toB64(nonce)}
+}
+
+export async function openLocalBlob(value, secretKey, mime = "application/octet-stream") {
+  try {
+    const ciphertext = new Uint8Array(await value.ciphertext.arrayBuffer())
+    const plain = nacl.secretbox.open(ciphertext, fromB64(value.nonce), secretKey)
+    return plain ? new Blob([plain], {type: mime}) : null
+  } catch {
+    return null
+  }
+}
+
 // --- Session key cache -------------------------------------------------
 //
 // The unlocked secret key lives in sessionStorage only: it survives page

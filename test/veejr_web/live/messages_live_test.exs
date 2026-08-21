@@ -231,7 +231,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes'][open]"
+             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
            )
 
     refute has_element?(view, "#self-notes-board #self-notes-command-center")
@@ -419,6 +419,9 @@ defmodule VeejrWeb.MessagesLiveTest do
            )
 
     assert has_element?(view, "#message-composer [data-role='audio-toggle']")
+    assert has_element?(view, "#message-composer [data-role='recording-stage'].hidden")
+    assert has_element?(view, "#message-composer [data-role='recording-pause']", "Pause")
+    assert has_element?(view, "#message-composer [data-role='recording-stop']", "Stop")
 
     assert has_element?(
              view,

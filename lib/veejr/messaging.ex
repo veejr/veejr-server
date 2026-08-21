@@ -138,10 +138,20 @@ defmodule Veejr.Messaging do
   Every recipient must be the sender or an accepted friend of the sender.
   """
   def send_batch(%User{} = sender, kind, envelopes, opts \\ []) when is_list(envelopes) do
-    batch_id = random_id()
+    batch_id = normalize_client_batch_id(opt(opts, :client_batch_id)) || random_id()
     expires_at = effective_expires_at(opt(opts, :expires_at))
     max_displays = normalize_max_displays(opt(opts, :max_displays))
 
+    if Repo.exists?(
+         from e in Envelope, where: e.sender_id == ^sender.id and e.batch_id == ^batch_id
+       ) do
+      {:ok, batch_id, []}
+    else
+      send_new_batch(sender, kind, envelopes, opts, batch_id, expires_at, max_displays)
+    end
+  end
+
+  defp send_new_batch(sender, kind, envelopes, opts, batch_id, expires_at, max_displays) do
     result =
       Repo.transaction(fn ->
         deliver_at =
@@ -293,6 +303,12 @@ defmodule Veejr.Messaging do
       {:ok, batch_id, queued}
     end
   end
+
+  defp normalize_client_batch_id(value)
+       when is_binary(value) and byte_size(value) >= 22 and byte_size(value) <= 100,
+       do: value
+
+  defp normalize_client_batch_id(_value), do: nil
 
   ## Scheduled delivery
 
