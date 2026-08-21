@@ -49,10 +49,10 @@ defmodule VeejrWeb.ContactsLiveTest do
     )
   end
 
-  test "opens secondary contact tools in full mode", %{conn: conn} do
+  test "starts secondary contact tools collapsed in full mode", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/contacts")
 
-    assert has_element?(view, "details#contacts-tools[open]")
+    assert has_element?(view, "details#contacts-tools:not([open])")
 
     assert has_element?(
              view,
@@ -268,20 +268,13 @@ defmodule VeejrWeb.ContactsLiveTest do
   end
 
   describe "section layout" do
-    test "only Conversations starts open, and it is marked for the hook", %{conn: conn} do
+    test "all contact sections start collapsed", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/contacts")
 
-      # The appearance hook resets to this on arrival, so the marker is the
-      # contract between the two. Friends and Groups carrying `open` — or
-      # losing the marker on Conversations — is the bug users saw as the
-      # sections being permanently expanded.
-      assert has_element?(view, "details.contacts-section[open][data-default-open]")
-
-      assert view |> element("details.contacts-section[data-default-open] h2") |> render() =~
-               "Conversations"
-
+      refute has_element?(view, "details.contacts-section[open] h2", "Conversations")
       refute has_element?(view, "details.contacts-section[open] h2", "Friends")
       refute has_element?(view, "details.contacts-section[open] h2", "Groups")
+      refute has_element?(view, "details.contacts-section[data-default-open]")
     end
   end
 
@@ -379,12 +372,12 @@ defmodule VeejrWeb.ContactsLiveTest do
       assert {:error, {_kind, %{to: "/contacts/simple"}}} = live(conn, "/contacts")
     end
 
-    test "keeps the full tools expanded and leaves mode selection in account settings", %{
+    test "keeps the full tools collapsed and leaves mode selection in account settings", %{
       conn: conn
     } do
       {:ok, view, _html} = live(conn, "/contacts")
 
-      assert has_element?(view, "details#contacts-tools[open]")
+      assert has_element?(view, "details#contacts-tools:not([open])")
       refute has_element?(view, "#contacts-layout")
       assert has_element?(view, "a[href='/account']")
     end

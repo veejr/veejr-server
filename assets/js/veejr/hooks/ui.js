@@ -261,8 +261,8 @@ export const ContactsTheme = {
     window.removeEventListener("storage", this.onThemeStorage)
   },
 
-  // Arriving at Contacts starts from the server's own layout, so Friends and
-  // Groups are closed however the page got here — a fresh render, a live
+  // Arriving at Contacts starts every section closed however the page got
+  // here — a fresh render, a live
   // navigation, or a back-button restore that handed back a <details> still
   // open from last time.
   //
@@ -270,7 +270,7 @@ export const ContactsTheme = {
   // shut a section the reader had just expanded.
   resetSections() {
     this.el.querySelectorAll(".contacts-section").forEach((section) => {
-      section.open = section.hasAttribute("data-default-open")
+      section.open = false
     })
   },
 

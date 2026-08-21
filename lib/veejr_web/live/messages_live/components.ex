@@ -41,7 +41,6 @@ defmodule VeejrWeb.MessagesLive.Components do
     <div class="messages-page-header relative z-20 rounded-t-[31px] border-b border-base-300 bg-base-100">
       <details
         id="messages-page-header"
-        open={!@self_notes}
         class="group/header"
         aria-label="Messages header"
       >
@@ -89,7 +88,6 @@ defmodule VeejrWeb.MessagesLive.Components do
 
           <details
             id="messages-tools"
-            open
             class="group/tools mt-3"
             aria-label="Message tools"
           >
@@ -209,7 +207,6 @@ defmodule VeejrWeb.MessagesLive.Components do
     ~H"""
     <details
       id="self-notes-command-center"
-      open
       class="group mb-5 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-[0_18px_55px_-36px_color-mix(in_oklab,var(--color-base-content)_48%,transparent)]"
       aria-label="Create and filter notes"
     >
