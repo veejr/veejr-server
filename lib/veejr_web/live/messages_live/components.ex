@@ -39,7 +39,12 @@ defmodule VeejrWeb.MessagesLive.Components do
           summary is the disclosure's content, and a collapsed header would
           take the one-click way out of this layout down with it. --%>
     <div class="messages-page-header relative z-20 rounded-t-[31px] border-b border-base-300 bg-base-100">
-      <details id="messages-page-header" open class="group/header" aria-label="Messages header">
+      <details
+        id="messages-page-header"
+        open={!@self_notes}
+        class="group/header"
+        aria-label="Messages header"
+      >
         <summary
           id="messages-page-header-toggle"
           class="flex min-h-12 cursor-pointer list-none items-center gap-3 py-2.5 pr-32 pl-4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
@@ -204,6 +209,7 @@ defmodule VeejrWeb.MessagesLive.Components do
     ~H"""
     <details
       id="self-notes-command-center"
+      open
       class="group mb-5 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-[0_18px_55px_-36px_color-mix(in_oklab,var(--color-base-content)_48%,transparent)]"
       aria-label="Create and filter notes"
     >
