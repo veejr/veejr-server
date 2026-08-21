@@ -28,7 +28,6 @@ defmodule VeejrWeb.AdminLive do
         id="admin-overview"
         title="Overview"
         subtitle="Health, membership, storage, and delivery at a glance"
-        open
       >
         <div
           id="admin-health"
@@ -1218,14 +1217,12 @@ defmodule VeejrWeb.AdminLive do
   attr :id, :string, required: true
   attr :title, :string, required: true
   attr :subtitle, :string, default: nil
-  attr :open, :boolean, default: false
   slot :inner_block, required: true
 
   defp admin_panel(assigns) do
     ~H"""
     <details
       id={@id}
-      open={@open}
       phx-hook=".AdminPanel"
       class="group overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm transition-shadow open:shadow-md"
     >

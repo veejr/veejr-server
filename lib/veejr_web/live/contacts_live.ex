@@ -28,7 +28,6 @@ defmodule VeejrWeb.ContactsLive do
 
           <details
             id="contacts-tools"
-            open
             class="group"
             aria-label="Contact tools"
           >
@@ -167,14 +166,7 @@ defmodule VeejrWeb.ContactsLive do
         </section>
 
         <div class="space-y-4">
-          <%!-- data-default-open marks the one section Classic starts open.
-                The appearance hook reads it when returning from a flat theme,
-                so the two cannot drift apart. --%>
-          <details
-            open
-            data-default-open
-            class="contacts-section collapse collapse-arrow rounded-lg border border-base-300 bg-base-100"
-          >
+          <details class="contacts-section collapse collapse-arrow rounded-lg border border-base-300 bg-base-100">
             <summary class="collapse-title">
               <div class="flex items-center justify-between gap-3 pr-6">
                 <div>

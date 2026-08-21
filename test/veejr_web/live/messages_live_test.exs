@@ -21,16 +21,16 @@ defmodule VeejrWeb.MessagesLiveTest do
     %{conn: log_in_user(conn, user), user: user}
   end
 
-  test "opens the full page header and its tools for immediate access", %{conn: conn} do
+  test "starts the full page header and its tools collapsed", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages")
 
     assert has_element?(
              view,
-             "details#messages-page-header[aria-label='Messages header'][open]"
+             "details#messages-page-header[aria-label='Messages header']:not([open])"
            )
 
     assert has_element?(view, "#messages-page-header-toggle", "Messages")
-    assert has_element?(view, "#messages-page-header-toggle", "Collapse")
+    assert has_element?(view, "#messages-page-header-toggle", "Expand")
     refute has_element?(view, "#messages-layout")
 
     assert has_element?(
@@ -41,7 +41,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#messages-page-header-content details#messages-tools[aria-label='Message tools'][open]"
+             "#messages-page-header-content details#messages-tools[aria-label='Message tools']:not([open])"
            )
 
     assert has_element?(
@@ -236,7 +236,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes'][open]"
+             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
            )
 
     refute has_element?(view, "#self-notes-board #self-notes-command-center")
