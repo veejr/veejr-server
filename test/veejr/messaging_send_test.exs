@@ -34,6 +34,23 @@ defmodule Veejr.MessagingSendTest do
     assert Messaging.list_pending_notifications(user) == []
   end
 
+  test "retries a client batch without creating duplicate envelopes" do
+    user = user_fixture()
+    client_batch_id = "offline-retry-batch-1234567890"
+
+    envelopes = [
+      %{"recipient_id" => user.id, "ciphertext" => "encrypted", "nonce" => "nonce"}
+    ]
+
+    assert {:ok, ^client_batch_id, []} =
+             Messaging.send_batch(user, "message", envelopes, client_batch_id: client_batch_id)
+
+    assert {:ok, ^client_batch_id, []} =
+             Messaging.send_batch(user, "message", envelopes, client_batch_id: client_batch_id)
+
+    assert [%{batch_id: ^client_batch_id}] = Messaging.list_history(user)
+  end
+
   test "bounds self-note loading while retaining the newest notes" do
     user = user_fixture()
 

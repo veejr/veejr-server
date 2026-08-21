@@ -16,6 +16,7 @@ import {MAX_VIDEO_DURATION_MS, currentLocationPath, encryptAndUpload, preferredA
 import {noteDocument} from "./notes_document.js"
 import {localDateTimeToIso} from "../schedule_time.js"
 import {Decrypt} from "./messages.js"
+import {deleteDraftMedia, loadDraftMedia, saveDraftMedia} from "../local_media_drafts.js"
 
 // A drag only counts when it actually carries files: dragging selected text
 // or a link across the thread must not arm the drop target.
@@ -75,6 +76,7 @@ export const Composer = {
     this.recordedVideo = []
     this.videoFacingMode = "user"
     this.thumbnailUrls = []
+    this.clientBatchId = crypto.randomUUID()
     this.textEl = this.el.querySelector("[data-role=text]")
     this.restoreDraft()
     this.setupAttachments()
@@ -155,6 +157,27 @@ export const Composer = {
 
       const facingToggle = e.target.closest("[data-role=video-facing-toggle]")
       if (facingToggle && this.el.contains(facingToggle)) {
+        e.preventDefault()
+        this.toggleVideoFacing().catch((err) => showError(this.el, err.message))
+        return
+      }
+
+      const pauseRecording = e.target.closest("[data-role=recording-pause]")
+      if (pauseRecording && this.el.contains(pauseRecording)) {
+        e.preventDefault()
+        this.toggleRecordingPause()
+        return
+      }
+
+      const stopRecording = e.target.closest("[data-role=recording-stop]")
+      if (stopRecording && this.el.contains(stopRecording)) {
+        e.preventDefault()
+        this.stopActiveRecording()
+        return
+      }
+
+      const switchRecordingCamera = e.target.closest("[data-role=recording-camera]")
+      if (switchRecordingCamera && this.el.contains(switchRecordingCamera)) {
         e.preventDefault()
         this.toggleVideoFacing().catch((err) => showError(this.el, err.message))
         return
@@ -244,7 +267,10 @@ export const Composer = {
     if (!input) return
 
     this.onFilesChanged = (e) => {
-      if (e.target.matches?.("[data-role=files]")) this.renderFilePreview()
+      if (e.target.matches?.("[data-role=files]")) {
+        this.renderFilePreview()
+        this.saveDraft()
+      }
     }
     this.el.addEventListener("change", this.onFilesChanged)
 
@@ -288,6 +314,7 @@ export const Composer = {
     this.dropzone.addEventListener("drop", this.onDrop)
     installStrayDropGuard()
     this.renderFilePreview()
+    this.saveDraft()
   },
 
   // Resolves to the unwrapped secret key, or null if the person backs out.
@@ -408,6 +435,7 @@ export const Composer = {
     }
 
     this.renderFilePreview()
+    this.saveDraft()
   },
 
   discardFile(index) {
@@ -497,7 +525,8 @@ export const Composer = {
   destroyed() {
     clearTimeout(this.draftTimer)
     clearTimeout(this.videoDurationTimer)
-    if (this.mediaRecorder && this.mediaRecorder.state === "recording") this.mediaRecorder.stop()
+    clearInterval(this.recordingClock)
+    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") this.mediaRecorder.stop()
     this.stopMediaTracks()
     if (this.onComposerClick) this.el.removeEventListener("click", this.onComposerClick)
     if (this.onDocumentClick) document.removeEventListener("click", this.onDocumentClick)
@@ -528,7 +557,7 @@ export const Composer = {
     return `veejr:draft:${userId}:${kind}:${context}`
   },
 
-  restoreDraft() {
+  async restoreDraft() {
     const secret = getSecretKey(this.el.dataset.userId)
     if (!secret) return
 
@@ -551,16 +580,38 @@ export const Composer = {
         if (restored && new Date(restored).getTime() > Date.now()) deliverAt.value = draft.deliverAt
       }
       if (draft.replyTo?.id) this.replyTo = draft.replyTo
+      if (typeof draft.clientBatchId === "string" && draft.clientBatchId) {
+        this.clientBatchId = draft.clientBatchId
+      }
       this.renderReplyPreview()
       this.renderExpirySummary()
       this.renderScheduleSummary()
       this.setDraftStatus("Draft restored")
+      const media = await loadDraftMedia(this.draftStorageKey(), secret)
+      const files = media.filter((entry) => entry.kind === "file").map((entry) => entry.file)
+      if (files.length > 0) {
+        const transfer = new DataTransfer()
+        files.forEach((file) => transfer.items.add(file))
+        const input = this.attachmentInput()
+        if (input) input.files = transfer.files
+        this.renderFilePreview()
+      }
+      this.recordedAudio = media
+        .filter((entry) => entry.kind === "audio")
+        .map((entry) => ({...entry, url: URL.createObjectURL(entry.file)}))
+      this.recordedVideo = media
+        .filter((entry) => entry.kind === "video")
+        .map((entry) => ({...entry, url: URL.createObjectURL(entry.file)}))
+      this.renderAudioPreview()
+      this.renderVideoPreview()
+      if (media.length > 0) this.setDraftStatus("Draft and media restored")
     } catch {
       localStorage.removeItem(this.draftStorageKey())
     }
   },
 
-  saveDraft() {
+  async saveDraft() {
+    if (this.draftClearing) return
     const secret = getSecretKey(this.el.dataset.userId)
     if (!secret) return
 
@@ -568,7 +619,13 @@ export const Composer = {
     const ttl = this.el.querySelector("[data-role=ttl]")?.value || ""
     const maxDisplays = this.el.querySelector("[data-role=max-displays]")?.value || ""
     const deliverAt = this.el.querySelector("[data-role=deliver-at]")?.value || ""
-    const hasDraft = text.trim() || ttl || maxDisplays || deliverAt || this.replyTo
+    const files = [...(this.attachmentInput()?.files || [])]
+    const media = [
+      ...files.map((file) => ({file})),
+      ...this.recordedAudio,
+      ...this.recordedVideo,
+    ]
+    const hasDraft = text.trim() || ttl || maxDisplays || deliverAt || this.replyTo || media.length > 0
 
     if (!hasDraft) {
       this.clearDraft()
@@ -579,11 +636,14 @@ export const Composer = {
       this.draftStorageKey(),
       JSON.stringify(
         sealLocal(
-          {v: 1, text, ttl, maxDisplays, deliverAt, replyTo: this.replyTo || null},
+          {v: 2, text, ttl, maxDisplays, deliverAt, replyTo: this.replyTo || null, clientBatchId: this.clientBatchId},
           secret
         )
       )
     )
+    this.mediaDraftWork = (this.mediaDraftWork || Promise.resolve())
+      .then(() => saveDraftMedia(this.draftStorageKey(), media, secret))
+      .catch(() => this.setDraftStatus("Text saved; media could not be stored on this device"))
     this.setDraftStatus("Draft saved on this device")
     this.renderExpirySummary()
     this.renderScheduleSummary()
@@ -591,6 +651,9 @@ export const Composer = {
 
   clearDraft() {
     localStorage.removeItem(this.draftStorageKey())
+    this.mediaDraftWork = (this.mediaDraftWork || Promise.resolve())
+      .then(() => deleteDraftMedia(this.draftStorageKey()))
+      .catch(() => {})
     this.setDraftStatus("")
   },
 
@@ -716,7 +779,7 @@ export const Composer = {
   async toggleAudioRecording() {
     if (this.recordingFinalizing) throw new Error("Wait for the current recording to finish.")
 
-    if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
+    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       if (this.activeRecordingKind !== "audio") {
         throw new Error("Stop the video recording first.")
       }
@@ -746,6 +809,7 @@ export const Composer = {
       this.recordingFinalizing = false
       this.activeRecordingKind = null
       if (this.mediaRecorder === recorder) this.mediaRecorder = null
+      this.hideRecordingStage()
       const type = recorder.mimeType || mimeType || "audio/webm"
       const blob = new Blob(chunks, {type})
       if (blob.size === 0) {
@@ -759,6 +823,7 @@ export const Composer = {
       const file = new File([blob], name, {type})
       this.recordedAudio.push({file, url: URL.createObjectURL(blob), durationMs})
       this.renderAudioPreview()
+      this.saveDraft()
       this.setAudioStatus("Voice message ready to send.")
     })
 
@@ -767,6 +832,7 @@ export const Composer = {
     this.activeRecordingKind = "audio"
     this.mediaRecorder = recorder
     recorder.start()
+    this.showRecordingStage("audio", stream, startedAt)
     this.setRecordingButton("audio-toggle", true)
     this.setAudioStatus("Recording... click the microphone again to stop.")
   },
@@ -787,12 +853,86 @@ export const Composer = {
   },
 
   setRecordingButton(role, active) {
-    const button = this.el.querySelector(`[data-role="${role}"]`)
-    if (!button) return
-    button.setAttribute("aria-pressed", active ? "true" : "false")
-    button.classList.toggle("bg-error", active)
-    button.classList.toggle("text-error-content", active)
-    button.classList.toggle("opacity-100", active)
+    this.el.querySelectorAll(`[data-role="${role}"]`).forEach((button) => {
+      button.setAttribute("aria-pressed", active ? "true" : "false")
+      button.classList.toggle("bg-error", active)
+      button.classList.toggle("text-error-content", active)
+      button.classList.toggle("opacity-100", active)
+    })
+  },
+
+  showRecordingStage(kind, stream, startedAt) {
+    const stage = this.el.querySelector("[data-role=recording-stage]")
+    const visual = stage?.querySelector("[data-role=recording-visual]")
+    if (!stage || !visual) return
+    stage.classList.remove("hidden")
+    visual.textContent = ""
+    if (kind === "video") {
+      const video = document.createElement("video")
+      video.srcObject = stream
+      video.autoplay = true
+      video.muted = true
+      video.playsInline = true
+      video.className = "max-h-[68svh] h-full w-full bg-black object-contain"
+      visual.appendChild(video)
+    } else {
+      const audioState = document.createElement("div")
+      audioState.className = "flex flex-col items-center gap-4 p-10 text-center"
+      audioState.innerHTML = '<span class="grid size-20 place-items-center rounded-full bg-red-500/20 text-4xl" aria-hidden="true">●</span><span class="text-lg font-semibold">Voice recording in progress</span>'
+      visual.appendChild(audioState)
+    }
+    const label = stage.querySelector("[data-role=recording-label]")
+    if (label) label.textContent = kind === "video" ? "Recording video" : "Recording audio"
+    const camera = stage.querySelector("[data-role=recording-camera]")
+    camera?.classList.toggle("hidden", kind !== "video")
+    this.recordingStartedAt = startedAt
+    this.updateRecordingClock()
+    clearInterval(this.recordingClock)
+    this.recordingClock = setInterval(() => this.updateRecordingClock(), 1_000)
+  },
+
+  updateRecordingClock() {
+    const clock = this.el.querySelector("[data-role=recording-time]")
+    if (!clock || !this.recordingStartedAt) return
+    const seconds = Math.max(0, Math.floor((Date.now() - this.recordingStartedAt) / 1_000))
+    clock.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+  },
+
+  hideRecordingStage() {
+    clearInterval(this.recordingClock)
+    this.recordingClock = null
+    this.recordingStartedAt = null
+    const stage = this.el.querySelector("[data-role=recording-stage]")
+    stage?.classList.add("hidden")
+    stage?.querySelector("[data-role=recording-visual]")?.replaceChildren()
+    const pause = stage?.querySelector("[data-role=recording-pause]")
+    if (pause) pause.textContent = "Pause"
+  },
+
+  toggleRecordingPause() {
+    const recorder = this.mediaRecorder
+    if (!recorder || recorder.state === "inactive") return
+    const button = this.el.querySelector("[data-role=recording-pause]")
+    if (recorder.state === "paused") {
+      recorder.resume()
+      if (button) button.textContent = "Pause"
+      if (this.activeRecordingKind === "audio") this.setAudioStatus("Recording resumed.")
+      else this.setVideoStatus("Recording resumed.")
+    } else {
+      recorder.pause()
+      if (button) button.textContent = "Resume"
+      if (this.activeRecordingKind === "audio") this.setAudioStatus("Recording paused. Resume or stop when ready.")
+      else this.setVideoStatus("Recording paused. Resume or stop when ready.")
+    }
+  },
+
+  stopActiveRecording() {
+    if (!this.mediaRecorder || this.mediaRecorder.state === "inactive") return
+    this.recordingFinalizing = true
+    this.mediaRecorder.stop()
+    const message = "Finishing recording..."
+    if (this.activeRecordingKind === "audio") this.setAudioStatus(message)
+    else this.setVideoStatus(message)
   },
 
   renderAudioPreview() {
@@ -828,6 +968,7 @@ export const Composer = {
     URL.revokeObjectURL(entry.url)
     this.recordedAudio.splice(index, 1)
     this.renderAudioPreview()
+    this.saveDraft()
     this.setAudioStatus(this.recordedAudio.length > 0 ? "Voice message ready to send." : "")
   },
 
@@ -841,7 +982,7 @@ export const Composer = {
   async toggleVideoRecording() {
     if (this.recordingFinalizing) throw new Error("Wait for the current recording to finish.")
 
-    if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
+    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       if (this.activeRecordingKind !== "video") {
         throw new Error("Stop the voice recording first.")
       }
@@ -891,6 +1032,7 @@ export const Composer = {
       this.recordingFinalizing = false
       this.activeRecordingKind = null
       if (this.mediaRecorder === recorder) this.mediaRecorder = null
+      this.hideRecordingStage()
       const type = recorder.mimeType || mimeType || "video/webm"
       const blob = new Blob(chunks, {type})
       if (blob.size === 0) {
@@ -905,17 +1047,18 @@ export const Composer = {
       const file = new File([blob], name, {type})
       this.recordedVideo.push({file, url: URL.createObjectURL(blob), durationMs})
       this.renderVideoPreview()
+      this.saveDraft()
       this.setVideoStatus("Video message ready to send.")
     })
 
     this.mediaStream = stream
     this.activeRecordingKind = "video"
     this.mediaRecorder = recorder
-    this.renderLiveVideoPreview(stream)
     recorder.start(1_000)
+    this.showRecordingStage("video", stream, startedAt)
     this.setRecordingButton("video-toggle", true)
     this.videoDurationTimer = setTimeout(() => {
-      if (recorder.state === "recording") {
+      if (recorder.state !== "inactive") {
         this.recordingFinalizing = true
         recorder.stop()
         this.setVideoStatus("Maximum recording length reached. Finishing recording...")
@@ -925,7 +1068,7 @@ export const Composer = {
   },
 
   async toggleVideoFacing() {
-    if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
+    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       throw new Error("Stop recording before switching cameras.")
     }
     if (this.recordingFinalizing) throw new Error("Wait for the current recording to finish.")
@@ -939,19 +1082,6 @@ export const Composer = {
     if (!status) return
     status.textContent = message
     status.classList.toggle("hidden", !message)
-  },
-
-  renderLiveVideoPreview(stream) {
-    const preview = this.el.querySelector("[data-role=video-preview]")
-    if (!preview) return
-    preview.textContent = ""
-    const video = document.createElement("video")
-    video.srcObject = stream
-    video.autoplay = true
-    video.muted = true
-    video.playsInline = true
-    video.className = "max-h-64 w-full rounded-lg bg-black object-contain"
-    preview.appendChild(video)
   },
 
   renderVideoPreview() {
@@ -988,6 +1118,7 @@ export const Composer = {
     URL.revokeObjectURL(entry.url)
     this.recordedVideo.splice(index, 1)
     this.renderVideoPreview()
+    this.saveDraft()
     this.setVideoStatus(this.recordedVideo.length > 0 ? "Video message ready to send." : "")
   },
 
@@ -1003,10 +1134,14 @@ export const Composer = {
 
     const form = this.el
     const {userId, myKey, kind} = form.dataset
-    if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
+    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       throw new Error("Stop recording before sending.")
     }
     if (this.recordingFinalizing) throw new Error("Wait for the recording to finish before sending.")
+    if (!navigator.onLine) {
+      this.saveDraft()
+      throw new Error("You are offline. This draft is safe on this device and can be sent after reconnecting.")
+    }
 
     // A locked tab used to be sent to /keys, which discarded the message and
     // its attachments — files cannot be restored from a draft. Unlock in
@@ -1147,13 +1282,21 @@ export const Composer = {
       }
 
       busy(deliverAt ? "Scheduling…" : "Sending…")
-      await this.pushWithReply("send_batch", {kind, envelopes, ...messageOptions})
+      await this.pushWithReply("send_batch", {
+        kind,
+        envelopes,
+        client_batch_id: this.clientBatchId,
+        ...messageOptions,
+      })
 
+      this.draftClearing = true
       form.reset()
       this.clearReply()
-      this.clearDraft()
       this.clearAudioRecordings()
       this.clearVideoRecordings()
+      this.clearDraft()
+      this.clientBatchId = crypto.randomUUID()
+      this.draftClearing = false
       // reset() empties the file input without firing `change`.
       this.renderFilePreview()
       const err = form.querySelector("[data-role=error]")

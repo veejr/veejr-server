@@ -428,7 +428,14 @@ defmodule VeejrWeb.MessagesLive do
   end
 
   def handle_event("send_batch", %{"kind" => kind, "envelopes" => envelopes} = params, socket) do
-    opts = Map.take(params, ["expires_at", "max_displays", "attachment_ids", "deliver_at"])
+    opts =
+      Map.take(params, [
+        "expires_at",
+        "max_displays",
+        "attachment_ids",
+        "deliver_at",
+        "client_batch_id"
+      ])
 
     case Messaging.send_batch(socket.assigns.current_scope.user, kind, envelopes, opts) do
       {:ok, _batch_id, _queued} ->

@@ -3,7 +3,9 @@
 
 import {
   getSecretKey,
+  openLocal,
   sealFor,
+  sealLocal,
   openFrom,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
@@ -11,6 +13,7 @@ import {compareSelfNotes, mergeNoteDocuments, normalizeNoteSearch, normalizeSelf
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
 import {requestKeyUnlock} from "../key_unlock.js"
+import {deleteDraftMedia, loadDraftMedia, saveDraftMedia} from "../local_media_drafts.js"
 
 // The spreadsheet and word processor, and everything they pull in (the
 // document model, the formula engine), live behind this one dynamic import.
@@ -75,7 +78,7 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
   editor.className = inline
     ? "self-note-inline-editor rounded-xl border border-primary/30 bg-base-100/95 p-3 shadow-inner"
     : "mb-5 rounded-2xl border border-primary/30 bg-base-100 p-4 shadow-lg"
-  editor.innerHTML = `<input data-note-title class="mb-3 w-full bg-transparent text-lg font-semibold outline-none" placeholder="Title"><textarea data-note-body class="min-h-28 w-full resize-y bg-transparent text-sm outline-none" placeholder="Take a note…"></textarea><input data-note-labels class="mt-3 w-full bg-transparent text-xs outline-none" placeholder="Labels, separated by commas"><div class="mt-3 flex flex-wrap items-center gap-2"><label title="Attach files" class="flex size-9 cursor-pointer items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-attachment-icon aria-hidden="true"></span><span class="sr-only">Attach files</span><input data-note-files type="file" multiple class="sr-only" aria-label="Attach files"></label><button type="button" data-note-audio title="Record voice note" aria-label="Record voice note" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-audio-icon aria-hidden="true"></span></button><button type="button" data-note-video title="Record video note" aria-label="Record video note" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-video-icon aria-hidden="true"></span></button><button type="button" data-note-camera title="Switch camera" aria-label="Switch camera" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-camera-icon aria-hidden="true"></span></button><button type="button" data-note-checklist class="btn btn-ghost btn-xs">Checklist</button><select data-note-color class="select select-sm"><option value="default">Default</option><option value="sand">Sand</option><option value="rose">Rose</option><option value="violet">Violet</option><option value="blue">Blue</option><option value="mint">Mint</option></select><span class="flex-1"></span><button type="button" data-note-cancel class="btn btn-ghost btn-sm">Cancel</button><button type="button" data-note-save class="btn btn-primary btn-sm">Save note</button></div><p data-note-record-status class="mt-3 hidden text-sm opacity-70" aria-live="polite"></p><div data-note-recordings class="mt-3 space-y-2"></div><p data-note-error class="mt-3 hidden text-sm text-error" role="alert"></p><div data-note-items class="mt-3 space-y-2"></div>`
+  editor.innerHTML = `<input data-note-title class="mb-3 w-full bg-transparent text-lg font-semibold outline-none" placeholder="Title"><textarea data-note-body class="min-h-28 w-full resize-y bg-transparent text-sm outline-none" placeholder="Take a note…"></textarea><input data-note-labels class="mt-3 w-full bg-transparent text-xs outline-none" placeholder="Labels, separated by commas"><div class="mt-3 flex flex-wrap items-center gap-2"><label title="Attach files" class="flex size-9 cursor-pointer items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-attachment-icon aria-hidden="true"></span><span class="sr-only">Attach files</span><input data-note-files type="file" multiple class="sr-only" aria-label="Attach files"></label><button type="button" data-note-audio title="Record voice note" aria-label="Record voice note" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-audio-icon aria-hidden="true"></span></button><button type="button" data-note-video title="Record video note" aria-label="Record video note" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-video-icon aria-hidden="true"></span></button><button type="button" data-note-camera title="Switch camera" aria-label="Switch camera" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-camera-icon aria-hidden="true"></span></button><button type="button" data-note-checklist class="btn btn-ghost btn-xs">Checklist</button><select data-note-color class="select select-sm"><option value="default">Default</option><option value="sand">Sand</option><option value="rose">Rose</option><option value="violet">Violet</option><option value="blue">Blue</option><option value="mint">Mint</option></select><span class="flex-1"></span><button type="button" data-note-cancel class="btn btn-ghost btn-sm">Cancel</button><button type="button" data-note-save class="btn btn-primary btn-sm">Save note</button></div><section data-note-record-stage class="mt-3 hidden overflow-hidden rounded-2xl bg-slate-950 text-white shadow-xl" aria-label="Recording controls"><div data-note-record-visual class="flex min-h-52 max-h-[68svh] items-center justify-center bg-black sm:min-h-80"></div><div class="flex flex-wrap items-center gap-2 border-t border-white/10 p-3"><span class="size-2.5 animate-pulse rounded-full bg-red-500"></span><strong data-note-record-label class="text-sm">Recording</strong><span data-note-record-time class="font-mono text-sm text-white/70">0:00</span><span class="flex-1"></span><button type="button" data-note-record-pause class="btn btn-sm border-white/20 bg-white/10 text-white">Pause</button><button type="button" data-note-record-camera class="btn btn-sm border-white/20 bg-white/10 text-white">Switch camera</button><button type="button" data-note-record-stop class="btn btn-error btn-sm">■ Stop</button></div></section><p data-note-record-status class="mt-3 hidden text-sm opacity-70" aria-live="polite"></p><div data-note-recordings class="mt-3 space-y-2"></div><p data-note-error class="mt-3 hidden text-sm text-error" role="alert"></p><div data-note-items class="mt-3 space-y-2"></div>`
   const title = editor.querySelector("[data-note-title]")
   const body = editor.querySelector("[data-note-body]")
   const labels = editor.querySelector("[data-note-labels]")
@@ -95,8 +98,19 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
     if (icon) editor.querySelector(target)?.replaceChildren(icon)
   })
   const recordings = {audio: [], video: [], recorder: null, stream: null, kind: null, finalizing: false, timer: null, facingMode: "user"}
+  const draftSecret = getSecretKey(board.dataset.userId)
+  const draftKey = `veejr:self-note-editor:${board.dataset.userId}:${payload.note_id || "new"}`
+  try {
+    const restored = draftSecret && openLocal(JSON.parse(localStorage.getItem(draftKey) || "null"), draftSecret)
+    if (restored) payload = {...payload, ...restored}
+  } catch {
+    localStorage.removeItem(draftKey)
+  }
+  payload.note_id ||= crypto.randomUUID()
   const recordStatus = editor.querySelector("[data-note-record-status]")
   const recordPreview = editor.querySelector("[data-note-recordings]")
+  const recordStage = editor.querySelector("[data-note-record-stage]")
+  const recordVisual = editor.querySelector("[data-note-record-visual]")
   const setRecordStatus = (message) => {
     recordStatus.textContent = message
     recordStatus.classList.toggle("hidden", !message)
@@ -107,9 +121,40 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
   }
   const cleanupRecordings = () => {
     clearTimeout(recordings.timer)
-    if (recordings.recorder?.state === "recording") recordings.recorder.stop()
+    clearInterval(recordings.clock)
+    if (recordings.recorder && recordings.recorder.state !== "inactive") recordings.recorder.stop()
     stopTracks()
     ;[...recordings.audio, ...recordings.video].forEach((entry) => URL.revokeObjectURL(entry.url))
+  }
+  const hideRecordStage = () => {
+    clearInterval(recordings.clock)
+    recordings.clock = null
+    recordStage.classList.add("hidden")
+    recordVisual.replaceChildren()
+    editor.querySelector("[data-note-record-pause]").textContent = "Pause"
+  }
+  const showRecordStage = (kind, stream, startedAt) => {
+    recordStage.classList.remove("hidden")
+    recordVisual.replaceChildren()
+    if (kind === "video") {
+      const video = document.createElement("video")
+      video.srcObject = stream; video.autoplay = true; video.muted = true; video.playsInline = true
+      video.className = "max-h-[68svh] h-full w-full bg-black object-contain"
+      recordVisual.appendChild(video)
+    } else {
+      const voice = document.createElement("div")
+      voice.className = "flex flex-col items-center gap-4 p-10 text-center"
+      voice.innerHTML = '<span class="grid size-20 place-items-center rounded-full bg-red-500/20 text-4xl">●</span><span class="text-lg font-semibold">Voice recording in progress</span>'
+      recordVisual.appendChild(voice)
+    }
+    editor.querySelector("[data-note-record-label]").textContent = kind === "video" ? "Recording video" : "Recording audio"
+    editor.querySelector("[data-note-record-camera]").classList.toggle("hidden", kind !== "video")
+    const updateClock = () => {
+      const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1_000))
+      editor.querySelector("[data-note-record-time]").textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+    }
+    updateClock()
+    recordings.clock = setInterval(updateClock, 1_000)
   }
   const renderRecordings = () => {
     recordPreview.textContent = ""
@@ -126,6 +171,7 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
           URL.revokeObjectURL(entry.url)
           entries.splice(index, 1)
           renderRecordings()
+          persistDraft()
         })
         row.append(media, remove); recordPreview.appendChild(row)
       })
@@ -133,7 +179,7 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
   }
   const toggleRecording = async (kind) => {
     if (recordings.finalizing) throw new Error("Wait for the recording to finish.")
-    if (recordings.recorder?.state === "recording") {
+    if (recordings.recorder && recordings.recorder.state !== "inactive") {
       if (recordings.kind !== kind) throw new Error("Stop the current recording first.")
       recordings.finalizing = true
       recordings.recorder.stop()
@@ -149,6 +195,7 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
     recorder.addEventListener("dataavailable", (event) => { if (event.data?.size > 0) chunks.push(event.data) })
     recorder.addEventListener("stop", () => {
       clearTimeout(recordings.timer); stopTracks()
+      hideRecordStage()
       recordings.finalizing = false; recordings.recorder = null; recordings.kind = null
       const type = recorder.mimeType || mimeType || (kind === "audio" ? "audio/webm" : "video/webm")
       const blob = new Blob(chunks, {type})
@@ -156,11 +203,12 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
       const extension = type.includes("mp4") ? (kind === "audio" ? "m4a" : "mp4") : type.includes("ogg") ? "ogg" : "webm"
       const file = new File([blob], `${kind}-note-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`, {type})
       recordings[kind].push({file, url: URL.createObjectURL(blob), durationMs: Date.now() - startedAt})
-      renderRecordings(); setRecordStatus(`${kind === "audio" ? "Audio" : "Video"} ready to attach.`)
+      renderRecordings(); persistDraft(); setRecordStatus(`${kind === "audio" ? "Audio" : "Video"} ready to attach.`)
     })
     recordings.stream = stream; recordings.recorder = recorder; recordings.kind = kind
     recorder.start(1_000)
-    if (kind === "video") recordings.timer = setTimeout(() => recorder.state === "recording" && recorder.stop(), MAX_VIDEO_DURATION_MS)
+    showRecordStage(kind, stream, startedAt)
+    if (kind === "video") recordings.timer = setTimeout(() => recorder.state !== "inactive" && recorder.stop(), MAX_VIDEO_DURATION_MS)
     setRecordStatus(`Recording ${kind}… click ${kind === "audio" ? "Microphone" : "Video"} again to stop.`)
   }
   title.value = payload.title || ""
@@ -183,8 +231,8 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
       check.type = "checkbox"; check.checked = !!item.checked
       const input = document.createElement("input")
       input.value = item.text || ""; input.className = "flex-1 bg-transparent outline-none"
-      check.addEventListener("change", () => { item.checked = check.checked })
-      input.addEventListener("input", () => { item.text = input.value })
+      check.addEventListener("change", () => { item.checked = check.checked; scheduleDraft() })
+      input.addEventListener("input", () => { item.text = input.value; scheduleDraft() })
       input.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault()
@@ -202,16 +250,79 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
     })
   }
   renderItems()
+  let draftTimer = null
+  let mediaDraftWork = Promise.resolve()
+  const draftPayload = () => ({
+    note_id: payload.note_id,
+    title: title.value,
+    body: body.value,
+    labels: labels.value.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 10),
+    color: color.value,
+    checklist: payload.checklist || [],
+    settings: {move_checked_to_bottom: sortChecked.checked},
+  })
+  const persistDraft = () => {
+    if (!draftSecret) return
+    localStorage.setItem(draftKey, JSON.stringify(sealLocal(draftPayload(), draftSecret)))
+    const media = [
+      ...[...fileInput.files].map((file) => ({file})),
+      ...recordings.audio,
+      ...recordings.video,
+    ]
+    mediaDraftWork = mediaDraftWork.then(() => saveDraftMedia(draftKey, media, draftSecret)).catch(() => {})
+  }
+  const scheduleDraft = () => {
+    clearTimeout(draftTimer)
+    draftTimer = setTimeout(persistDraft, 250)
+  }
+  const clearLocalDraft = () => {
+    clearTimeout(draftTimer)
+    localStorage.removeItem(draftKey)
+    mediaDraftWork = mediaDraftWork.then(() => deleteDraftMedia(draftKey)).catch(() => {})
+  }
+  ;[title, body, labels, color, sortChecked].forEach((field) => field.addEventListener("input", scheduleDraft))
+  fileInput.addEventListener("change", persistDraft)
+  if (draftSecret) {
+    loadDraftMedia(draftKey, draftSecret).then((entries) => {
+      const files = entries.filter((entry) => entry.kind === "file").map((entry) => entry.file)
+      if (files.length) {
+        const transfer = new DataTransfer()
+        files.forEach((file) => transfer.items.add(file))
+        fileInput.files = transfer.files
+      }
+      recordings.audio = entries.filter((entry) => entry.kind === "audio").map((entry) => ({...entry, url: URL.createObjectURL(entry.file)}))
+      recordings.video = entries.filter((entry) => entry.kind === "video").map((entry) => ({...entry, url: URL.createObjectURL(entry.file)}))
+      renderRecordings()
+      if (entries.length) setRecordStatus("Unsent media restored from this device.")
+    }).catch(() => {})
+  }
   editor.querySelector("[data-note-checklist]").addEventListener("click", () => {
     payload.checklist = [...(payload.checklist || []), {id: crypto.randomUUID(), text: "", checked: false}]
-    renderItems(); items.querySelector("input:last-child")?.focus()
+    renderItems(); scheduleDraft(); items.querySelector("input:last-child")?.focus()
   })
   editor.querySelector("[data-note-audio]").addEventListener("click", () => toggleRecording("audio").catch((error) => setRecordStatus(error.message)))
   editor.querySelector("[data-note-video]").addEventListener("click", () => toggleRecording("video").catch((error) => setRecordStatus(error.message)))
   editor.querySelector("[data-note-camera]").addEventListener("click", () => {
-    if (recordings.recorder?.state === "recording" || recordings.finalizing) return setRecordStatus("Stop recording before switching cameras.")
+    if ((recordings.recorder && recordings.recorder.state !== "inactive") || recordings.finalizing) return setRecordStatus("Stop recording before switching cameras.")
     recordings.facingMode = recordings.facingMode === "user" ? "environment" : "user"
     setRecordStatus(`The ${recordings.facingMode === "user" ? "front" : "rear"} camera will be used next.`)
+  })
+  editor.querySelector("[data-note-record-camera]").addEventListener("click", () => {
+    setRecordStatus("Stop this recording before switching cameras.")
+  })
+  editor.querySelector("[data-note-record-pause]").addEventListener("click", (event) => {
+    if (!recordings.recorder || recordings.recorder.state === "inactive") return
+    if (recordings.recorder.state === "paused") {
+      recordings.recorder.resume(); event.currentTarget.textContent = "Pause"
+      setRecordStatus("Recording resumed.")
+    } else {
+      recordings.recorder.pause(); event.currentTarget.textContent = "Resume"
+      setRecordStatus("Recording paused. Resume or stop when ready.")
+    }
+  })
+  editor.querySelector("[data-note-record-stop]").addEventListener("click", () => {
+    if (!recordings.recorder || recordings.recorder.state === "inactive") return
+    recordings.finalizing = true; recordings.recorder.stop(); setRecordStatus("Finishing recording…")
   })
   let saveTimer = null
   let saving = false
@@ -242,7 +353,10 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
     }
     if (returnFocus?.isConnected) returnFocus.focus()
   }
-  editor.querySelector("[data-note-cancel]").addEventListener("click", closeEditor)
+  editor.querySelector("[data-note-cancel]").addEventListener("click", () => {
+    clearLocalDraft()
+    closeEditor()
+  })
   const submit = async () => {
     if (saving) return
     const error = editor.querySelector("[data-note-error]")
@@ -253,8 +367,14 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
     if (next.settings.move_checked_to_bottom) next.checklist.sort((left, right) => Number(left.checked) - Number(right.checked))
     const files = [...fileInput.files]
     const captured = [...recordings.audio, ...recordings.video]
-    if (recordings.recorder?.state === "recording" || recordings.finalizing) {
+    if ((recordings.recorder && recordings.recorder.state !== "inactive") || recordings.finalizing) {
       error.textContent = "Stop the recording before saving."
+      error.classList.remove("hidden")
+      return
+    }
+    persistDraft()
+    if (!navigator.onLine) {
+      error.textContent = "You are offline. This note is safe on this device and can be saved after reconnecting."
       error.classList.remove("hidden")
       return
     }
@@ -272,6 +392,7 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
         next.attachments.push(await encryptAndUpload(entry.file, {name: entry.file.name, mime: entry.file.type, size: entry.file.size, durationMs: entry.durationMs}))
       }
       await save(next)
+      clearLocalDraft()
       closeEditor({restore: !inline})
       if (inline) mount.dispatchEvent(new CustomEvent("self-notes:refresh"))
     } catch (saveError) {
@@ -875,6 +996,7 @@ export const SelfNotesBoard = {
       if (!secret) throw new Error("Unlock your keys before saving a note.")
       await pushWithReply(this, "send_batch", {
         kind: "self_note",
+        client_batch_id: note.note_id,
         envelopes: [{recipient_id: Number(userId), ...sealFor(key, note, secret)}],
         attachment_ids: note.attachments.map((attachment) => attachment.id),
       })
