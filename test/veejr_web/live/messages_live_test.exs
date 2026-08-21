@@ -210,6 +210,11 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
+             "details#messages-page-header[aria-label='Messages header']:not([open])"
+           )
+
+    assert has_element?(
+             view,
              "#self-notes-pane-header > #self-notes-search-bar #self-notes-search[data-role='search'][aria-label='Search notes']"
            )
 
@@ -231,7 +236,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
+             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes'][open]"
            )
 
     refute has_element?(view, "#self-notes-board #self-notes-command-center")
