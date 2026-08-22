@@ -647,7 +647,12 @@ defmodule VeejrWeb.CoreComponents do
       <label for={@id}>
         <span :if={@label} class="label mb-1">{@label}</span>
       </label>
-      <div id={"#{@id}-password-visibility"} class="relative" phx-hook="PasswordVisibility">
+      <div
+        id={"#{@id}-password-visibility"}
+        class="relative"
+        phx-hook="PasswordVisibility"
+        phx-update="ignore"
+      >
         <input
           type="password"
           name={@name}

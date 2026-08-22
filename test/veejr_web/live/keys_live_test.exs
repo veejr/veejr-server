@@ -27,6 +27,12 @@ defmodule VeejrWeb.KeysLiveTest do
     {:ok, view, _html} = live(conn, "/keys")
 
     assert has_element?(view, "#key-setup-passphrase")
+
+    assert has_element?(
+             view,
+             "#key-setup-passphrase-password-visibility-toggle[aria-label='Show passphrase']"
+           )
+
     assert has_element?(view, "#initial-password-setup", "Add a login password (recommended)")
 
     assert has_element?(
@@ -43,6 +49,16 @@ defmodule VeejrWeb.KeysLiveTest do
     assert has_element?(
              view,
              "#key-setup-password-confirmation[data-role='account-password-confirmation']"
+           )
+
+    assert has_element?(
+             view,
+             "#key-setup-password-password-visibility-toggle[aria-label='Show password']"
+           )
+
+    assert has_element?(
+             view,
+             "#key-setup-password-confirmation-password-visibility-toggle[aria-label='Show password']"
            )
   end
 

@@ -289,52 +289,75 @@ excluded because their message references are inside unreadable ciphertext.
 
 ## Backups
 
-A complete backup contains:
+Use `scripts/veejr_full_backup.ps1` for the current Windows host. It makes one
+disaster-recovery archive containing:
 
-- The SQLite database at `DATABASE_PATH`.
-- The encrypted blob directory at `VEEJR_BLOB_DIR`.
-- The protected production environment file.
-- The original Firebase service-account JSON, when enabled.
-- Caddy's `/data` volume, which contains certificates and account state.
+- every Veejr instance's SQLite database and encrypted attachment directory;
+- the runtime environment and service definitions needed to retain instance
+  identity, mail, federation, push, and TURN settings;
+- the original host credential files, including Firebase when enabled;
+- Caddy, TURN, and Postfix container definitions and persistent volumes;
+- the Caddyfile, a Git source bundle, deployed commit IDs, and a manifest.
 
-The database also contains federation signing material and browser-push VAPID
-credentials. Losing it changes the instance identity and can break established
-federation relationships.
+The archive is encrypted locally with authenticated AES-256-GCM encryption.
+Its passphrase is strengthened with scrypt and is never passed on the command
+line or written into the archive. The script checks both SQLite databases,
+decrypts the finished archive as an integrity test, checks required contents,
+and writes a SHA-256 checksum. Plaintext staging data is removed afterward.
 
-For a simple consistent backup, briefly stop the one application replica,
-copy the state directory, and start it again:
+### First-time setup
+
+Run this once. A small secure-entry window opens; save the same passphrase in a
+password manager that is not hosted only on this server:
 
 ```powershell
-$Stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$Backup = "D:\Backups\Veejr\$Stamp"
-
-docker service scale veej_fable=0
-New-Item -ItemType Directory -Force $Backup
-Copy-Item -Recurse -Force C:\ProgramData\Veejr\data "$Backup\data"
-Copy-Item -Force C:\ProgramData\Veejr\secrets\veejr.env "$Backup\veejr.env"
-docker service scale veej_fable=1
+powershell -ExecutionPolicy Bypass -File .\scripts\veejr_set_backup_passphrase.ps1
 ```
 
-Confirm the service returns to `1/1`, then encrypt the backup and copy it off
-the host. Keep multiple generations and test restoration periodically. Do not
+The local key copy is protected by Windows DPAPI for the Windows account that
+created it. It enables unattended backups but cannot replace the separately
+stored passphrase: a bare-metal restore on another computer needs the original
+passphrase.
+
+### Create and store a backup
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\veejr_full_backup.ps1
+```
+
+Expect a short outage while the two app services and supporting containers are
+paused for a consistent filesystem snapshot. The script restores their prior
+replica/running state before compression and encryption. Successful output is
+an encrypted `C:\ProgramData\Veejr\backups\veejr-full-*.veejrbak` file and its
+small `.sha256` checksum. Upload both files to an off-host private location,
+such as Google Drive. Never upload the temporary plaintext `.tar.gz`; a
+successful run removes it automatically.
+
+Keep several generations and perform a restoration drill periodically. Never
 commit backups, databases, environment files, service-account files, or
 attachment directories to Git.
 
 ## Restore
 
-1. Stop the application replica with `docker service scale veej_fable=0`.
-2. Preserve the current state directory separately; do not overwrite the only
-   copy.
-3. Restore the database and uploads to the exact paths configured in the
-   environment file.
-4. Restore the same `SECRET_KEY_BASE` and public hostname.
-5. Ensure host/container permissions allow SQLite and uploads to be written.
-6. Run `mix ecto.migrate` with the checked-out application version.
-7. Scale the service back to one replica and run all health checks.
+1. Download the `.veejrbak` and matching `.sha256` without renaming either.
+2. Verify the SHA-256 checksum before decryption.
+3. Set `VEEJR_BACKUP_PASSPHRASE` only in the current process, decrypt with
+   `scripts/veejr_backup_crypto.py decrypt`, and immediately clear the variable.
+4. Extract the resulting `.tar.gz` into a new protected staging directory.
+5. Read `manifest.json`; restore the source bundle/commit, service definitions,
+   host secrets, instance state, and Docker volume archives to their recorded
+   locations. Preserve the current state separately before replacing anything.
+6. Ensure host/container permissions allow SQLite and uploads to be written,
+   then start the supporting containers and restore each recorded app replica
+   count. Production boot runs migrations automatically.
+7. Verify both services, both public `/api/instance` endpoints, attachments,
+   sign-in/mail, push configuration, and a TURN-assisted call. Remove the
+   plaintext archive and staging directory after verification.
 
 Restoring only SQLite or only the blob directory produces incomplete
 attachments. Restoring under a different public hostname changes federated
-addresses and requires a deliberate migration plan.
+addresses and requires a deliberate migration plan. Service-spec JSON contains
+live secrets; keep all decrypted restore material local and access-restricted.
 
 ## Roll back application code
 

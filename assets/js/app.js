@@ -44,8 +44,57 @@ const liveSocket = new LiveSocket("/live", Socket, {
 })
 
 let connectionStatusTimer
+let connectionState = navigator.onLine ? "connecting" : "offline"
+const sendStatusTokens = new Set()
+
+window.veejrConnectionState = connectionState
+
+const renderSendStatus = () => {
+  const banner = document.querySelector("#send-status")
+  if (!banner) return
+
+  const text = banner.querySelector("[data-role='send-status-text']")
+  if (sendStatusTokens.size === 0) {
+    banner.classList.add("hidden")
+    banner.classList.remove("flex")
+    return
+  }
+
+  if (text) {
+    text.textContent = connectionState === "connected" ? "Sending…" : "Will send when connected"
+  }
+  banner.classList.remove("hidden")
+  banner.classList.add("flex")
+}
+
+const publishConnectionState = (state) => {
+  connectionState = state
+  window.veejrConnectionState = state
+  renderSendStatus()
+  window.dispatchEvent(new CustomEvent("veejr:connection-state", {detail: {state}}))
+}
+
+window.veejrSendStatus = {
+  start() {
+    const token = {}
+    sendStatusTokens.add(token)
+    renderSendStatus()
+    return token
+  },
+
+  finish(token) {
+    if (token) sendStatusTokens.delete(token)
+    renderSendStatus()
+  },
+
+  state() {
+    return connectionState
+  },
+}
+
 const setConnectionStatus = (state) => {
   clearTimeout(connectionStatusTimer)
+  publishConnectionState(state)
   const banner = document.querySelector("#connection-status")
   if (!banner) return
 
@@ -76,6 +125,47 @@ liveSocket.socket.onError(() =>
 )
 liveSocket.socket.onClose(() =>
   setConnectionStatus(navigator.onLine ? "reconnecting" : "offline")
+)
+
+// LiveView forms do not expose a JavaScript callback for a completed submit,
+// but they do add/remove phx-submit-loading on the form or submit button. Keep
+// the shared send indicator tied to that lifecycle for ordinary server forms.
+document.addEventListener(
+  "submit",
+  (event) => {
+    const form = event.target
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("phx-submit")) return
+
+    const token = window.veejrSendStatus.start()
+    const targets = () => [
+      form,
+      ...form.querySelectorAll("button[type='submit'], button:not([type])"),
+    ]
+    let sawLoading = false
+    let finished = false
+    let finish
+    const observer = new MutationObserver(() => {
+      const loading = targets().some((element) => element.classList.contains("phx-submit-loading"))
+      if (loading) sawLoading = true
+      else if (sawLoading) finish()
+    })
+    finish = () => {
+      if (finished) return
+      finished = true
+      observer.disconnect()
+      window.removeEventListener("phx:page-loading-stop", finish)
+      window.veejrSendStatus.finish(token)
+    }
+
+    targets().forEach((element) =>
+      observer.observe(element, {attributes: true, attributeFilter: ["class"]}),
+    )
+    window.addEventListener("phx:page-loading-stop", finish)
+    window.setTimeout(() => {
+      if (!sawLoading) finish()
+    }, 30000)
+  },
+  true,
 )
 
 // Incoming-call banners can appear on any authenticated page.

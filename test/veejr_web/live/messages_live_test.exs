@@ -56,6 +56,11 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
+             "#inline-key-passphrase-visibility-toggle[aria-label='Show passphrase']"
+           )
+
+    assert has_element?(
+             view,
              "#messages-tools-content #messages-invite-person[href='/invites/new']",
              "Invite person"
            )
@@ -437,6 +442,7 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#message-composer [data-role='video-status'][aria-live='polite']")
     assert has_element?(view, "#message-composer [data-role='video-preview']")
     assert has_element?(view, "#connection-status[role='status'][aria-live='polite']")
+    assert has_element?(view, "#send-status[role='status'][aria-live='polite']")
   end
 
   test "offers pasted and dropped attachments", %{conn: conn} do
@@ -464,6 +470,11 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(
              view,
              "#message-composer [data-role='composer-passphrase'][type='password'][autocomplete='current-password']"
+           )
+
+    assert has_element?(
+             view,
+             "#message-composer [data-role='password-visibility-toggle'][aria-label='Show passphrase']"
            )
 
     assert has_element?(view, "#message-composer [data-role='composer-unlock-submit']")

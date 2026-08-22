@@ -12,7 +12,7 @@ import {
   openLocal,
   unlockIdentity,
 } from "../crypto.js"
-import {MAX_VIDEO_DURATION_MS, currentLocationPath, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showError} from "./shared.js"
+import {MAX_VIDEO_DURATION_MS, currentLocationPath, encryptAndUpload, liveViewConnected, preferredAudioMime, preferredVideoMime, pushWithReply, showError} from "./shared.js"
 import {noteDocument} from "./notes_document.js"
 import {localDateTimeToIso} from "../schedule_time.js"
 import {Decrypt} from "./messages.js"
@@ -77,7 +77,21 @@ export const Composer = {
     this.videoFacingMode = "user"
     this.thumbnailUrls = []
     this.clientBatchId = crypto.randomUUID()
+    this.pendingSend = false
+    this.sendStatusToken = null
     this.textEl = this.el.querySelector("[data-role=text]")
+
+    this.onConnectionState = ({detail}) => {
+      if (this.sendStatusToken) {
+        this.setSendStatus(detail?.state === "connected" ? "Sending…" : "Will send when connected")
+      }
+      if (detail?.state !== "connected" || !this.pendingSend || this.sending) return
+
+      this.pendingSend = false
+      this.send().catch((error) => showError(this.el, error.message))
+    }
+    window.addEventListener("veejr:connection-state", this.onConnectionState)
+
     this.restoreDraft()
     this.setupAttachments()
 
@@ -526,6 +540,7 @@ export const Composer = {
     clearTimeout(this.draftTimer)
     clearTimeout(this.videoDurationTimer)
     clearInterval(this.recordingClock)
+    this.finishSendStatus()
     if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") this.mediaRecorder.stop()
     this.stopMediaTracks()
     if (this.onComposerClick) this.el.removeEventListener("click", this.onComposerClick)
@@ -537,6 +552,7 @@ export const Composer = {
       this.el.removeEventListener("change", this.onDraftInput)
     }
     if (this.onReplyMessage) window.removeEventListener("veejr:reply-message", this.onReplyMessage)
+    if (this.onConnectionState) window.removeEventListener("veejr:connection-state", this.onConnectionState)
     if (this.emojiMenu && this.emojiMenu.parentElement === document.body) this.emojiMenu.remove()
     if (this.onComposerPaste) this.el.removeEventListener("paste", this.onComposerPaste)
     if (this.onFilesChanged) this.el.removeEventListener("change", this.onFilesChanged)
@@ -662,6 +678,27 @@ export const Composer = {
     if (!status) return
     status.textContent = message
     status.classList.toggle("hidden", !message)
+  },
+
+  setSendStatus(message) {
+    const status = this.el.querySelector("[data-role=send-status]")
+    if (!status) return
+    status.textContent = message
+    status.classList.toggle("hidden", !message)
+  },
+
+  beginSendStatus() {
+    if (!this.sendStatusToken) {
+      this.sendStatusToken =
+        typeof window !== "undefined" ? window.veejrSendStatus?.start() : null
+    }
+    this.setSendStatus(liveViewConnected() ? "Sending…" : "Will send when connected")
+  },
+
+  finishSendStatus() {
+    if (typeof window !== "undefined") window.veejrSendStatus?.finish(this.sendStatusToken)
+    this.sendStatusToken = null
+    this.setSendStatus("")
   },
 
   renderReplyPreview() {
@@ -1138,17 +1175,6 @@ export const Composer = {
       throw new Error("Stop recording before sending.")
     }
     if (this.recordingFinalizing) throw new Error("Wait for the recording to finish before sending.")
-    if (!navigator.onLine) {
-      this.saveDraft()
-      throw new Error("You are offline. This draft is safe on this device and can be sent after reconnecting.")
-    }
-
-    // A locked tab used to be sent to /keys, which discarded the message and
-    // its attachments — files cannot be restored from a draft. Unlock in
-    // place instead and carry straight on with this same send.
-    const mySecret = getSecretKey(userId) || (await this.unlockInPlace())
-    if (!mySecret) return
-
     const selectedValues = (name) => [
       ...new Set(
         [...form.querySelectorAll(`input[name='${name}']`)]
@@ -1189,6 +1215,22 @@ export const Composer = {
     ) {
       throw new Error("Nothing to send.")
     }
+
+    if (!liveViewConnected()) {
+      this.saveDraft()
+      this.pendingSend = true
+      this.beginSendStatus()
+      return
+    }
+
+    // A locked tab used to be sent to /keys, which discarded the message and
+    // its attachments — files cannot be restored from a draft. Unlock in
+    // place instead and carry straight on with this same send.
+    const mySecret = getSecretKey(userId) || (await this.unlockInPlace())
+    if (!mySecret) return
+
+    this.pendingSend = false
+    this.beginSendStatus()
 
     const btn = form.querySelector("button[type=submit]")
     this.sending = true
@@ -1301,12 +1343,20 @@ export const Composer = {
       this.renderFilePreview()
       const err = form.querySelector("[data-role=error]")
       if (err) err.classList.add("hidden")
+    } catch (error) {
+      if (!liveViewConnected()) {
+        this.saveDraft()
+        this.pendingSend = true
+        return
+      }
+      throw error
     } finally {
       this.sending = false
       if (btn) {
         btn.disabled = false
         btn.textContent = originalLabel
       }
+      if (!this.pendingSend) this.finishSendStatus()
     }
   },
 
