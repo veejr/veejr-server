@@ -1502,7 +1502,7 @@ defmodule Veejr.Messaging do
 
       nil ->
         policies = group_policies(recipient_id, sender_id)
-        policies != [] and Enum.all?(policies, &(&1.acceptance == "automatic"))
+        policies == [] or Enum.all?(policies, &(&1.acceptance == "automatic"))
     end
   end
 

@@ -19,6 +19,8 @@ defmodule VeejrWeb.ContactsLiveTest do
         "key_nonce" => Base.encode64(String.pad_trailing("nonce", 24, "x"))
       })
 
+    {:ok, user} = Accounts.set_page_layout(user, "full")
+
     {:ok, request} = Social.send_friend_request(user, friend.username)
     {:ok, _friendship} = Social.accept_friend_request(friend, request.id)
     {:ok, group} = Social.create_group(user, %{name: "Close friends"})
@@ -47,6 +49,23 @@ defmodule VeejrWeb.ContactsLiveTest do
       view,
       "/messages?friend_ids=#{friend.id}&group_ids=#{group.id}&include_self=false"
     )
+  end
+
+  test "defaults automatic message opening on and allows it to be disabled", %{
+    conn: conn,
+    friend: friend,
+    group: group
+  } do
+    {:ok, view, _html} = live(conn, "/contacts")
+
+    assert has_element?(view, "#auto-open-contact-#{friend.id}[aria-checked='true']")
+    assert has_element?(view, "#auto-open-group-#{group.id}[aria-checked='true']")
+
+    view
+    |> element("#auto-open-contact-#{friend.id}")
+    |> render_click()
+
+    assert has_element?(view, "#auto-open-contact-#{friend.id}[aria-checked='false']")
   end
 
   test "starts secondary contact tools collapsed in full mode", %{conn: conn} do
@@ -240,6 +259,12 @@ defmodule VeejrWeb.ContactsLiveTest do
     user: user,
     friend: friend
   } do
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(user, "contact", friend.id, %{
+        "acceptance" => "ask",
+        "notification" => "normal"
+      })
+
     {:ok, _batch_id, []} =
       Messaging.send_batch(friend, "message", [
         %{"recipient_id" => user.id, "ciphertext" => "encrypted-preview", "nonce" => "nonce"}

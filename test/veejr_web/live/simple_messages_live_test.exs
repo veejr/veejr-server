@@ -139,6 +139,12 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
     friend: friend,
     key: key
   } do
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(user, "contact", friend.id, %{
+        "acceptance" => "ask",
+        "notification" => "normal"
+      })
+
     {:ok, _batch_id, _queued} =
       Messaging.send_batch(friend, "message", [
         %{"recipient_id" => user.id, "ciphertext" => "from-friend", "nonce" => "nonce-3"}
@@ -165,6 +171,12 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
   end
 
   test "marks the open conversation read", %{conn: conn, user: user, friend: friend, key: key} do
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(user, "contact", friend.id, %{
+        "acceptance" => "ask",
+        "notification" => "normal"
+      })
+
     {:ok, _batch_id, _queued} =
       Messaging.send_batch(friend, "message", [
         %{"recipient_id" => user.id, "ciphertext" => "from-friend", "nonce" => "nonce-4"}

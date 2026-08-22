@@ -11,6 +11,10 @@ defmodule VeejrWeb.Api.V1.MessageBatchControllerTest do
     bob = keyed_user("bob")
     {:ok, request} = Social.send_friend_request(alice, bob.username)
     {:ok, _friendship} = Social.accept_friend_request(bob, request.id)
+
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(bob, "contact", alice.id, %{"acceptance" => "ask"})
+
     tokens = login(conn, alice)
     %{alice: alice, bob: bob, tokens: tokens}
   end

@@ -28,12 +28,12 @@ defmodule VeejrWeb.PageLayout do
   @doc "The layouts a page may be asked to switch to."
   def layouts, do: @layouts
 
-  @doc "The account's chosen layout, defaulting to the full pages."
+  @doc "The account's chosen layout, defaulting to the simple pages."
   def current(%{assigns: %{current_scope: %{user: %{page_layout: layout}}}})
       when layout in @layouts,
       do: layout
 
-  def current(_socket), do: "full"
+  def current(_socket), do: "simple"
 
   @doc "True when the account asked for the plain pages."
   def simple?(socket), do: current(socket) == "simple"

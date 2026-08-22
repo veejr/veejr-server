@@ -18,6 +18,8 @@ defmodule VeejrWeb.MessagesLiveTest do
         "key_nonce" => Base.encode64(String.pad_trailing("nonce", 24, "x"))
       })
 
+    {:ok, user} = Accounts.set_page_layout(user, "full")
+
     %{conn: log_in_user(conn, user), user: user}
   end
 
@@ -140,6 +142,12 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     {:ok, request} = Social.send_friend_request(friend, user.username)
     {:ok, _friendship} = Social.accept_friend_request(user, request.id)
+
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(user, "contact", friend.id, %{
+        "acceptance" => "ask",
+        "notification" => "normal"
+      })
 
     {:ok, _batch_id, []} =
       Messaging.send_batch(friend, "message", [

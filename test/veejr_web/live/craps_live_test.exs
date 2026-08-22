@@ -17,6 +17,7 @@ defmodule VeejrWeb.CrapsLiveTest do
 
   setup %{conn: conn} do
     admin = with_keys(user_fixture())
+    {:ok, admin} = Accounts.set_page_layout(admin, "full")
 
     %{conn: log_in_user(conn, admin), admin: admin}
   end

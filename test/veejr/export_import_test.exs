@@ -23,6 +23,10 @@ defmodule Veejr.ExportImportTest do
   defp befriend(a, b) do
     {:ok, fr} = Social.send_friend_request(a, b.username)
     {:ok, _} = Social.accept_friend_request(b, fr.id)
+
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(b, "contact", a.id, %{"acceptance" => "ask"})
+
     :ok
   end
 

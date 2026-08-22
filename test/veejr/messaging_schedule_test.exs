@@ -301,6 +301,10 @@ defmodule Veejr.MessagingScheduleTest do
   defp befriend(a, b) do
     {:ok, request} = Social.send_friend_request(a, b.username)
     {:ok, _} = Social.accept_friend_request(b, request.id)
+
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(b, "contact", a.id, %{"acceptance" => "ask"})
+
     :ok
   end
 end

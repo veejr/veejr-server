@@ -253,7 +253,16 @@ defmodule Veejr.FederationTest do
       %{alice: alice, carol: fr.requester}
     end
 
-    test "incoming notify stores a content-free stub until accepted", %{alice: alice} do
+    test "incoming notify stores a content-free stub until accepted", %{
+      alice: alice,
+      carol: carol
+    } do
+      {:ok, _policy} =
+        Messaging.put_delivery_policy(alice, "contact", carol.id, %{
+          "acceptance" => "ask",
+          "notification" => "normal"
+        })
+
       assert {:ok, :created} =
                Federation.handle_notify(
                  %{

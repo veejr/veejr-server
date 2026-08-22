@@ -153,6 +153,13 @@ defmodule Veejr.MessagingSendTest do
     alice = user_fixture(%{username: "attachment_alice"})
     bob = user_fixture(%{username: "attachment_bob"})
     befriend(alice, bob)
+
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(bob, "contact", alice.id, %{
+        "acceptance" => "ask",
+        "notification" => "normal"
+      })
+
     {:ok, blob} = Messaging.create_blob(alice, "encrypted-video")
 
     assert {:ok, _batch_id, []} =

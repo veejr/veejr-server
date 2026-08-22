@@ -725,7 +725,12 @@ defmodule VeejrWeb.ContactsLive do
       ) do
     user = socket.assigns.current_scope.user
     policy = Map.get(socket.assigns.delivery_policies, {subject_type, subject_id})
-    acceptance = if policy && policy.acceptance == "automatic", do: "ask", else: "automatic"
+
+    acceptance =
+      if is_nil(policy) or policy.acceptance == "automatic",
+        do: "ask",
+        else: "automatic"
+
     notification = if policy, do: policy.notification, else: "normal"
 
     case Messaging.put_delivery_policy(user, subject_type, subject_id, %{
@@ -1031,7 +1036,7 @@ defmodule VeejrWeb.ContactsLive do
     assigns =
       assigns
       |> assign(:subject_id_string, subject_id)
-      |> assign(:enabled, not is_nil(policy) and policy.acceptance == "automatic")
+      |> assign(:enabled, is_nil(policy) or policy.acceptance == "automatic")
 
     ~H"""
     <button

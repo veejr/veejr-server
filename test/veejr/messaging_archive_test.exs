@@ -104,6 +104,9 @@ defmodule Veejr.MessagingArchiveTest do
     {:ok, request} = Veejr.Social.send_friend_request(other, user.username)
     {:ok, _friendship} = Veejr.Social.accept_friend_request(user, request.id)
 
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(user, "contact", other.id, %{"acceptance" => "ask"})
+
     {:ok, batch_id, []} =
       Messaging.send_batch(other, "message", [
         %{"recipient_id" => user.id, "ciphertext" => "incoming", "nonce" => "nonce"}
