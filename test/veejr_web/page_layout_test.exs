@@ -9,7 +9,7 @@ defmodule VeejrWeb.PageLayoutTest do
   describe "set_page_layout/2" do
     test "accepts the two layouts and refuses anything else" do
       user = user_fixture()
-      assert user.page_layout == "full"
+      assert user.page_layout == "simple"
 
       assert {:ok, user} = Accounts.set_page_layout(user, "simple")
       assert user.page_layout == "simple"
@@ -40,6 +40,10 @@ defmodule VeejrWeb.PageLayoutTest do
       assert PageLayout.messages_redirect(%{"friend_ids" => "1,2"}) == nil
       assert PageLayout.messages_redirect(%{"conversation" => "abc", "group_id" => "3"}) == nil
     end
+  end
+
+  test "falls back to the simple pages without a user preference" do
+    assert PageLayout.current(%{assigns: %{}}) == "simple"
   end
 
   describe "route/2" do

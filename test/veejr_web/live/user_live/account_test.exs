@@ -101,6 +101,14 @@ defmodule VeejrWeb.UserLive.AccountTest do
     {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/account")
 
     assert has_element?(view, "#experience-mode")
+    assert has_element?(view, "#experience-mode-simple[aria-checked='true']")
+    assert has_element?(view, "#primary-navigation-links a[href='/contacts/simple']")
+    assert has_element?(view, "#primary-navigation-links a[href='/messages/simple']")
+    refute has_element?(view, "#primary-navigation-links a[href='/calls']")
+    refute has_element?(view, "#primary-navigation-themes")
+
+    view |> element("#experience-mode-full") |> render_click()
+
     assert has_element?(view, "#experience-mode-full[aria-checked='true']")
     assert has_element?(view, "#primary-navigation-links a[href='/messages?self_notes=true']")
     assert has_element?(view, "#primary-navigation-links a[href='/calls']")

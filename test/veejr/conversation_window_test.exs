@@ -44,6 +44,13 @@ defmodule Veejr.ConversationWindowTest do
     alice = user_with_keys("alice")
     bob = user_with_keys("bob")
     befriend(alice, bob)
+
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(bob, "contact", alice.id, %{
+        "acceptance" => "ask",
+        "notification" => "normal"
+      })
+
     %{alice: alice, bob: bob}
   end
 

@@ -21,10 +21,10 @@ defmodule Veejr.Accounts.User do
     # the data existing rather than asking viewers to hide it.
     field :presence_sharing, :boolean, default: true
 
-    # "full" or "simple": which Contacts and Messages this account gets.
+    # "simple" or "full": which Contacts and Messages this account gets.
     # Read at mount, so the canonical /contacts and /messages URLs land on
     # the chosen pair rather than redirecting after a first paint.
-    field :page_layout, :string, default: "full"
+    field :page_layout, :string, default: "simple"
 
     # nil for local accounts; a remote user's home-instance authority
     # (e.g. "veejr.example.com", "localhost:4001") otherwise. Remote users

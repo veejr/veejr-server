@@ -12,6 +12,12 @@ defmodule VeejrWeb.Api.V1.EnvelopeControllerTest do
     {:ok, request} = Social.send_friend_request(alice, bob.username)
     {:ok, _friendship} = Social.accept_friend_request(bob, request.id)
 
+    {:ok, _policy} =
+      Messaging.put_delivery_policy(bob, "contact", alice.id, %{
+        "acceptance" => "ask",
+        "notification" => "normal"
+      })
+
     {:ok, _batch_id, _deliveries} =
       Messaging.send_batch(alice, "message", [
         %{"recipient_id" => bob.id, "ciphertext" => "bob-secret", "nonce" => "bob-nonce"},

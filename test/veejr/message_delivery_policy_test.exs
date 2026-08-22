@@ -14,7 +14,7 @@ defmodule Veejr.MessageDeliveryPolicyTest do
   end
 
   test "conversation, contact, and restrictive group precedence", %{alice: alice, bob: bob} do
-    refute Messaging.automatic_delivery?(bob, alice)
+    assert Messaging.automatic_delivery?(bob, alice)
 
     {:ok, group} = Social.create_group(bob, %{name: "Trusted"})
     {:ok, _membership} = Social.add_group_member(bob, group.id, alice.id)
@@ -30,6 +30,12 @@ defmodule Veejr.MessageDeliveryPolicyTest do
     assert Messaging.automatic_delivery?(bob, alice)
 
     {:ok, _policy} = put(bob, "conversation", alice.id, "ask")
+    refute Messaging.automatic_delivery?(bob, alice)
+  end
+
+  test "an explicit ask policy overrides the automatic default", %{alice: alice, bob: bob} do
+    {:ok, _policy} = put(bob, "contact", alice.id, "ask")
+
     refute Messaging.automatic_delivery?(bob, alice)
   end
 
