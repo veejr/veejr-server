@@ -102,6 +102,30 @@ Health check: `docker service ls`, then
 `https://<host>/api/instance` on both hostnames should report the expected
 `version`.
 
+## Full encrypted backup
+
+The authoritative procedure is `docs/OPERATIONS.md` → **Backups**. On this
+host, run `scripts/veejr_full_backup.ps1`; do not use the old single-directory
+copy recipe. The script currently captures:
+
+- main state from the working repository (`veejr_prod.db` and
+  `priv\static\uploads`);
+- the complete state and protected environment for
+  `veejr_veejr0_dyndns_server_com`;
+- `C:\ProgramData\Veejr\secrets` and the active Caddyfile;
+- the full Swarm service specs (where the main instance's runtime secrets
+  reside), all three supporting container specs, and every persistent Caddy,
+  coturn, and Postfix Docker volume;
+- a source Git bundle, exact deployed commits, and a machine-readable manifest.
+
+Backups are written only under `C:\ProgramData\Veejr\backups`. A successful run
+leaves a `.veejrbak` file plus its `.sha256` checksum and no plaintext archive.
+Both output files should be copied to the private Google Drive backup folder.
+The DPAPI-protected automation key at
+`C:\ProgramData\Veejr\backup-keys\google-drive.dpapi` deliberately is **not**
+inside the backup; keep the recovery passphrase separately in a password
+manager so the archive remains recoverable after loss of this Windows host.
+
 ## Deploys and upgrades
 
 - **A release is not complete when the code is merely committed, pushed, or

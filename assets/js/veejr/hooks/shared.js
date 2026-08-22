@@ -14,6 +14,8 @@ import {ensureLeaflet} from "../map_hook.js"
 
 // Promise wrapper around pushEvent-with-reply, shared by several hooks.
 export function pushWithReply(hook, event, params) {
+  const statusToken = typeof window !== "undefined" ? window.veejrSendStatus?.start() : null
+
   return new Promise((resolve, reject) => {
     hook.pushEvent(event, params, (reply) => {
       if (reply && reply.error) {
@@ -23,7 +25,17 @@ export function pushWithReply(hook, event, params) {
       }
       else resolve(reply)
     })
+  }).finally(() => {
+    if (typeof window !== "undefined") window.veejrSendStatus?.finish(statusToken)
   })
+}
+
+export function liveViewConnected() {
+  return (
+    typeof window !== "undefined" &&
+    navigator.onLine &&
+    window.veejrConnectionState === "connected"
+  )
 }
 
 export const csrfToken = () =>

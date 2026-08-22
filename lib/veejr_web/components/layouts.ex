@@ -111,6 +111,18 @@ defmodule VeejrWeb.Layouts do
         <.icon name="hero-signal-slash" class="size-4" />
         <span data-role="connection-status-text">Connection interrupted</span>
       </div>
+      <div
+        id="send-status"
+        role="status"
+        aria-live="polite"
+        class="pointer-events-none fixed inset-x-0 bottom-4 z-[90] hidden items-center justify-center px-4"
+        phx-update="ignore"
+      >
+        <div class="flex items-center gap-2 rounded-full border border-primary/20 bg-base-100 px-4 py-2 text-sm font-medium text-primary shadow-lg">
+          <.icon name="hero-paper-airplane" class="size-4" />
+          <span data-role="send-status-text">Sending…</span>
+        </div>
+      </div>
       <header class="sticky top-0 z-40 flex min-h-16 flex-wrap items-center gap-2 border-b border-base-300 bg-base-100/95 px-4 py-2 shadow-sm backdrop-blur sm:flex-nowrap sm:px-6 lg:px-8">
         <details
           :if={@current_scope}
@@ -337,13 +349,33 @@ defmodule VeejrWeb.Layouts do
             <label for="inline-key-passphrase" class="block text-sm font-medium">
               Encryption passphrase
             </label>
-            <input
-              id="inline-key-passphrase"
-              data-role="passphrase"
-              type="password"
-              autocomplete="current-password"
-              class="input input-bordered w-full"
-            />
+            <div
+              id="inline-key-passphrase-visibility"
+              class="relative"
+              phx-hook="PasswordVisibility"
+              phx-update="ignore"
+            >
+              <input
+                id="inline-key-passphrase"
+                data-role="passphrase"
+                type="password"
+                autocomplete="current-password"
+                class="input input-bordered w-full !pr-12"
+              />
+              <button
+                id="inline-key-passphrase-visibility-toggle"
+                type="button"
+                data-role="password-visibility-toggle"
+                data-secret-label="passphrase"
+                aria-label="Show passphrase"
+                aria-pressed="false"
+                class="absolute right-1 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-md text-base-content/60 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <span data-role="password-visibility-icon">
+                  <.icon name="hero-eye" class="size-5" />
+                </span>
+              </button>
+            </div>
             <p data-role="unlock-error" role="alert" class="hidden text-sm text-error"></p>
             <div class="flex justify-end gap-2">
               <button type="button" data-role="cancel" class="btn btn-ghost">Cancel</button>

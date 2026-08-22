@@ -202,14 +202,34 @@ defmodule VeejrWeb.MessagingComponents do
         <span class="px-1 text-xs font-medium opacity-70">
           <.icon name="hero-lock-closed" class="mr-1 inline size-3.5" /> Unlock to send
         </span>
-        <input
-          type="password"
-          data-role="composer-passphrase"
-          aria-label="Encryption passphrase"
-          autocomplete="current-password"
-          placeholder="Encryption passphrase"
-          class="min-w-0 flex-1 rounded-full border border-base-300 bg-base-100 px-3 py-1.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-        />
+        <div
+          id={"#{@id}-composer-passphrase-visibility"}
+          class="relative min-w-0 flex-1"
+          phx-hook="PasswordVisibility"
+          phx-update="ignore"
+        >
+          <input
+            type="password"
+            data-role="composer-passphrase"
+            aria-label="Encryption passphrase"
+            autocomplete="current-password"
+            placeholder="Encryption passphrase"
+            class="min-w-0 w-full rounded-full border border-base-300 bg-base-100 px-3 py-1.5 pr-10 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+          <button
+            id={"#{@id}-composer-passphrase-visibility-toggle"}
+            type="button"
+            data-role="password-visibility-toggle"
+            data-secret-label="passphrase"
+            aria-label="Show passphrase"
+            aria-pressed="false"
+            class="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-base-content/60 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <span data-role="password-visibility-icon">
+              <.icon name="hero-eye" class="size-4" />
+            </span>
+          </button>
+        </div>
         <button type="button" data-role="composer-unlock-submit" class="btn btn-primary btn-sm">
           Unlock and send
         </button>
@@ -713,6 +733,13 @@ defmodule VeejrWeb.MessagingComponents do
       >
         Enter to send · Shift+Enter for a new line
         <span data-role="draft-status" class="hidden" aria-live="polite"></span>
+      </p>
+
+      <p
+        data-role="send-status"
+        class="hidden px-2 text-xs font-medium text-primary"
+        aria-live="polite"
+      >
       </p>
 
       <div

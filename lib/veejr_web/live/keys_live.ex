@@ -257,7 +257,12 @@ defmodule VeejrWeb.KeysLive do
 
   defp passphrase_input(assigns) do
     ~H"""
-    <div id={"#{@id}-password-visibility"} class="relative" phx-hook="PasswordVisibility">
+    <div
+      id={"#{@id}-password-visibility"}
+      class="relative"
+      phx-hook="PasswordVisibility"
+      phx-update="ignore"
+    >
       <input
         id={@id}
         type="password"
