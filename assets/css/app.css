@@ -596,6 +596,12 @@ select :is(option, optgroup) {
   min-height: 0;
 }
 
+#call-session:fullscreen [data-role="remote-tiles"],
+#call-session:-webkit-full-screen [data-role="remote-tiles"] {
+  height: 100%;
+  min-height: 0;
+}
+
 #call-session:fullscreen:not([data-youtube-active="true"]) [data-role="remote-video"],
 #call-session:-webkit-full-screen:not([data-youtube-active="true"]) [data-role="remote-video"] {
   height: 100%;
