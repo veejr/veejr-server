@@ -322,8 +322,10 @@ defmodule VeejrWeb.SimpleMessagesLive do
      socket}
   end
 
-  def handle_event("send_batch", %{"kind" => kind, "envelopes" => envelopes}, socket) do
-    case Messaging.send_batch(socket.assigns.current_scope.user, kind, envelopes) do
+  def handle_event("send_batch", %{"kind" => kind, "envelopes" => envelopes} = params, socket) do
+    opts = Map.take(params, ["attachment_ids", "client_batch_id"])
+
+    case Messaging.send_batch(socket.assigns.current_scope.user, kind, envelopes, opts) do
       {:ok, _batch_id, _queued} ->
         {:reply, %{ok: true}, refresh(socket)}
 

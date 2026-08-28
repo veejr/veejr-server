@@ -28,6 +28,8 @@ defmodule Veejr.Federation do
 
   require Logger
 
+  import Ecto.Query
+
   alias Veejr.Accounts.User
   alias Veejr.Federation.{Client, Peers}
   alias Veejr.Repo
@@ -590,6 +592,39 @@ defmodule Veejr.Federation do
       error -> error
     end
   end
+
+  @doc """
+  Fetches encrypted attachment bytes for a local recipient through their own
+  instance, keeping the browser request same-origin.
+
+  The origin inside the encrypted payload is never used as a request target.
+  It must exactly match the canonical URL of an instance that sent this user
+  an envelope; the request is then built from that stored, pinned authority.
+  """
+  def fetch_attachment(%User{id: user_id}, origin, public_id)
+      when is_binary(origin) and is_binary(public_id) do
+    authority =
+      from(e in Veejr.Messaging.Envelope,
+        join: sender in User,
+        on: sender.id == e.sender_id,
+        where: e.recipient_id == ^user_id and not is_nil(sender.host),
+        distinct: true,
+        select: sender.host
+      )
+      |> Repo.all()
+      |> Enum.find(&(Client.base_url(&1) == String.trim_trailing(origin, "/")))
+
+    with authority when is_binary(authority) <- authority,
+         :ok <- Peers.allow(authority),
+         {:ok, body} <- Client.get_blob(authority, public_id, Veejr.Messaging.max_blob_size()) do
+      {:ok, body}
+    else
+      nil -> {:error, :unknown_origin}
+      error -> error
+    end
+  end
+
+  def fetch_attachment(%User{}, _origin, _public_id), do: {:error, :invalid_attachment}
 
   ## Incoming handlers (called by FederationController)
   #

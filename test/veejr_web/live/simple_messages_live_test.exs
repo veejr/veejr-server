@@ -5,7 +5,7 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
   import Veejr.AccountsFixtures
 
   alias Veejr.{Accounts, Messaging, Repo, Social}
-  alias Veejr.Messaging.Envelope
+  alias Veejr.Messaging.{BlobReference, Envelope}
 
   setup %{conn: conn} do
     user = user_fixture()
@@ -115,6 +115,36 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
              view,
              "#simple-message-composer > div > label[data-role='file-toggle']"
            )
+  end
+
+  test "links uploaded video blobs to batches sent from the simple composer", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, blob} = Messaging.create_blob(user, "encrypted-video")
+    client_batch_id = Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
+
+    {:ok, view, _html} = live(conn, "/messages/simple?friend=#{friend.id}")
+
+    render_hook(view, "send_batch", %{
+      "kind" => "message",
+      "envelopes" => [
+        %{"recipient_id" => friend.id, "ciphertext" => "for-friend", "nonce" => "nonce-1"},
+        %{"recipient_id" => user.id, "ciphertext" => "my-copy", "nonce" => "nonce-2"}
+      ],
+      "attachment_ids" => [blob.public_id],
+      "client_batch_id" => client_batch_id
+    })
+
+    assert Repo.get_by!(BlobReference, blob_id: blob.id, batch_id: client_batch_id)
+
+    blob
+    |> Ecto.Changeset.change(inserted_at: DateTime.add(DateTime.utc_now(:second), -25, :hour))
+    |> Repo.update!()
+
+    assert %{files: 0, bytes: 0} = Messaging.purge_abandoned_blobs()
+    assert Messaging.get_blob(blob.public_id)
   end
 
   test "opens an empty thread for a contact who has never written", %{

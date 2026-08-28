@@ -8,7 +8,7 @@ defmodule VeejrWeb.BlobController do
   """
   use VeejrWeb, :controller
 
-  alias Veejr.Messaging
+  alias Veejr.{Federation, Messaging}
 
   def create(conn, _params) do
     user = conn.assigns.current_scope.user
@@ -38,10 +38,10 @@ defmodule VeejrWeb.BlobController do
     end
   end
 
-  def show(conn, %{"id" => id}) do
+  def show(conn, %{"id" => id} = params) do
     case Messaging.get_blob(id) do
       nil ->
-        send_resp(conn, :not_found, "not found")
+        relay_remote_blob(conn, id, params["origin"])
 
       blob ->
         conn
@@ -50,6 +50,21 @@ defmodule VeejrWeb.BlobController do
         |> send_file(200, Messaging.blob_file_path(blob))
     end
   end
+
+  defp relay_remote_blob(conn, id, origin) when is_binary(origin) do
+    case Federation.fetch_attachment(conn.assigns.current_scope.user, origin, id) do
+      {:ok, body} ->
+        conn
+        |> put_resp_content_type("application/octet-stream")
+        |> put_resp_header("cache-control", "private, max-age=31536000, immutable")
+        |> send_resp(:ok, body)
+
+      _ ->
+        send_resp(conn, :not_found, "not found")
+    end
+  end
+
+  defp relay_remote_blob(conn, _id, _origin), do: send_resp(conn, :not_found, "not found")
 
   @doc """
   Public capability endpoint for cross-instance attachment downloads.

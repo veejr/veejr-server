@@ -8,7 +8,6 @@ import {
   encryptBlob,
   decryptBlob,
 } from "../crypto.js"
-import {Decrypt} from "./messages.js"
 import {appendLinkedText} from "../link_text.js"
 import {ensureLeaflet} from "../map_hook.js"
 
@@ -76,16 +75,28 @@ export async function encryptAndUpload(file, metadata = {}) {
   }
 }
 
+export function attachmentDownloadUrls(att) {
+  const id = encodeURIComponent(att.id)
+
+  return [...new Set([
+    // Federated attachments must stay same-origin in the browser: production's
+    // CSP deliberately blocks arbitrary cross-origin fetches. The authenticated
+    // blob route validates the encrypted payload's origin against a remote
+    // sender in this user's history, then relays the opaque ciphertext.
+    att.origin
+      ? `/blobs/${id}?origin=${encodeURIComponent(att.origin)}`
+      : null,
+    `/api/blobs/${id}`,
+    `/blobs/${id}`,
+  ].filter(Boolean))]
+}
+
 export async function decryptAttachmentBlob(att) {
-  const urls = [
-    att.origin ? `${att.origin}/api/blobs/${att.id}` : null,
-    `/api/blobs/${att.id}`,
-    `/blobs/${att.id}`,
-  ].filter(Boolean)
+  const urls = attachmentDownloadUrls(att)
 
   let resp = null
   let lastError = null
-  for (const url of [...new Set(urls)]) {
+  for (const url of urls) {
     try {
       resp = await fetch(url)
       if (resp.ok) break
@@ -105,8 +116,9 @@ export async function decryptAttachmentBlob(att) {
 
 // Downloads an encrypted blob, decrypts it locally, and hands it to the user
 // as a normal file download. Cross-instance attachments carry their origin
-// and are fetched from that instance's public capability endpoint; legacy
-// attachments (no origin) live on this instance behind the session route.
+// and are relayed by this instance after it verifies that origin belongs to a
+// remote sender in the viewer's history. Legacy attachments (no origin) live
+// on this instance behind the session route.
 
 export async function downloadAttachment(att) {
   const blob = await decryptAttachmentBlob(att)

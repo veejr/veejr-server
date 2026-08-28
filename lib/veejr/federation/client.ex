@@ -55,6 +55,40 @@ defmodule Veejr.Federation.Client do
     end
   end
 
+  @doc "Fetches an opaque encrypted attachment with a strict response-size limit."
+  def get_blob(authority, public_id, max_bytes)
+      when is_binary(authority) and is_binary(public_id) and is_integer(max_bytes) do
+    into = fn {:data, data}, {request, response} ->
+      body = if is_binary(response.body), do: response.body <> data, else: data
+      response = %{response | body: body}
+
+      if byte_size(body) <= max_bytes do
+        {:cont, {request, response}}
+      else
+        {:halt, {request, %{response | body: :too_large}}}
+      end
+    end
+
+    case Req.get(req(authority),
+           url: "/api/blobs/#{URI.encode(public_id, &URI.char_unreserved?/1)}",
+           redirect: false,
+           decode_body: false,
+           into: into
+         ) do
+      {:ok, %Req.Response{status: 200, body: body}} when is_binary(body) ->
+        {:ok, body}
+
+      {:ok, %Req.Response{body: :too_large}} ->
+        {:error, :too_large}
+
+      {:ok, %Req.Response{status: status}} ->
+        {:error, {:http, status}}
+
+      {:error, exception} ->
+        {:error, {:unreachable, Exception.message(exception)}}
+    end
+  end
+
   @doc """
   Signed federation POST: the JSON body is encoded once, and the signature
   covers path, timestamp, and a hash of those exact bytes.
