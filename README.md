@@ -111,6 +111,16 @@ mix phx.server
 Open <http://localhost:4000>. Development email is available at
 <http://localhost:4000/dev/mailbox>.
 
+### Simple view demo
+
+Open <http://localhost:4000/demo/simple> for a public, interactive preview of
+the streamlined Contacts and Messages experience. It uses labeled sample data,
+requires no account or encryption keys, and never reads or writes real user
+data. Search for a contact, open a conversation, add session-only replies, and
+try the simulated call choice. See [docs/SIMPLE_DEMO.md](docs/SIMPLE_DEMO.md)
+for the data boundary, route placement, implementation notes, and test
+contract.
+
 The development server listens on all IPv4 interfaces by default, so another
 device on the same LAN can open `http://<computer-lan-ip>:4000`. Set
 `BIND_ALL=false` to restrict it to this computer. Windows Firewall must also

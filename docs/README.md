@@ -12,6 +12,7 @@ has a distinct purpose.
 | [Installation](INSTALLATION.md) | Operators | New development and source-mounted Docker Swarm installation. |
 | [Operations](OPERATIONS.md) | Operators | Health checks, release/update flow, backup, restore, rollback, TURN, and troubleshooting. |
 | [Calls and watch parties](CALLS_AND_WATCH_PARTIES.md) | Users, operators, developers | Conferencing controls, privacy, recovery/re-invite, YouTube sharing, voice, and diagnostics. |
+| [Simple view demo](SIMPLE_DEMO.md) | Product reviewers and developers | Public interactive preview, sample-data boundary, route placement, implementation map, and testing. |
 | [Architecture](ARCHITECTURE.md) | Developers and security reviewers | Runtime components, cryptography, federation, calls, storage, and trust boundaries. |
 
 ## Compatibility and implementation references
