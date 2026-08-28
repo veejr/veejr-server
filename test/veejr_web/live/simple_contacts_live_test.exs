@@ -4,7 +4,7 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
   import Phoenix.LiveViewTest
   import Veejr.AccountsFixtures
 
-  alias Veejr.{Accounts, Repo, Social}
+  alias Veejr.{Accounts, Calls, Repo, Social}
 
   setup %{conn: conn} do
     user = user_fixture()
@@ -37,6 +37,7 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
 
     assert has_element?(view, "#simple-contact-#{friend.id}", "@#{friend.username}")
     assert has_element?(view, "#simple-contact-#{friend.id} [aria-label*='profile image']")
+    assert has_element?(view, "#simple-contact-presence-#{friend.id}")
     assert has_element?(view, "a[href='/contacts?manage=true']", "Manage")
 
     assert has_element?(
@@ -44,6 +45,55 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
              "#simple-contacts-list #simple-self-notes[href='/messages?self_notes=true']",
              "Notes to yourself"
            )
+  end
+
+  test "asks whether to call now or schedule from the contact photo", %{
+    conn: conn,
+    friend: friend
+  } do
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    assert has_element?(
+             view,
+             "#simple-contact-call-#{friend.id}[aria-haspopup='dialog'][aria-controls='simple-call-dialog']"
+           )
+
+    refute has_element?(view, "#simple-call-dialog")
+    view |> element("#simple-contact-call-#{friend.id}") |> render_click()
+
+    assert has_element?(view, "#simple-call-dialog[role='dialog'][aria-modal='true']")
+    assert has_element?(view, "#simple-call-dialog-title", "@#{friend.username}")
+    assert has_element?(view, "#simple-call-now[phx-click='start_call']", "Call now")
+
+    assert has_element?(
+             view,
+             "#simple-schedule-call[href='/calls?friend_id=#{friend.id}']",
+             "Schedule a call"
+           )
+
+    view |> element("#simple-call-cancel") |> render_click()
+    refute has_element?(view, "#simple-call-dialog")
+  end
+
+  test "starts an immediate call and returns to simple contacts afterwards", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    view |> element("#simple-contact-call-#{friend.id}") |> render_click()
+    view |> element("#simple-call-now") |> render_click()
+
+    {call_path, _flash} = assert_redirect(view)
+    uri = URI.parse(call_path)
+    assert "/call/" <> public_id = uri.path
+    assert URI.decode_query(uri.query)["return_to"] == "/contacts/simple"
+    user_id = user.id
+    friend_id = friend.id
+
+    assert {:ok, %{state: "ringing", caller_id: ^user_id, callee_id: ^friend_id}} =
+             Calls.get_call(user, public_id)
   end
 
   test "opens contact management without changing the saved simple mode", %{
