@@ -14,6 +14,11 @@ defmodule VeejrWeb.SimpleContactsLive do
   All three are on unless an administrator has turned one off in `/admin`;
   see `Veejr.Features` for what that switch does and does not mean.
 
+  Where there is a pointer, the three wait a second on the photo before they
+  appear, so the page is faces until you go looking for a control. The
+  presence dot is not one of them and never hides: it is information, not
+  something to press.
+
   A location note is real end-to-end encrypted mail. The `Composer` hook seals
   it in the browser exactly as it does on `/map`, the coordinates come from
   the browser and never travel as a LiveView event, and the recipient is
@@ -81,7 +86,7 @@ defmodule VeejrWeb.SimpleContactsLive do
           :for={friend <- @friends}
           class="flex flex-col items-center gap-3 rounded-2xl p-3 text-center transition hover:bg-base-200"
         >
-          <span class="relative inline-flex">
+          <span class="contact-photo relative inline-flex">
             <.link
               id={"simple-contact-#{friend.id}"}
               navigate={~p"/messages/simple?friend=#{friend.id}"}
@@ -107,6 +112,11 @@ defmodule VeejrWeb.SimpleContactsLive do
             quarter they took when centred on the edge. They stay full size —
             these are the touch targets — and the ring is only what it takes to
             separate a button from the photo behind it.
+
+            `contact-action` is what hides them until the pointer has rested on
+            the photo for a second; the offsets stagger their arrival. See
+            app.css, which also covers the two cases a hover-reveal has to get
+            right — a touch screen, and a keyboard.
             --%>
             <button
               :if={@features.simple_contact_call}
@@ -117,7 +127,8 @@ defmodule VeejrWeb.SimpleContactsLive do
               aria-label={"Call #{contact_name(friend)}"}
               aria-haspopup="dialog"
               aria-controls="simple-call-dialog"
-              class="absolute -bottom-2.5 -left-2.5 flex size-8 items-center justify-center rounded-full bg-primary text-primary-content shadow-lg ring-2 ring-base-100 transition hover:scale-110 hover:bg-primary/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:size-9"
+              style="--contact-action-step: 0ms"
+              class="contact-action absolute -bottom-2.5 -left-2.5 flex size-8 items-center justify-center rounded-full bg-primary text-primary-content shadow-lg ring-2 ring-base-100 hover:bg-primary/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:size-9"
             >
               <.icon name="hero-phone" class="size-4" />
             </button>
@@ -130,7 +141,8 @@ defmodule VeejrWeb.SimpleContactsLive do
               aria-label={"Play a game with #{contact_name(friend)}"}
               aria-haspopup="dialog"
               aria-controls="simple-game-dialog"
-              class="absolute -top-2.5 -left-2.5 flex size-8 items-center justify-center rounded-full bg-info text-info-content shadow-lg ring-2 ring-base-100 transition hover:scale-110 hover:bg-info/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-info sm:size-9"
+              style="--contact-action-step: 70ms"
+              class="contact-action absolute -top-2.5 -left-2.5 flex size-8 items-center justify-center rounded-full bg-info text-info-content shadow-lg ring-2 ring-base-100 hover:bg-info/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-info sm:size-9"
             >
               <.icon name="hero-puzzle-piece" class="size-4" />
             </button>
@@ -143,7 +155,8 @@ defmodule VeejrWeb.SimpleContactsLive do
               aria-label={"Send #{contact_name(friend)} a location note"}
               aria-haspopup="dialog"
               aria-controls="simple-location-dialog"
-              class="absolute -top-2.5 -right-2.5 flex size-8 items-center justify-center rounded-full bg-accent text-accent-content shadow-lg ring-2 ring-base-100 transition hover:scale-110 hover:bg-accent/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:size-9"
+              style="--contact-action-step: 140ms"
+              class="contact-action absolute -top-2.5 -right-2.5 flex size-8 items-center justify-center rounded-full bg-accent text-accent-content shadow-lg ring-2 ring-base-100 hover:bg-accent/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:size-9"
             >
               <.icon name="hero-map-pin" class="size-4" />
             </button>

@@ -342,6 +342,72 @@ select :is(option, optgroup) {
   }
 }
 
+/* The buttons on a contact's photo in the simple view.
+
+   They wait a second before appearing, so passing the pointer over a face on
+   the way somewhere else leaves the photo alone; the presence dot is not one
+   of these and never hides, because it is information rather than a control.
+
+   Three things keep the wait from becoming a trap:
+
+   - It is asked for only where a pointer can hover. A touch screen has no
+     hover to give, and the photo is a link, so "tap to reveal" would open the
+     conversation instead — there the buttons simply stay on.
+   - Focus reveals them with no delay at all, and they keep `opacity` rather
+     than `visibility` so they stay in the tab order and in the accessibility
+     tree the whole time. Tab reaches a button, and the button's own focus is
+     what shows it.
+   - Leaving has no delay, so they go the moment the pointer does. */
+.contact-action {
+  opacity: 0;
+  transform: scale(0.7);
+  pointer-events: none;
+  transition:
+    opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition-delay: 0ms;
+}
+
+.contact-photo:focus-within .contact-action {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition-delay: 0ms;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .contact-photo:hover .contact-action {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    /* The dwell, plus a little per-button offset so they arrive as a run
+       rather than a blink. --contact-action-step is set on each button. */
+    transition-delay: calc(1s + var(--contact-action-step, 0ms));
+  }
+}
+
+/* The buttons used to grow on their own hover. That is gone on purpose: the
+   grow and the reveal are the same property, so a grow-on-hover would inherit
+   the one-second delay above and only spring back a second after the pointer
+   left. Arriving at all is the animation now; `hover:bg-*` still answers the
+   pointer. */
+
+/* No hover to wait for: the buttons are simply there. */
+@media (hover: none), (pointer: coarse) {
+  .contact-action {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contact-action {
+    transform: none;
+    transition-duration: 0ms;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Art Deco theme layer (applies only under data-theme="artdeco").
    Values come from the design handoff: black/gold palette, Poiret One display

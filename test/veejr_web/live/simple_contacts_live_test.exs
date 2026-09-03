@@ -115,6 +115,21 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
     refute has_element?(view, "#simple-contact-game-#{friend.id}")
   end
 
+  # The reveal itself is CSS, so what a LiveView test can pin is that each
+  # button is wired to it and the presence dot is not.
+  test "the buttons are the part that waits for a pointer, not the presence dot", %{
+    conn: conn,
+    friend: friend
+  } do
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    assert has_element?(view, "#simple-contacts-list li .contact-photo")
+    assert has_element?(view, "#simple-contact-call-#{friend.id}.contact-action")
+    assert has_element?(view, "#simple-contact-location-#{friend.id}.contact-action")
+
+    refute has_element?(view, "#simple-contact-presence-#{friend.id}.contact-action")
+  end
+
   test "hides a control the instance has switched off", %{
     conn: conn,
     user: user,
