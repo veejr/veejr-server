@@ -15,6 +15,7 @@ defmodule Veejr.Admin.AuditEvent do
     "account.suspended",
     "craps.chips_set",
     "federation.retried",
+    "instance.features_updated",
     "instance.mail_tested",
     "instance.settings_updated",
     "invitation.expired",

@@ -115,6 +115,44 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
     refute has_element?(view, "#simple-contact-game-#{friend.id}")
   end
 
+  test "hides a control the instance has switched off", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, _settings} = Admin.update_instance_settings(user, %{"craps_enabled" => "true"})
+
+    {:ok, _settings} =
+      Admin.update_features(user, %{
+        "simple_contact_call" => "true",
+        "simple_contact_game" => "false",
+        "simple_contact_location" => "false"
+      })
+
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    assert has_element?(view, "#simple-contact-call-#{friend.id}")
+    refute has_element?(view, "#simple-contact-game-#{friend.id}")
+    refute has_element?(view, "#simple-contact-location-#{friend.id}")
+
+    # The photo and the way into the conversation are not features; they are
+    # the page.
+    assert has_element?(view, "#simple-contact-#{friend.id}")
+  end
+
+  test "a switched-off control opens nothing even if its event arrives", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, _settings} = Admin.update_features(user, %{"simple_contact_location" => "false"})
+
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    render_click(view, "open_location_note", %{"id" => to_string(friend.id)})
+    refute has_element?(view, "#simple-location-dialog")
+  end
+
   test "asks which game to play and nudges them to the table", %{
     conn: conn,
     user: user,

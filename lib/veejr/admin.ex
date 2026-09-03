@@ -10,7 +10,7 @@ defmodule Veejr.Admin do
   alias Veejr.Federation.Outbox.Delivery
   alias Veejr.Federation.Peers.Peer
   alias Veejr.Messaging.{Blob, Envelope, Notification}
-  alias Veejr.{InstanceSettings, Operations}
+  alias Veejr.{Features, InstanceSettings, Operations}
   alias Veejr.Repo
 
   @max_craps_chips 1_000_000
@@ -197,6 +197,42 @@ defmodule Veejr.Admin do
           {:ok, settings} ->
             audit!(actor, "instance.settings_updated", "instance", 1, %{
               "fields" => Enum.map(changed_fields, &to_string/1)
+            })
+
+            settings
+
+          {:error, changeset} ->
+            Repo.rollback(changeset)
+        end
+      end)
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Turns the instance's interface controls on and off.
+
+  Separate from `update_instance_settings/2` because features are a catalogue
+  in code rather than a column each: the whole set is normalised against
+  `Veejr.Features` and written as one map, so a new control ships without a
+  migration and an unknown id submitted here is dropped rather than stored.
+
+  The audit entry records what ended up **off** rather than what changed. The
+  question anyone reads this log to answer is which controls this instance is
+  currently hiding, and the switched-off list answers it from a single row.
+  """
+  def update_features(%User{} = actor, params) when is_map(params) do
+    if Veejr.Accounts.instance_admin?(actor) do
+      changeset =
+        InstanceSettings.get()
+        |> Ecto.Changeset.change(features: Features.normalize(params))
+
+      Repo.transaction(fn ->
+        case Repo.update(changeset) do
+          {:ok, settings} ->
+            audit!(actor, "instance.features_updated", "instance", 1, %{
+              "off" => settings |> Features.disabled_ids() |> Enum.map(&to_string/1)
             })
 
             settings
