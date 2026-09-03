@@ -11,6 +11,8 @@ defmodule VeejrWeb.SimpleContactsLive do
   rather than with a page: call them, play something with them, and tell them
   where you are. Each asks a single question and then gets out of the way —
   call now or schedule it, which game, is this about where you are standing.
+  All three are on unless an administrator has turned one off in `/admin`;
+  see `Veejr.Features` for what that switch does and does not mean.
 
   A location note is real end-to-end encrypted mail. The `Composer` hook seals
   it in the browser exactly as it does on `/map`, the coordinates come from
@@ -24,7 +26,7 @@ defmodule VeejrWeb.SimpleContactsLive do
   alias Veejr.Accounts.User
   alias Veejr.AddOns
   alias Veejr.AddOns.Craps
-  alias Veejr.{Calls, Messaging, Presence, Social}
+  alias Veejr.{Calls, Features, Messaging, Presence, Social}
 
   @impl true
   def render(assigns) do
@@ -107,6 +109,7 @@ defmodule VeejrWeb.SimpleContactsLive do
             separate a button from the photo behind it.
             --%>
             <button
+              :if={@features.simple_contact_call}
               id={"simple-contact-call-#{friend.id}"}
               type="button"
               phx-click="open_call_options"
@@ -119,7 +122,7 @@ defmodule VeejrWeb.SimpleContactsLive do
               <.icon name="hero-phone" class="size-4" />
             </button>
             <button
-              :if={@games != []}
+              :if={@games != [] and @features.simple_contact_game}
               id={"simple-contact-game-#{friend.id}"}
               type="button"
               phx-click="open_game_options"
@@ -132,6 +135,7 @@ defmodule VeejrWeb.SimpleContactsLive do
               <.icon name="hero-puzzle-piece" class="size-4" />
             </button>
             <button
+              :if={@features.simple_contact_location}
               id={"simple-contact-location-#{friend.id}"}
               type="button"
               phx-click="open_location_note"
@@ -396,20 +400,22 @@ defmodule VeejrWeb.SimpleContactsLive do
      socket
      |> assign(:page_title, "Contacts")
      |> assign(:games, AddOns.enabled())
+     |> assign(:features, Features.enabled_map())
      |> close_dialogs()
      |> refresh()}
   end
 
   @impl true
   def handle_event("open_call_options", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :call_contact, find_friend(socket.assigns.friends, id))}
+    {:noreply, assign(socket, :call_contact, opening(socket, :simple_contact_call, id))}
   end
 
-  # No games offered means no button, and no dialog either — the sheet names
-  # the first game as the thing to focus, so an empty list has nothing to open.
+  # No games offered means no dialog either, whatever the feature says — the
+  # sheet names the first game as the thing to focus, so an empty list has
+  # nothing to open.
   def handle_event("open_game_options", %{"id" => id}, socket) do
     contact =
-      if socket.assigns.games == [], do: nil, else: find_friend(socket.assigns.friends, id)
+      if socket.assigns.games == [], do: nil, else: opening(socket, :simple_contact_game, id)
 
     {:noreply, assign(socket, :game_contact, contact)}
   end
@@ -417,7 +423,7 @@ defmodule VeejrWeb.SimpleContactsLive do
   def handle_event("open_location_note", %{"id" => id}, socket) do
     {:noreply,
      socket
-     |> assign(:location_contact, find_friend(socket.assigns.friends, id))
+     |> assign(:location_contact, opening(socket, :simple_contact_location, id))
      |> assign(:location_here, false)}
   end
 
@@ -522,6 +528,14 @@ defmodule VeejrWeb.SimpleContactsLive do
       location_contact: nil,
       location_here: false
     )
+  end
+
+  # The contact a switched-on button was pressed for. A control the instance
+  # does not draw opens nothing, so a crafted event cannot summon its sheet —
+  # though this is tidiness rather than a boundary: calls, games and map notes
+  # all stay reachable from the full pages. See `Veejr.Features`.
+  defp opening(socket, feature, id) do
+    if socket.assigns.features[feature], do: find_friend(socket.assigns.friends, id)
   end
 
   defp location_subtitle(false, _contact), do: "Is this note about where you are right now?"

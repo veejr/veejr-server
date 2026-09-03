@@ -110,6 +110,55 @@ defmodule VeejrWeb.AdminLiveTest do
     assert Veejr.AddOns.craps_dice_mode() == "house"
   end
 
+  test "switches an individual interface control off from the features panel", %{conn: conn} do
+    admin = user_fixture()
+
+    {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/admin")
+
+    assert has_element?(view, "#admin-features")
+    assert has_element?(view, "#feature-group-simple_contacts", "Simple contacts")
+
+    # Everything ships on, so every box starts checked.
+    for feature <- Veejr.Features.all() do
+      assert has_element?(view, "#feature-#{feature.id}", feature.name)
+      assert has_element?(view, "#features-form input[name='features[#{feature.id}]'][checked]")
+    end
+
+    view
+    |> form("#features-form", %{
+      "features" => %{
+        "simple_contact_call" => "true",
+        "simple_contact_game" => "false",
+        "simple_contact_location" => "true"
+      }
+    })
+    |> render_submit()
+
+    refute has_element?(
+             view,
+             "#features-form input[name='features[simple_contact_game]'][checked]"
+           )
+
+    assert has_element?(
+             view,
+             "#features-form input[name='features[simple_contact_call]'][checked]"
+           )
+
+    assert has_element?(view, "#admin-audit", "Features updated")
+    refute Veejr.Features.enabled?(:simple_contact_game)
+    assert Veejr.Features.enabled?(:simple_contact_call)
+  end
+
+  test "the features panel grows a row for every catalogue entry", %{conn: conn} do
+    admin = user_fixture()
+    {:ok, view, _html} = conn |> log_in_user(admin) |> live(~p"/admin")
+
+    for group <- Veejr.Features.catalogue() do
+      assert has_element?(view, "#feature-group-#{group.id}", group.summary)
+      for feature <- group.features, do: assert(has_element?(view, "#feature-#{feature.id}"))
+    end
+  end
+
   test "clearing the add-on checkbox turns it back off", %{conn: conn} do
     admin = user_fixture()
     {:ok, _settings} = Veejr.Admin.update_instance_settings(admin, %{"craps_enabled" => "true"})

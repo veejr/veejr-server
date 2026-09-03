@@ -181,6 +181,54 @@ defmodule VeejrWeb.AdminLive do
         </div>
       </.admin_panel>
 
+      <%!--
+      Rendered from the catalogue in Veejr.Features, so a control added there
+      appears here without this template changing.
+      --%>
+      <.admin_panel
+        id="admin-features"
+        title="Features"
+        subtitle="Individual controls this instance draws, and the ones it hides"
+      >
+        <.form
+          for={@features_form}
+          id="features-form"
+          phx-change="validate_features"
+          phx-submit="save_features"
+          class="space-y-4"
+        >
+          <div
+            :for={group <- @feature_groups}
+            id={"feature-group-#{group.id}"}
+            class="space-y-3 rounded-xl border border-base-300 p-4"
+          >
+            <div>
+              <p class="font-medium">{group.name}</p>
+              <p class="text-sm opacity-60">{group.summary}</p>
+            </div>
+
+            <div :for={feature <- group.features} id={"feature-#{feature.id}"}>
+              <.input
+                field={@features_form[feature.id]}
+                type="checkbox"
+                label={feature.name}
+              />
+              <p class="mt-0.5 ml-7 text-sm opacity-60">{feature.summary}</p>
+            </div>
+          </div>
+
+          <p class="text-sm opacity-60">
+            These switches change what a page draws, not what an account may do:
+            calls, games, and map notes all stay reachable from the full pages.
+            To close a door rather than tidy a page, turn off the add-on itself.
+          </p>
+
+          <button type="submit" class="btn btn-primary btn-sm">
+            <.icon name="hero-check" class="size-4" /> Save features
+          </button>
+        </.form>
+      </.admin_panel>
+
       <.admin_panel
         id="admin-settings"
         title="Instance settings"
@@ -939,6 +987,22 @@ defmodule VeejrWeb.AdminLive do
     {:noreply, assign(socket, add_ons_form: form)}
   end
 
+  # No changeset: the catalogue is the schema, so the submitted params are the
+  # form's state until they are normalised on save.
+  def handle_event("validate_features", %{"features" => params}, socket) do
+    {:noreply, assign(socket, features_form: to_form(params, as: "features"))}
+  end
+
+  def handle_event("save_features", %{"features" => params}, socket) do
+    case Admin.update_features(socket.assigns.current_scope.user, params) do
+      {:ok, _settings} ->
+        {:noreply, socket |> put_flash(:info, "Features saved.") |> load_dashboard()}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not save features.")}
+    end
+  end
+
   def handle_event("save_add_ons", %{"add_ons" => params}, socket) do
     case Admin.update_instance_settings(socket.assigns.current_scope.user, params) do
       {:ok, _settings} ->
@@ -1308,6 +1372,8 @@ defmodule VeejrWeb.AdminLive do
       settings_form: to_form(Admin.change_instance_settings(), as: "settings"),
       add_ons: Veejr.AddOns.all(),
       add_ons_form: to_form(Admin.change_instance_settings(), as: "add_ons"),
+      feature_groups: Veejr.Features.catalogue(),
+      features_form: to_form(Veejr.Features.form_params(), as: "features"),
       chips_form: chips_form()
     )
   end
@@ -1365,6 +1431,7 @@ defmodule VeejrWeb.AdminLive do
   defp audit_action_label("account_move.target_verified"), do: "Account move target verified"
   defp audit_action_label("account_move.test_verified"), do: "Account move test verified"
   defp audit_action_label("federation.retried"), do: "Federation retried"
+  defp audit_action_label("instance.features_updated"), do: "Features updated"
   defp audit_action_label("instance.mail_tested"), do: "Mail tested"
   defp audit_action_label("instance.upgrade_started"), do: "Software upgrade started"
   defp audit_action_label("instance.settings_updated"), do: "Settings updated"

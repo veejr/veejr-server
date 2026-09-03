@@ -18,6 +18,12 @@ defmodule Veejr.InstanceSettings do
     field :craps_enabled, :boolean, default: false
     field :craps_dice_mode, :string, default: "fair"
 
+    # Interface switches, id => boolean, described by the catalogue in
+    # `Veejr.Features`. Deliberately absent from `change/2`: it is written only
+    # by `Veejr.Admin.update_features/2`, which normalises against that
+    # catalogue, so a post to the settings form cannot reach it.
+    field :features, :map, default: %{}
+
     field :invitation_lifetime_days, :integer, virtual: true
     field :max_upload_mb, :integer, virtual: true
     field :storage_quota_mb, :integer, virtual: true

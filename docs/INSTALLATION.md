@@ -337,7 +337,11 @@ available, but contains no secrets.
 3. Create and safely record the encryption passphrase on `/keys`.
 4. Open `/admin` and review registration, upload, storage, retention, and mail
    settings.
-5. Create a test invitation, send a message with an attachment, and verify mail
+5. On the same page, review **Features**. Every interface control ships on;
+   this is where an individual one is switched off. It changes what a page
+   draws rather than what an account may do — to close a capability rather
+   than tidy a page, turn off the add-on itself.
+6. Create a test invitation, send a message with an attachment, and verify mail
    delivery from a second device before announcing the instance.
 
 The first local account is the permanent instance administrator. It cannot be
