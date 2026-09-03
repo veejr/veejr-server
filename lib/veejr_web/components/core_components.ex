@@ -116,10 +116,19 @@ defmodule VeejrWeb.CoreComponents do
   attr :id, :string, default: nil
   attr :class, :any, default: nil
 
+  attr :position, :string,
+    default: "-right-0.5 -bottom-0.5",
+    doc: "corner offsets; a large avatar needs positive ones to reach its rim"
+
   @doc """
   Renders a contact's presence as a dot beside their avatar.
 
   Place inside a `relative` wrapper alongside `user_avatar/1`.
+
+  The default offsets sit the dot at the corner of the avatar's *box*, which is
+  close enough to the circle at the sizes most pages draw. A circle's corner
+  gets further from its rim as the circle grows, so a page drawing a large
+  avatar passes `position` to bring the dot back onto the edge.
 
   Nothing is drawn for `:unknown` — a contact on another instance, or one who
   turned sharing off, gives us no basis for a claim, and an absent dot says
@@ -134,7 +143,8 @@ defmodule VeejrWeb.CoreComponents do
       data-presence={@state}
       title={Veejr.Presence.label(@state)}
       class={[
-        "pointer-events-none absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-base-100 transition-colors",
+        "pointer-events-none absolute size-3 rounded-full ring-2 ring-base-100 transition-colors",
+        @position,
         @state == :online && "bg-success",
         @state == :recently && "bg-warning/70",
         @state == :offline && "bg-base-300",
