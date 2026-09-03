@@ -757,3 +757,65 @@ export const GuestConferenceLobby = {
     if (this.preview) this.preview.srcObject = null
   },
 }
+
+// CurrentLocation: hands one composer this device's coordinates.
+//
+// Same arrangement as the map (see map_hook.js): the fix is published as a
+// payload provider, so the Composer hook seals it into the envelope and the
+// coordinates never travel as a LiveView event. The element names its
+// composer with data-composer-id.
+//
+// The page asks "is this where you are?" before rendering this, so the answer
+// is already yes by the time it mounts and the browser is asked straight
+// away. A refusal or a timeout leaves the provider returning null, which the
+// composer reports as "Pick or acquire a location first."
+export const CurrentLocation = {
+  mounted() {
+    this.composerId = this.el.dataset.composerId
+    this.coords = null
+
+    window.veejrPayloadProviders = window.veejrPayloadProviders || {}
+    window.veejrPayloadProviders[this.composerId] = () =>
+      this.coords ? {...this.coords, located_at: new Date().toISOString()} : null
+
+    this.onClick = (e) => {
+      if (!e.target.closest("[data-role=locate]")) return
+      e.preventDefault()
+      this.locate()
+    }
+    this.el.addEventListener("click", this.onClick)
+    this.locate()
+  },
+
+  locate() {
+    if (!navigator.geolocation) {
+      this.say("This browser cannot share a location.", "error")
+      return
+    }
+
+    this.say("Finding you…", "pending")
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        this.coords = {lat: pos.coords.latitude, lng: pos.coords.longitude}
+        this.say(`Found you: ${this.coords.lat.toFixed(5)}, ${this.coords.lng.toFixed(5)}`, "ready")
+      },
+      (err) => {
+        this.coords = null
+        this.say(`Location unavailable: ${err.message}`, "error")
+      },
+      {enableHighAccuracy: true, timeout: 15_000}
+    )
+  },
+
+  say(text, state) {
+    const status = this.el.querySelector("[data-role=location-status]")
+    if (!status) return
+    status.textContent = text
+    status.dataset.state = state
+  },
+
+  destroyed() {
+    if (this.onClick) this.el.removeEventListener("click", this.onClick)
+    if (window.veejrPayloadProviders) delete window.veejrPayloadProviders[this.composerId]
+  },
+}

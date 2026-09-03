@@ -4,7 +4,8 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
   import Phoenix.LiveViewTest
   import Veejr.AccountsFixtures
 
-  alias Veejr.{Accounts, Calls, Repo, Social}
+  alias Veejr.Messaging.Envelope
+  alias Veejr.{Accounts, Admin, Calls, Repo, Social}
 
   setup %{conn: conn} do
     user = user_fixture()
@@ -94,6 +95,122 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
 
     assert {:ok, %{state: "ringing", caller_id: ^user_id, callee_id: ^friend_id}} =
              Calls.get_call(user, public_id)
+  end
+
+  test "rings each photo with the things you do with a person", %{conn: conn, friend: friend} do
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    assert has_element?(
+             view,
+             "#simple-contact-call-#{friend.id}[aria-controls='simple-call-dialog']"
+           )
+
+    assert has_element?(
+             view,
+             "#simple-contact-location-#{friend.id}[aria-controls='simple-location-dialog']"
+           )
+
+    # A new instance offers no add-ons, so there is nothing to play yet and
+    # the button that would ask is not drawn.
+    refute has_element?(view, "#simple-contact-game-#{friend.id}")
+  end
+
+  test "asks which game to play and nudges them to the table", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, _settings} = Admin.update_instance_settings(user, %{"craps_enabled" => "true"})
+
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+    view |> element("#simple-contact-game-#{friend.id}") |> render_click()
+
+    assert has_element?(view, "#simple-game-dialog[role='dialog'][aria-modal='true']")
+    assert has_element?(view, "#simple-game-dialog-title", "@#{friend.username}")
+    assert has_element?(view, "#simple-game-craps", "Craps")
+
+    Phoenix.PubSub.subscribe(Veejr.PubSub, "user:#{friend.id}")
+    view |> element("#simple-game-craps") |> render_click()
+
+    assert_receive {:craps_invite, _host}
+    assert_redirect(view, "/craps")
+  end
+
+  test "asks whether a location note is about where you are now", %{conn: conn, friend: friend} do
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    view |> element("#simple-contact-location-#{friend.id}") |> render_click()
+
+    assert has_element?(view, "#simple-location-dialog-title", "@#{friend.username}")
+
+    assert has_element?(
+             view,
+             "#simple-location-dialog",
+             "Is this note about where you are right now?"
+           )
+
+    assert has_element?(
+             view,
+             "#simple-location-elsewhere[href='/map?friend=#{friend.id}']",
+             "somewhere else"
+           )
+
+    refute has_element?(view, "#simple-location-composer")
+
+    view |> element("#simple-location-here") |> render_click()
+
+    assert has_element?(
+             view,
+             "#simple-location-note[phx-hook='CurrentLocation'][data-composer-id='simple-location-composer']"
+           )
+
+    # Addressed to them and only them: the form carries the recipient rather
+    # than asking again, and never offers the "also me" copy.
+    assert has_element?(
+             view,
+             "#simple-location-composer[phx-hook='Composer'][data-kind='location']"
+           )
+
+    assert has_element?(
+             view,
+             "#simple-location-composer input[type='hidden'][name='friends[]'][value='#{friend.id}']"
+           )
+
+    refute has_element?(view, "#simple-location-composer input[name='self']")
+  end
+
+  test "sends the location note the browser sealed and closes the sheet", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+
+    view |> element("#simple-contact-location-#{friend.id}") |> render_click()
+    view |> element("#simple-location-here") |> render_click()
+
+    html =
+      render_hook(view, "send_batch", %{
+        "kind" => "location",
+        "envelopes" => [
+          %{"recipient_id" => friend.id, "ciphertext" => "ciphertext", "nonce" => "nonce"}
+        ]
+      })
+
+    assert html =~ "Sent — it will show on their map."
+    refute has_element?(view, "#simple-location-dialog")
+
+    user_id = user.id
+    friend_id = friend.id
+
+    assert [
+             %Envelope{
+               kind: "location",
+               ciphertext: "ciphertext",
+               sender_id: ^user_id,
+               recipient_id: ^friend_id
+             }
+           ] = Repo.all(Envelope)
   end
 
   test "opens contact management without changing the saved simple mode", %{
