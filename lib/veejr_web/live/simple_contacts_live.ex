@@ -65,10 +65,10 @@ defmodule VeejrWeb.SimpleContactsLive do
             <span class="relative inline-flex">
               <.user_avatar
                 user={@current_scope.user}
-                class="size-20 text-xl sm:size-24 sm:text-2xl"
+                class="size-24 text-2xl sm:size-28 sm:text-3xl"
                 ring={false}
               />
-              <span class="absolute -right-1 -bottom-1 flex size-7 items-center justify-center rounded-full bg-primary text-primary-content ring-2 ring-base-100">
+              <span class="absolute -right-2 -bottom-2 flex size-7 items-center justify-center rounded-full bg-primary text-primary-content ring-2 ring-base-100">
                 <.icon name="hero-pencil-square" class="size-4" />
               </span>
             </span>
@@ -88,15 +88,24 @@ defmodule VeejrWeb.SimpleContactsLive do
             >
               <.user_avatar
                 user={friend}
-                class="size-20 text-xl sm:size-24 sm:text-2xl"
+                class="size-24 text-2xl sm:size-28 sm:text-3xl"
                 ring={false}
               />
               <.presence_dot
                 id={"simple-contact-presence-#{friend.id}"}
                 state={Map.get(@presence, friend.id, :unknown)}
+                position="right-2 bottom-2 sm:right-2.5 sm:bottom-2.5"
               />
               <span class="sr-only">{contact_name(friend)}</span>
             </.link>
+            <%!--
+            The buttons sit at the corners of the photo's box, which is outside
+            the circle: at -2.5 each one clips the rim rather than landing on
+            it, so together they cover a few percent of the face instead of the
+            quarter they took when centred on the edge. They stay full size —
+            these are the touch targets — and the ring is only what it takes to
+            separate a button from the photo behind it.
+            --%>
             <button
               id={"simple-contact-call-#{friend.id}"}
               type="button"
@@ -105,7 +114,7 @@ defmodule VeejrWeb.SimpleContactsLive do
               aria-label={"Call #{contact_name(friend)}"}
               aria-haspopup="dialog"
               aria-controls="simple-call-dialog"
-              class="absolute -bottom-1 -left-1 flex size-8 items-center justify-center rounded-full bg-primary text-primary-content shadow-lg ring-3 ring-base-100 transition hover:scale-110 hover:bg-primary/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:size-9"
+              class="absolute -bottom-2.5 -left-2.5 flex size-8 items-center justify-center rounded-full bg-primary text-primary-content shadow-lg ring-2 ring-base-100 transition hover:scale-110 hover:bg-primary/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:size-9"
             >
               <.icon name="hero-phone" class="size-4" />
             </button>
@@ -118,7 +127,7 @@ defmodule VeejrWeb.SimpleContactsLive do
               aria-label={"Play a game with #{contact_name(friend)}"}
               aria-haspopup="dialog"
               aria-controls="simple-game-dialog"
-              class="absolute -top-1 -left-1 flex size-8 items-center justify-center rounded-full bg-info text-info-content shadow-lg ring-3 ring-base-100 transition hover:scale-110 hover:bg-info/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-info sm:size-9"
+              class="absolute -top-2.5 -left-2.5 flex size-8 items-center justify-center rounded-full bg-info text-info-content shadow-lg ring-2 ring-base-100 transition hover:scale-110 hover:bg-info/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-info sm:size-9"
             >
               <.icon name="hero-puzzle-piece" class="size-4" />
             </button>
@@ -130,7 +139,7 @@ defmodule VeejrWeb.SimpleContactsLive do
               aria-label={"Send #{contact_name(friend)} a location note"}
               aria-haspopup="dialog"
               aria-controls="simple-location-dialog"
-              class="absolute -top-1 -right-1 flex size-8 items-center justify-center rounded-full bg-accent text-accent-content shadow-lg ring-3 ring-base-100 transition hover:scale-110 hover:bg-accent/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:size-9"
+              class="absolute -top-2.5 -right-2.5 flex size-8 items-center justify-center rounded-full bg-accent text-accent-content shadow-lg ring-2 ring-base-100 transition hover:scale-110 hover:bg-accent/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:size-9"
             >
               <.icon name="hero-map-pin" class="size-4" />
             </button>
