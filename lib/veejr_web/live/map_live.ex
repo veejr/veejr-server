@@ -77,6 +77,7 @@ defmodule VeejrWeb.MapLive do
               groups={@groups}
               kind="note"
               recipient_layout="dropdown"
+              selected_friend_ids={@note_friend_ids}
               show_files={false}
               text_placeholder="What's here? The note is encrypted end-to-end."
               submit_label="Pin note"
@@ -92,6 +93,20 @@ defmodule VeejrWeb.MapLive do
   def mount(_params, _session, socket) do
     {:ok, socket |> assign(page_title: "Map") |> refresh()}
   end
+
+  # Somebody who answered "no, somewhere else" on `/contacts/simple` arrives
+  # here having already chosen who the note is for. The picker still shows,
+  # so the choice can be widened or changed.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply, assign(socket, :note_friend_ids, note_friend_ids(params, socket.assigns.friends))}
+  end
+
+  defp note_friend_ids(%{"friend" => id}, friends) when is_binary(id) do
+    if Enum.any?(friends, &(to_string(&1.id) == id)), do: [id], else: []
+  end
+
+  defp note_friend_ids(_params, _friends), do: []
 
   @impl true
   def handle_event("resolve_recipients", params, socket) do

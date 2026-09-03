@@ -39,6 +39,7 @@ import {
   PasswordVisibility,
   AvatarUpload,
   GuestConferenceLobby,
+  CurrentLocation,
 } from "./hooks/ui.js"
 import VeejrMap from "./map_hook.js"
 import {InlineKeyUnlock} from "./key_unlock.js"
@@ -74,6 +75,7 @@ export {
   AutoDismissFlash,
   PasswordVisibility,
   AvatarUpload,
+  CurrentLocation,
   InlineKeyUnlock,
 }
 
@@ -107,5 +109,6 @@ export default {
   MessageConsent,
   ScheduleTime,
   VeejrMap,
+  CurrentLocation,
   InlineKeyUnlock,
 }

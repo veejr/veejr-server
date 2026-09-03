@@ -4,7 +4,7 @@ defmodule VeejrWeb.MapLiveTest do
   import Phoenix.LiveViewTest
   import Veejr.AccountsFixtures
 
-  alias Veejr.Accounts
+  alias Veejr.{Accounts, Social}
 
   setup %{conn: conn} do
     user = user_fixture()
@@ -44,5 +44,26 @@ defmodule VeejrWeb.MapLiveTest do
       delete_label: "Delete everywhere",
       delete_confirm: _
     }
+  end
+
+  test "a note started from someone's photo arrives with them chosen", %{
+    conn: conn,
+    user: user
+  } do
+    friend = user_fixture()
+    {:ok, request} = Social.send_friend_request(user, friend.username)
+    {:ok, _friendship} = Social.accept_friend_request(friend, request.id)
+
+    {:ok, view, _html} = live(conn, "/map?friend=#{friend.id}")
+
+    assert has_element?(
+             view,
+             "#note-composer input[name='friends[]'][value='#{friend.id}'][checked]"
+           )
+
+    # An id that is not a friend of theirs chooses nobody rather than leaking
+    # that the account exists.
+    {:ok, view, _html} = live(conn, "/map?friend=#{friend.id + 999}")
+    refute has_element?(view, "#note-composer input[name='friends[]'][checked]")
   end
 end
