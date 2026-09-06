@@ -263,6 +263,12 @@ defmodule Veejr.AddOns.Craps.Bets do
 
   # ── Place bets ──
 
+  # Existing number bets stay on the table but are off for every come-out
+  # roll, including the roll that establishes the next point.
+  defp resolve(bet_type, _amount, _target, _d1, _d2, _total, %State{phase: :come_out})
+       when is_map_key(@place_numbers, bet_type),
+       do: pending()
+
   defp resolve(bet_type, amount, _target, _d1, _d2, total, _state)
        when is_map_key(@place_numbers, bet_type) do
     number = Map.fetch!(@place_numbers, bet_type)

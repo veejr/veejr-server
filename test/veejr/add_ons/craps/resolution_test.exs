@@ -62,6 +62,29 @@ defmodule Veejr.AddOns.Craps.ResolutionTest do
              Resolution.resolve_all(bets, 5, 6, @come_out)
   end
 
+  test "number bets survive come-out rolls and resume after the point is established" do
+    original = bet(type: :place_6, amount: 12)
+
+    # Make the old point, then come out with a seven, craps, and a new point.
+    {:point_made, come_out} = State.apply_roll(@point_8, 4, 4)
+
+    assert %{resolved: [], remaining: [^original]} =
+             Resolution.resolve_all([original], 4, 4, @point_8)
+
+    for {die1, die2} <- [{3, 4}, {1, 1}, {3, 3}] do
+      assert %{resolved: [], remaining: [^original], updates: []} =
+               Resolution.resolve_all([original], die1, die2, come_out)
+    end
+
+    {:point_set, point_6} = State.apply_roll(come_out, 3, 3)
+
+    assert %{resolved: [%{result: :win, payout: 26}], remaining: []} =
+             Resolution.resolve_all([original], 3, 3, point_6)
+
+    assert %{resolved: [%{result: :lose, payout: 0}], remaining: []} =
+             Resolution.resolve_all([original], 3, 4, point_6)
+  end
+
   describe "a travelling come bet" do
     test "moves to the number rolled and is reported as an update" do
       bets = [bet(id: "come1", type: :come, target: nil)]

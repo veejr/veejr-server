@@ -118,6 +118,14 @@ defmodule Veejr.AddOns.Craps.BetsTest do
   end
 
   describe "place bets" do
+    test "all numbers are off for every come-out roll" do
+      for type <- [:place_4, :place_5, :place_6, :place_8, :place_9, :place_10],
+          die1 <- 1..6,
+          die2 <- 1..6 do
+        assert {:pending, nil} = payout(type, 12, nil, die1, die2, @come_out)
+      end
+    end
+
     test "pay their standard odds" do
       assert {:win, 28} = payout(:place_4, 10, nil, 2, 2, @point_8)
       assert {:win, 24} = payout(:place_5, 10, nil, 2, 3, @point_8)
