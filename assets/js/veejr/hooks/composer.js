@@ -377,7 +377,7 @@ export const Composer = {
           const secretKey = await unlockIdentity(input.value, encSecretKey, keySalt, keyNonce)
           if (!secretKey) {
             if (error) {
-              error.textContent = "Wrong passphrase."
+              error.textContent = "Wrong privacy key."
               error.classList.remove("hidden")
             }
             input.select()

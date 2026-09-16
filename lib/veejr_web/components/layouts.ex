@@ -340,14 +340,14 @@ defmodule VeejrWeb.Layouts do
                 <.icon name="hero-lock-closed" class="size-5" />
               </span>
               <div>
-                <h2 class="text-lg font-semibold">Unlock here</h2>
+                <h2 class="text-lg font-semibold">Unlock your private space</h2>
                 <p class="mt-1 text-sm text-base-content/65">
-                  Enter your encryption passphrase to continue without leaving this page.
+                  Your privacy key unlocks your encrypted messages and calls. It stays on this device.
                 </p>
               </div>
             </div>
             <label for="inline-key-passphrase" class="block text-sm font-medium">
-              Encryption passphrase
+              Privacy key
             </label>
             <div
               id="inline-key-passphrase-visibility"
@@ -366,8 +366,8 @@ defmodule VeejrWeb.Layouts do
                 id="inline-key-passphrase-visibility-toggle"
                 type="button"
                 data-role="password-visibility-toggle"
-                data-secret-label="passphrase"
-                aria-label="Show passphrase"
+                data-secret-label="privacy key"
+                aria-label="Show privacy key"
                 aria-pressed="false"
                 class="absolute right-1 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-md text-base-content/60 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
@@ -379,7 +379,7 @@ defmodule VeejrWeb.Layouts do
             <p data-role="unlock-error" role="alert" class="hidden text-sm text-error"></p>
             <div class="flex justify-end gap-2">
               <button type="button" data-role="cancel" class="btn btn-ghost">Cancel</button>
-              <button type="submit" class="btn btn-primary">Unlock and continue</button>
+              <button type="submit" class="btn btn-primary">Unlock</button>
             </div>
           </form>
         </div>

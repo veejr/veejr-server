@@ -30,7 +30,7 @@ defmodule VeejrWeb.KeysLiveTest do
 
     assert has_element?(
              view,
-             "#key-setup-passphrase-password-visibility-toggle[aria-label='Show passphrase']"
+             "#key-setup-passphrase-password-visibility-toggle[aria-label='Show privacy key']"
            )
 
     assert has_element?(view, "#initial-password-setup", "Add a login password (recommended)")

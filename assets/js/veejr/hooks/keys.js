@@ -29,8 +29,8 @@ export const KeySetup = {
       const password = form.querySelector("[data-role=account-password]")?.value || ""
       const passwordConfirmation =
         form.querySelector("[data-role=account-password-confirmation]")?.value || ""
-      if (pass.length < 8) return showError(form, "Passphrase must be at least 8 characters.")
-      if (pass !== confirm) return showError(form, "Passphrases do not match.")
+      if (pass.length < 8) return showError(form, "Privacy key must be at least 8 characters.")
+      if (pass !== confirm) return showError(form, "Privacy keys do not match.")
       if (password || passwordConfirmation) {
         if (password.length < 12 || password.length > 72) {
           return showError(form, "Login password must be 12–72 characters.")
@@ -101,7 +101,7 @@ export const KeyUnlock = {
       } else {
         btn.disabled = false
         btn.textContent = "Unlock"
-        showError(form, "Wrong passphrase.")
+        showError(form, "Wrong privacy key.")
       }
     })
   },
@@ -118,12 +118,12 @@ export const KeyRewrap = {
       const current = form.querySelector("[data-role=current]").value
       const next = form.querySelector("[data-role=next]").value
       const confirm = form.querySelector("[data-role=confirm]").value
-      if (next.length < 8) return showError(form, "New passphrase must be at least 8 characters.")
-      if (next !== confirm) return showError(form, "New passphrases do not match.")
+      if (next.length < 8) return showError(form, "New privacy key must be at least 8 characters.")
+      if (next !== confirm) return showError(form, "New privacy keys do not match.")
 
       const {userId, encSecretKey, keySalt, keyNonce} = form.dataset
       const secretKey = await unlockIdentity(current, encSecretKey, keySalt, keyNonce)
-      if (!secretKey) return showError(form, "Current passphrase is wrong.")
+      if (!secretKey) return showError(form, "Current privacy key is wrong.")
 
       const wrapped = await wrapSecretKey(secretKey, next)
       await pushWithReply(this, "rewrap_keys", {
@@ -148,7 +148,7 @@ export const KeyRotate = {
       e.preventDefault()
       const current = form.querySelector("[data-role=current]").value
       const next = form.querySelector("[data-role=next]").value
-      if (next.length < 8) return showError(form, "New passphrase must be at least 8 characters.")
+      if (next.length < 8) return showError(form, "New privacy key must be at least 8 characters.")
 
       const btn = form.querySelector("button[type=submit]")
       const busy = (label) => (btn.textContent = label)
@@ -157,7 +157,7 @@ export const KeyRotate = {
       try {
         const {userId, encSecretKey, keySalt, keyNonce} = form.dataset
         const oldSecret = await unlockIdentity(current, encSecretKey, keySalt, keyNonce)
-        if (!oldSecret) throw new Error("Current passphrase is wrong.")
+        if (!oldSecret) throw new Error("Current privacy key is wrong.")
 
         busy("Fetching history…")
         const {envelopes} = await pushWithReply(this, "list_resealable", {})
@@ -210,8 +210,8 @@ export const KeyReset = {
       e.preventDefault()
       const next = form.querySelector("[data-role=next]").value
       const confirm = form.querySelector("[data-role=confirm]").value
-      if (next.length < 8) return showError(form, "Passphrase must be at least 8 characters.")
-      if (next !== confirm) return showError(form, "Passphrases do not match.")
+      if (next.length < 8) return showError(form, "Privacy key must be at least 8 characters.")
+      if (next !== confirm) return showError(form, "Privacy keys do not match.")
       if (!window.confirm("Really reset? Every message you've received so far becomes permanently unreadable."))
         return
 

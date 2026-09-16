@@ -10,10 +10,9 @@ defmodule VeejrWeb.KeysLive do
       <div class="mx-auto max-w-md">
         <%= if @user.public_key do %>
           <.header>
-            Unlock your keys
+            Unlock your private space
             <:subtitle>
-              Your secret key is stored encrypted. Enter your passphrase to unlock it
-              for this browser session. The passphrase never leaves this device.
+              Your privacy key unlocks your encrypted messages and calls. It stays on this device.
             </:subtitle>
           </.header>
 
@@ -28,7 +27,7 @@ defmodule VeejrWeb.KeysLive do
             class="mt-6 space-y-4"
           >
             <p data-role="error" class="hidden text-error text-sm"></p>
-            <label for="key-unlock-passphrase" class="fieldset-label">Encryption passphrase</label>
+            <label for="key-unlock-passphrase" class="fieldset-label">Privacy key</label>
             <.passphrase_input
               id="key-unlock-passphrase"
               role="passphrase"
@@ -54,10 +53,10 @@ defmodule VeejrWeb.KeysLive do
           <div class="divider" />
 
           <section>
-            <h2 class="text-lg font-semibold">Change passphrase</h2>
+            <h2 class="text-lg font-semibold">Change privacy key</h2>
             <p class="text-sm opacity-70 mt-1">
-              Re-wraps your secret key under a new passphrase. Your keypair — and all
-              your history — is unchanged.
+              Choose a new privacy key to unlock your private space. Your encrypted
+              messages and history stay the same.
             </p>
             <form
               id="key-rewrap"
@@ -72,22 +71,22 @@ defmodule VeejrWeb.KeysLive do
               <.passphrase_input
                 id="key-rewrap-current"
                 role="current"
-                placeholder="current passphrase"
+                placeholder="current privacy key"
                 compact
               />
               <.passphrase_input
                 id="key-rewrap-next"
                 role="next"
-                placeholder="new passphrase (min 8 characters)"
+                placeholder="new privacy key (min 8 characters)"
                 compact
               />
               <.passphrase_input
                 id="key-rewrap-confirm"
                 role="confirm"
-                placeholder="confirm new passphrase"
+                placeholder="confirm new privacy key"
                 compact
               />
-              <button type="submit" class="btn btn-sm">Change passphrase</button>
+              <button type="submit" class="btn btn-sm">Change privacy key</button>
             </form>
           </section>
 
@@ -114,13 +113,13 @@ defmodule VeejrWeb.KeysLive do
               <.passphrase_input
                 id="key-rotate-current"
                 role="current"
-                placeholder="current passphrase"
+                placeholder="current privacy key"
                 compact
               />
               <.passphrase_input
                 id="key-rotate-next"
                 role="next"
-                placeholder="new passphrase (min 8 characters)"
+                placeholder="new privacy key (min 8 characters)"
                 compact
               />
               <button type="submit" class="btn btn-warning btn-sm">Rotate my keys</button>
@@ -131,10 +130,10 @@ defmodule VeejrWeb.KeysLive do
 
           <details class="rounded-lg border border-error/40 p-4">
             <summary class="cursor-pointer font-semibold text-error">
-              Lost your passphrase?
+              Lost your privacy key?
             </summary>
             <p class="text-sm opacity-70 mt-2">
-              Without the passphrase your history cannot be recovered — that is the
+              Without the privacy key your history cannot be recovered — that is the
               point of end-to-end encryption. Resetting creates fresh keys so you can
               keep using veejr, but <strong>everything you've received so far is
               permanently deleted</strong>. Friends on other instances must confirm
@@ -145,13 +144,13 @@ defmodule VeejrWeb.KeysLive do
               <.passphrase_input
                 id="key-reset-next"
                 role="next"
-                placeholder="new passphrase (min 8 characters)"
+                placeholder="new privacy key (min 8 characters)"
                 compact
               />
               <.passphrase_input
                 id="key-reset-confirm"
                 role="confirm"
-                placeholder="confirm new passphrase"
+                placeholder="confirm new privacy key"
                 compact
               />
               <button type="submit" class="btn btn-error btn-sm">
@@ -165,7 +164,7 @@ defmodule VeejrWeb.KeysLive do
             <:subtitle>
               veejr encrypts everything end-to-end. Your keypair is generated here in
               your browser; the server only receives your public key and a copy of your
-              secret key sealed with the passphrase below. Without the passphrase,
+              secret key sealed with the privacy key below. Without the privacy key,
               nobody — including the server — can read your messages.
             </:subtitle>
           </.header>
@@ -178,13 +177,13 @@ defmodule VeejrWeb.KeysLive do
             class="mt-6 space-y-4"
           >
             <p data-role="error" class="hidden text-error text-sm"></p>
-            <label for="key-setup-passphrase" class="fieldset-label">Encryption passphrase (min 8 characters)</label>
+            <label for="key-setup-passphrase" class="fieldset-label">Privacy key (min 8 characters)</label>
             <.passphrase_input
               id="key-setup-passphrase"
               role="passphrase"
               autocomplete="new-password"
             />
-            <label for="key-setup-confirm" class="fieldset-label">Confirm passphrase</label>
+            <label for="key-setup-confirm" class="fieldset-label">Confirm privacy key</label>
             <.passphrase_input
               id="key-setup-confirm"
               role="confirm"
@@ -198,7 +197,7 @@ defmodule VeejrWeb.KeysLive do
               <h2 class="font-semibold">Add a login password (recommended)</h2>
               <p class="mt-1 text-sm text-base-content/70">
                 A password lets you sign in directly next time instead of requesting another
-                email link. It is separate from your encryption passphrase; use a password
+                email link. It is separate from your privacy key; use a password
                 manager to create a strong, unique password.
               </p>
               <div class="mt-3">
@@ -229,7 +228,7 @@ defmodule VeejrWeb.KeysLive do
 
             <button type="submit" class="btn btn-primary w-full">Generate my keys</button>
             <p class="text-xs opacity-70">
-              Write your passphrase down. If you lose it, previously received messages
+              Write your privacy key down. If you lose it, previously received messages
               cannot be recovered — that is the point.
             </p>
           </form>
@@ -277,8 +276,8 @@ defmodule VeejrWeb.KeysLive do
         type="button"
         class="absolute right-1 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-md text-base-content/60 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         data-role="password-visibility-toggle"
-        data-secret-label="passphrase"
-        aria-label="Show passphrase"
+        data-secret-label="privacy key"
+        aria-label="Show privacy key"
         aria-pressed="false"
       >
         <span data-role="password-visibility-icon"><.icon name="hero-eye" class="size-5" /></span>
@@ -322,10 +321,10 @@ defmodule VeejrWeb.KeysLive do
     case Accounts.rewrap_user_keys(socket.assigns.user, params) do
       {:ok, user} ->
         {:reply, %{ok: true},
-         socket |> assign(user: user) |> put_flash(:info, "Passphrase changed.")}
+         socket |> assign(user: user) |> put_flash(:info, "Privacy key changed.")}
 
       {:error, _} ->
-        {:reply, %{error: "Could not change the passphrase."}, socket}
+        {:reply, %{error: "Could not change the privacy key."}, socket}
     end
   end
 

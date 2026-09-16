@@ -188,7 +188,7 @@ defmodule VeejrWeb.UserLive.Settings do
           <div>
             <h3 class="font-semibold">Export a backup</h3>
             <p class="mt-1 text-sm leading-6 text-base-content/65">
-              Your passphrase is still required to unlock encrypted content. The archive
+              Your privacy key is still required to unlock encrypted content. The archive
               reveals account and social metadata, so store it somewhere private.
             </p>
             <.link

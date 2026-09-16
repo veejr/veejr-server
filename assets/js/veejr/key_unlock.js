@@ -54,7 +54,7 @@ export const InlineKeyUnlock = {
         )
 
         if (!secretKey) {
-          this.error.textContent = "That passphrase did not work. Try again."
+          this.error.textContent = "That privacy key did not work. Try again."
           this.error.classList.remove("hidden")
           this.input.select()
           return
@@ -67,7 +67,7 @@ export const InlineKeyUnlock = {
         this.error.classList.remove("hidden")
       } finally {
         this.submit.disabled = false
-        this.submit.textContent = "Unlock and continue"
+        this.submit.textContent = "Unlock"
       }
     }
 

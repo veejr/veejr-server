@@ -58,7 +58,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#inline-key-passphrase-visibility-toggle[aria-label='Show passphrase']"
+             "#inline-key-passphrase-visibility-toggle[aria-label='Show privacy key']"
            )
 
     assert has_element?(
@@ -482,7 +482,7 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#message-composer [data-role='password-visibility-toggle'][aria-label='Show passphrase']"
+             "#message-composer [data-role='password-visibility-toggle'][aria-label='Show privacy key']"
            )
 
     assert has_element?(view, "#message-composer [data-role='composer-unlock-submit']")

@@ -192,7 +192,7 @@ defmodule VeejrWeb.MessagingComponents do
       <p data-role="error" class="hidden text-error text-sm"></p>
       <%!--
       Unlocking used to mean a trip to /keys, which threw away the message and
-      any attachments on the way. The passphrase is read straight from this
+      any attachments on the way. The privacy key is read straight from this
       input and never becomes a LiveView event, exactly as on the keys page.
       --%>
       <div
@@ -211,17 +211,17 @@ defmodule VeejrWeb.MessagingComponents do
           <input
             type="password"
             data-role="composer-passphrase"
-            aria-label="Encryption passphrase"
+            aria-label="Privacy key"
             autocomplete="current-password"
-            placeholder="Encryption passphrase"
+            placeholder="Privacy key"
             class="min-w-0 w-full rounded-full border border-base-300 bg-base-100 px-3 py-1.5 pr-10 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
           <button
             id={"#{@id}-composer-passphrase-visibility-toggle"}
             type="button"
             data-role="password-visibility-toggle"
-            data-secret-label="passphrase"
-            aria-label="Show passphrase"
+            data-secret-label="privacy key"
+            aria-label="Show privacy key"
             aria-pressed="false"
             class="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-base-content/60 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
