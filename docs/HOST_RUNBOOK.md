@@ -40,6 +40,10 @@ newer checkout migrates its own database — there is no manual
 - Public hostnames `veejr.dyndns-server.com` and
   `veejr0.dyndns-server.com` resolve to the (dynamic) public IPv4 via
   dyndns.
+- **IPv4 only: the dyndns entries must not publish an AAAA record.** The
+  port forwards below exist only for IPv4; an AAAA record carries the
+  router's own WAN IPv6 address, where 443 times out. Health check:
+  `Resolve-DnsName <host> -Type AAAA -Server 1.1.1.1` returns no address.
 - **The router has no NAT loopback**, which shapes two decisions:
   - Split DNS on the router maps both hostnames to `192.168.0.251` for LAN
     clients — same URLs work inside and outside.
@@ -168,3 +172,12 @@ manager so the archive remains recoverable after loss of this Windows host.
 - The router's missing NAT loopback silently breaks anything that
   advertises the public IP to LAN peers (TURN `--external-ip`, srflx
   candidates). Prefer LAN-valid addresses plus split DNS.
+- **A stray AAAA record half-breaks outside access.** In September 2026 the
+  dyndns entries began publishing the router's WAN IPv6. IPv4 stayed
+  healthy and LAN clients (split DNS) saw nothing wrong, but IPv6-first
+  clients outside (most mobile networks) tried IPv6 first: browsers
+  loaded slowly after falling back, while apps and TURN could fail
+  outright. Fixed by switching off IPv6 updates in dyndns. Serving IPv6
+  properly would need the AAAA to name this host (not the router), IPv6
+  firewall openings on the router for 443, 3478, and 41000–41040, and an
+  updater on this host, because the ISP-delegated prefix changes.
