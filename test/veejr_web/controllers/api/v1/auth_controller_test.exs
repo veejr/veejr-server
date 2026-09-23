@@ -14,6 +14,7 @@ defmodule VeejrWeb.Api.V1.AuthControllerTest do
       assert response["message_kinds"] == ["message", "location", "note", "self_note", "self_doc"]
       assert response["max_blob_bytes"] == 25 * 1024 * 1024
       assert response["android_push"] == false
+      assert response["extensions"] == %{"calls" => 1}
     end
   end
 

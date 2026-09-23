@@ -7,6 +7,11 @@
 # General application configuration
 import Config
 
+# Native clients send their device-session access token as a socket connect
+# parameter (client protocol v1, section 26.1); keep it and other secrets out
+# of request and socket logs.
+config :phoenix, :filter_parameters, ["password", "access_token", "refresh_token"]
+
 config :veejr, :scopes,
   user: [
     default: true,

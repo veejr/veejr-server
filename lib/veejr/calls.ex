@@ -162,7 +162,20 @@ defmodule Veejr.Calls do
       "user:#{callee.id}",
       {:veejr_call_ring, call}
     )
+
+    # Open tabs and connected native sockets ring from the broadcast above; a
+    # backgrounded phone has neither, so it is woken with a push that names
+    # the call but carries no media or signaling.
+    Push.notify_android_async(callee, %{
+      type: "call_ring",
+      call_id: call.public_id,
+      caller: Social.Address.handle(call.caller),
+      expires_at: DateTime.to_unix(DateTime.add(now(), @ring_timeout_seconds))
+    })
   end
+
+  @doc "Seconds after which an unanswered ring is stale."
+  def ring_timeout_seconds, do: @ring_timeout_seconds
 
   @doc "Fetches a call by public id, only for its participants."
   def get_call(%User{id: user_id}, public_id) when is_binary(public_id) do
@@ -1213,6 +1226,11 @@ defmodule Veejr.Calls do
       "user:#{user_id}",
       {:veejr_call_cancelled, call.public_id}
     )
+
+    Push.notify_android_async(%User{id: user_id}, %{
+      type: "call_ring_cancelled",
+      call_id: call.public_id
+    })
   end
 
   defp notify_schedule_created(%ScheduledCall{invitee: %User{host: nil}} = schedule) do

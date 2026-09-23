@@ -54,8 +54,9 @@ The governing security boundary is:
   instance-local watch-party signaling surfaces. These features exist in the
   web application, but their LiveView/federation events are not part of HTTP
   client protocol v1. A native client MUST NOT infer a stable contract from
-  current internal event names; native call support requires an explicit,
-  versioned extension.
+  current internal event names. One-to-one member calls for native clients
+  are the explicit, versioned extension in section 26; guest calls, call
+  chat, schedules, and watch parties remain outside it.
 
 ## 3. Conformance language
 
@@ -1165,3 +1166,117 @@ The protocol foundation is ready for Android feature work when:
 - sensitive-value logging tests or assertions cover API boundaries;
 - the existing LiveView and federation test suites remain green; and
 - `mix precommit` passes.
+
+## 26. Calls extension (`calls: 1`)
+
+This extension lets a native client place and answer one-to-one member calls
+with the same guarantees as the browser: the server relays sealed signaling it
+cannot read, media flows peer-to-peer over WebRTC DTLS-SRTP, and nothing
+connects until the callee accepts. A native end and a browser end are
+interchangeable. `GET /capabilities` advertises it as `extensions.calls: 1`; a
+client MUST NOT use it when that value is absent.
+
+### 26.1 Socket
+
+Connect a Phoenix Channels V2 websocket to `/api/v1/socket/websocket` with the
+query parameters `access_token=<device access token>` and `vsn=2.0.0`. An
+expired or revoked token is refused at connect; the client refreshes through
+section 7 and reconnects. Then join the topic `calls:v1`. The join reply is:
+
+```json
+{"user_id": "42", "ice_servers": [{"urls": ["stun:stun.example:3478"]}]}
+```
+
+Phoenix socket connect parameters travel in the query string, and so does
+the token. The instance filters `access_token` from its own logs;
+operators SHOULD also keep it out of reverse-proxy access logs.
+
+`ice_servers` is passed unchanged to the WebRTC peer connection and may
+contain TURN credentials. A client holds one socket per device session and at
+most one active call per channel.
+
+### 26.2 Client events
+
+All replies are `{"status": "ok", ...}` or
+`{"status": "error", "response": {"reason": "..."}}`.
+
+| Event | Payload | Effect |
+| --- | --- | --- |
+| `start` | `{"callee_id": "7"}` | Rings an accepted friend; replies with a call object. Repeating a start reuses the active call. |
+| `accept` | `{"call_id": "..."}` | Answers a ring, or re-attaches to a call this user already joined after a reconnect. Replies with a call object. |
+| `decline` | `{"call_id": "...", "reason": "busy"?}` | Declines a ring; `busy` relays the distinct busy outcome. |
+| `hangup` | `{"call_id": "..."}` | Cancels an unanswered outgoing ring, otherwise leaves the call. |
+| `signal` | `{"call_id", "ciphertext", "nonce", "target"?}` | Relays one sealed signal to `target` (default: the other participant). Only for the channel's active call. |
+
+A call object is:
+
+```json
+{
+  "call_id": "opaque",
+  "state": "ringing",
+  "role": "caller",
+  "peers": [{"id": "7", "handle": "@bob", "display_name": "Bob",
+             "public_key": "base64", "state": "ringing"}]
+}
+```
+
+### 26.3 Server events
+
+| Event | Payload | Meaning |
+| --- | --- | --- |
+| `ring` | `{"call_id", "caller": peer, "expires_at": unix}` | Someone is calling. Rings pending at join time are replayed once. |
+| `ring_cancelled` | `{"call_id", "reason"}` | Stop ringing: `cancelled`, `declined`, `missed`, or `answered_elsewhere`. |
+| `peer_joined` | `{"call_id", "peer": peer}` | The other side is present; begin WebRTC negotiation. |
+| `signal` | `{"call_id", "from": "7", "ciphertext", "nonce"}` | One sealed signal for this device. |
+| `peer_left` | `{"call_id", "peer_id"}` | A participant left a call that continues. |
+| `ended` | `{"call_id", "reason"}` | The active call is over: `ended`, `declined`, `busy`, `cancelled`, `missed`, or `connection_lost`. |
+
+A ring older than `expires_at` is stale and SHOULD NOT be presented.
+
+### 26.4 Sealed signaling
+
+Each signal is a UTF-8 JSON object sealed exactly like an envelope (section
+15.4) with `nacl.box` from the sender's identity secret to the peer's pinned
+public key; `ciphertext` and `nonce` are standard Base64. The receiver opens
+it with the sender's public key from the call object and MUST discard a
+signal that fails authentication. Plaintext shapes:
+
+```json
+{"kind": "offer", "sdp": "..."}
+{"kind": "answer", "sdp": "..."}
+{"kind": "ice", "candidate": {"candidate": "...", "sdpMid": "0", "sdpMLineIndex": 0}}
+{"kind": "media_state", "audio": true, "video": false}
+```
+
+Clients MUST ignore unknown kinds; browsers also send `share_state`, and may
+open a `veejr-call-chat` data channel that a native client may ignore.
+
+Both ends negotiate with WebRTC *perfect negotiation*. The polite side is the
+one whose user id, compared as a string, is greater than the peer's; it
+yields when offers collide. Either side may offer as soon as `peer_joined`
+arrives (caller) or `accept` succeeds (callee).
+
+### 26.5 Presence and reconnects
+
+The channel counts as the participant's presence in the call. If the socket
+closes during a call, the server waits the same 25-second grace as a closed
+browser tab before ending it with `connection_lost`. A client that reconnects
+within the grace joins `calls:v1` again and sends `accept` for the same
+`call_id` — for a call it answered, and equally for its own outgoing call
+that is still ringing — which reattaches the channel and, once answered,
+re-announces it so negotiation restarts.
+
+### 26.6 Push
+
+On each ring the server sends Android devices of the callee a high-priority
+data message `{"type": "call_ring", "call_id", "caller": "@alice",
+"expires_at": "unix"}`, and `{"type": "call_ring_cancelled", "call_id"}` when
+the ring ends. These carry no media, SDP, or key material. The client wakes,
+connects the socket, and answers through `accept`.
+
+### 26.7 Out of scope
+
+Guest calls, adding a third participant, call chat and file transfer,
+schedules, screen sharing, YouTube sharing, and watch parties have no native
+contract. A native client in a three-person call receives `peer_left` but
+cannot add anyone.
