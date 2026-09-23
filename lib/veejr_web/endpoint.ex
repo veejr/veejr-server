@@ -20,6 +20,12 @@ defmodule VeejrWeb.Endpoint do
     websocket: [connect_info: @connect_info],
     longpoll: [connect_info: @connect_info]
 
+  # Native clients (calls extension of client protocol v1) authenticate with
+  # their device-session bearer token, not the browser session cookie.
+  socket "/api/v1/socket", VeejrWeb.NativeSocket,
+    websocket: [connect_info: [:peer_data, :x_headers]],
+    longpoll: false
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),

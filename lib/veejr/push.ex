@@ -231,6 +231,36 @@ defmodule Veejr.Push do
     :ok
   end
 
+  @doc """
+  Pushes a data message to the user's Android devices only.
+
+  Used for call rings: browsers already ring from their open LiveView, and a
+  web push for every ring would outlive the 60-second ring as a stale alert.
+  """
+  def notify_android(%User{id: user_id}, payload) when is_map(payload) do
+    if AndroidPush.enabled?() do
+      from(s in ApiDeviceSession, where: s.user_id == ^user_id and not is_nil(s.push_token))
+      |> Repo.all()
+      |> Enum.each(fn session ->
+        case AndroidPush.send_push(session.push_token, payload) do
+          :ok -> :ok
+          {:error, reason} -> Logger.warning("push: Android delivery failed: #{inspect(reason)}")
+        end
+      end)
+    end
+
+    :ok
+  end
+
+  @doc "Fire-and-forget `notify_android/2`; disabled with the normal push test setting."
+  def notify_android_async(%User{} = user, payload) when is_map(payload) do
+    if Application.get_env(:veejr, :push_enabled, true) do
+      Task.Supervisor.start_child(Veejr.TaskSupervisor, fn -> notify_android(user, payload) end)
+    end
+
+    :ok
+  end
+
   def deliver_due do
     now = DateTime.utc_now(:second)
 

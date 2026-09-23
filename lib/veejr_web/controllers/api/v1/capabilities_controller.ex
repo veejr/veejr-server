@@ -9,6 +9,7 @@ defmodule VeejrWeb.Api.V1.CapabilitiesController do
       message_kinds: Veejr.Messaging.Envelope.kinds(),
       instance_mode: Veejr.instance_mode(),
       android_push: Veejr.Push.AndroidPush.enabled?(),
+      extensions: %{calls: 1},
       add_ons: Enum.map(Veejr.AddOns.enabled_ids(), &to_string/1)
     })
   end
