@@ -170,6 +170,60 @@ defmodule VeejrWeb.NativeCallChannelTest do
       assert_push "ring_cancelled", %{call_id: ^call_id, reason: "answered_elsewhere"}
     end
 
+    test "a callee whose socket reconnects mid-call reattaches with accept", %{
+      alice: alice,
+      bob: bob
+    } do
+      {:ok, _reply, alice_socket} = join_calls(alice)
+      {:ok, _reply, bob_socket} = join_calls(bob)
+
+      ref = push(alice_socket, "start", %{"callee_id" => to_string(bob.id)})
+      assert_reply ref, :ok, %{call_id: call_id}
+      ref = push(bob_socket, "accept", %{"call_id" => call_id})
+      assert_reply ref, :ok
+      bob_id = to_string(bob.id)
+      assert_push "peer_joined", %{peer: %{id: ^bob_id}}
+
+      # The phone switches networks: a fresh channel on a new socket.
+      Process.unlink(bob_socket.channel_pid)
+      close(bob_socket)
+      {:ok, _reply, bob_again} = join_calls(bob)
+
+      ref = push(bob_again, "accept", %{"call_id" => call_id})
+      assert_reply ref, :ok, %{state: "accepted"}
+
+      # The caller is told to renegotiate, and signals flow to the new channel.
+      assert_push "peer_joined", %{peer: %{id: ^bob_id}}
+      assert Calls.present?(call_id, bob.id)
+
+      ref =
+        push(alice_socket, "signal", %{"call_id" => call_id, "ciphertext" => "c", "nonce" => "n"})
+
+      assert_reply ref, :ok
+      assert_push "signal", %{ciphertext: "c"}
+    end
+
+    test "a caller whose socket reconnects while ringing still hears the answer", %{
+      alice: alice,
+      bob: bob
+    } do
+      {:ok, _reply, alice_socket} = join_calls(alice)
+
+      ref = push(alice_socket, "start", %{"callee_id" => to_string(bob.id)})
+      assert_reply ref, :ok, %{call_id: call_id}
+
+      Process.unlink(alice_socket.channel_pid)
+      close(alice_socket)
+      {:ok, _reply, alice_again} = join_calls(alice)
+
+      ref = push(alice_again, "accept", %{"call_id" => call_id})
+      assert_reply ref, :ok, %{state: "ringing", role: "caller"}
+
+      {:ok, _} = Calls.join_call(bob, call_id)
+      bob_id = to_string(bob.id)
+      assert_push "peer_joined", %{call_id: ^call_id, peer: %{id: ^bob_id}}
+    end
+
     test "a native caller interoperates with a browser callee", %{alice: alice, bob: bob} do
       {:ok, _reply, alice_socket} = join_calls(alice)
 

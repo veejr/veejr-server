@@ -1187,6 +1187,10 @@ section 7 and reconnects. Then join the topic `calls:v1`. The join reply is:
 {"user_id": "42", "ice_servers": [{"urls": ["stun:stun.example:3478"]}]}
 ```
 
+Phoenix socket connect parameters travel in the query string, and so does
+the token. The instance filters `access_token` from its own logs;
+operators SHOULD also keep it out of reverse-proxy access logs.
+
 `ice_servers` is passed unchanged to the WebRTC peer connection and may
 contain TURN credentials. A client holds one socket per device session and at
 most one active call per channel.
@@ -1258,7 +1262,9 @@ The channel counts as the participant's presence in the call. If the socket
 closes during a call, the server waits the same 25-second grace as a closed
 browser tab before ending it with `connection_lost`. A client that reconnects
 within the grace joins `calls:v1` again and sends `accept` for the same
-`call_id`, which re-announces it so negotiation restarts.
+`call_id` — for a call it answered, and equally for its own outgoing call
+that is still ringing — which reattaches the channel and, once answered,
+re-announces it so negotiation restarts.
 
 ### 26.6 Push
 

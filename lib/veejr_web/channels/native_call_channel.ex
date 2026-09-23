@@ -205,6 +205,12 @@ defmodule VeejrWeb.NativeCallChannel do
       participant && participant.state == "ringing" ->
         Calls.join_call(user, call.public_id)
 
+      # The caller's socket reconnected while its own call still rings:
+      # reattach so presence and signaling follow this channel again.
+      (participant && participant.state == "joined") and call.state == "ringing" and
+          call.caller_id == user_id ->
+        {:ok, call}
+
       # Reconnecting to a call this user is already in (the socket dropped,
       # or the app restarted mid-call). Re-announce so negotiation restarts.
       (participant && participant.state == "joined") and call.state == "accepted" ->
