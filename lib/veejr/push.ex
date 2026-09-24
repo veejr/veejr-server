@@ -21,6 +21,8 @@ defmodule Veejr.Push do
   alias Veejr.Repo
   alias Veejr.Social.Address
 
+  @max_alert_age_seconds 24 * 60 * 60
+
   defmodule Subscription do
     use Ecto.Schema
 
@@ -304,7 +306,18 @@ defmodule Veejr.Push do
   defp deliver(%Delivery{channel: "android", api_device_session: nil} = delivery),
     do: Repo.delete(delivery)
 
+  # A "new message" alert that could not be delivered for a day is noise, not
+  # news: drop it rather than wake a device with it. This also keeps a
+  # backlog left by an outage from arriving as a burst of stale alerts.
   defp deliver(%Delivery{} = delivery) do
+    if DateTime.diff(DateTime.utc_now(:second), delivery.inserted_at) > @max_alert_age_seconds do
+      Repo.delete(delivery)
+    else
+      send_delivery(delivery)
+    end
+  end
+
+  defp send_delivery(%Delivery{} = delivery) do
     payload = payload(delivery.notification)
 
     result =
