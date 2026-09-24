@@ -86,16 +86,36 @@ defmodule Veejr.Push do
     |> Repo.aggregate(:count)
   end
 
+  @doc """
+  Stores `token` as the FCM token of one of the user's device sessions.
+
+  An FCM token identifies one app install, and push tokens are unique across
+  sessions. When the install signs in again (a fresh setup, a reinstall that
+  kept its token, or a different account on the same phone) the older
+  session still holds the token, so the newest registration takes it over
+  rather than failing on the unique index.
+  """
   def register_android_token(%User{id: user_id}, session_id, token) when is_binary(token) do
     now = DateTime.utc_now(:second)
 
-    from(session in ApiDeviceSession,
-      where: session.id == ^session_id and session.user_id == ^user_id
-    )
-    |> Repo.update_all(set: [push_token: token, push_token_updated_at: now, updated_at: now])
+    Repo.transaction(fn ->
+      from(session in ApiDeviceSession,
+        where: session.push_token == ^token and session.id != ^session_id
+      )
+      |> Repo.update_all(set: [push_token: nil, push_token_updated_at: nil, updated_at: now])
+
+      from(session in ApiDeviceSession,
+        where: session.id == ^session_id and session.user_id == ^user_id
+      )
+      |> Repo.update_all(set: [push_token: token, push_token_updated_at: now, updated_at: now])
+      |> case do
+        {1, _} -> :ok
+        _ -> Repo.rollback(:not_found)
+      end
+    end)
     |> case do
-      {1, _} -> :ok
-      _ -> {:error, :not_found}
+      {:ok, :ok} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 

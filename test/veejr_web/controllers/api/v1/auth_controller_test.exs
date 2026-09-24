@@ -1,6 +1,7 @@
 defmodule VeejrWeb.Api.V1.AuthControllerTest do
   use VeejrWeb.ConnCase
 
+  import Ecto.Query
   import Veejr.AccountsFixtures
 
   alias Veejr.{Accounts, Admin}
@@ -255,6 +256,38 @@ defmodule VeejrWeb.Api.V1.AuthControllerTest do
              |> authorize(tokens["access_token"])
              |> delete("/api/v1/devices/current/push-token")
              |> response(204) == ""
+    end
+
+    test "a new sign-in on the same install takes over its push token", %{
+      conn: conn,
+      tokens: tokens,
+      user: user
+    } do
+      assert conn
+             |> authorize(tokens["access_token"])
+             |> put("/api/v1/devices/current/push-token", %{"token" => "same-install"})
+             |> response(204) == ""
+
+      # The app is set up again: a second device session, same FCM token.
+      {:ok, _session, again} =
+        Accounts.create_api_device_session(user, %{
+          "name" => "Same phone",
+          "platform" => "android"
+        })
+
+      assert build_conn()
+             |> authorize(again.access_token)
+             |> put("/api/v1/devices/current/push-token", %{"token" => "same-install"})
+             |> response(204) == ""
+
+      holders =
+        Veejr.Repo.all(
+          from s in Veejr.Accounts.ApiDeviceSession,
+            where: s.push_token == "same-install",
+            select: s.id
+        )
+
+      assert holders == [String.to_integer(again.device_session_id)]
     end
   end
 
