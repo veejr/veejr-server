@@ -39,4 +39,35 @@ defmodule Veejr.Push.AndroidPushTest do
     assert claims["aud"] == "https://oauth2.googleapis.com/token"
     assert claims["exp"] - claims["iat"] == 3600
   end
+
+  describe "describe_error/1" do
+    test "names the FCM error code, status, and Google's message" do
+      body = %{
+        "error" => %{
+          "code" => 403,
+          "status" => "PERMISSION_DENIED",
+          "message" => "SenderId mismatch",
+          "details" => [
+            %{
+              "@type" => "type.googleapis.com/google.firebase.fcm.v1.FcmError",
+              "errorCode" => "SENDER_ID_MISMATCH"
+            }
+          ]
+        }
+      }
+
+      assert AndroidPush.describe_error(body) ==
+               "SENDER_ID_MISMATCH: PERMISSION_DENIED: SenderId mismatch"
+    end
+
+    test "reads OAuth token errors and falls back gracefully" do
+      assert AndroidPush.describe_error(%{
+               "error" => "invalid_grant",
+               "error_description" => "Invalid JWT Signature."
+             }) == "invalid_grant: Invalid JWT Signature."
+
+      assert AndroidPush.describe_error("Service Unavailable") == "Service Unavailable"
+      assert AndroidPush.describe_error(nil) == "no details"
+    end
+  end
 end
