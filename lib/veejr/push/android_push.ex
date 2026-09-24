@@ -1,6 +1,8 @@
 defmodule Veejr.Push.AndroidPush do
   @moduledoc false
 
+  require Logger
+
   @scope "https://www.googleapis.com/auth/firebase.messaging"
 
   def enabled? do
@@ -16,9 +18,15 @@ defmodule Veejr.Push.AndroidPush do
              },
              headers: [{"authorization", "Bearer #{access_token}"}]
            ) do
-        {:ok, %{status: status}} when status in 200..299 -> :ok
-        {:ok, %{status: status}} -> {:error, {:http, status}}
-        {:error, reason} -> {:error, reason}
+        {:ok, %{status: status}} when status in 200..299 ->
+          :ok
+
+        {:ok, %{status: status, body: body}} ->
+          Logger.warning("push: FCM rejected the message (#{status}): #{describe_error(body)}")
+          {:error, {:http, status}}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     else
       {:error, reason} -> {:error, reason}
@@ -50,13 +58,45 @@ defmodule Veejr.Push.AndroidPush do
       {:ok, %{status: status, body: %{"access_token" => token}}} when status in 200..299 ->
         {:ok, token}
 
-      {:ok, %{status: status}} ->
+      {:ok, %{status: status, body: body}} ->
+        Logger.warning(
+          "push: Google refused the FCM service-account token (#{status}): #{describe_error(body)}"
+        )
+
         {:error, {:http, status}}
 
       {:error, reason} ->
         {:error, reason}
     end
   end
+
+  @doc false
+  # Google's own reason for a refusal, e.g. "PERMISSION_DENIED: Firebase
+  # Cloud Messaging API has not been used in project ..." or
+  # "SENDER_ID_MISMATCH". A bare status code does not say which of the
+  # several very different 403s it was.
+  def describe_error(%{"error" => %{} = error}) do
+    fcm_code =
+      error
+      |> Map.get("details", [])
+      |> Enum.find_value(fn
+        %{"errorCode" => code} -> code
+        _ -> nil
+      end)
+
+    [fcm_code, error["status"], error["message"]]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.uniq()
+    |> Enum.join(": ")
+  end
+
+  # The OAuth token endpoint answers with a flat {"error", "error_description"}.
+  def describe_error(%{"error" => error} = body) when is_binary(error) do
+    Enum.join(Enum.reject([error, body["error_description"]], &is_nil/1), ": ")
+  end
+
+  def describe_error(body) when is_binary(body) and body != "", do: String.slice(body, 0, 300)
+  def describe_error(_body), do: "no details"
 
   @doc false
   # The signed service-account JWT exchanged for an FCM access token. Public
