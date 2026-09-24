@@ -37,25 +37,7 @@ defmodule Veejr.Push.AndroidPush do
   end
 
   defp access_token(account) do
-    now = System.system_time(:second)
-
-    assertion =
-      [
-        %{"alg" => "RS256", "typ" => "JWT"},
-        %{
-          "iss" => account["client_email"],
-          "scope" => @scope,
-          "aud" => "https://oauth2.googleapis.com/token",
-          "iat" => now,
-          "exp" => now + 3600
-        }
-      ]
-      |> Enum.map(&Base.url_encode64(Jason.encode!(&1), padding: false))
-      |> then(fn [header, claims] ->
-        signing_input = header <> "." <> claims
-        signature = :public_key.sign(signing_input, :sha256, private_key(account["private_key"]))
-        signing_input <> "." <> Base.url_encode64(signature, padding: false)
-      end)
+    assertion = jwt_assertion(account, System.system_time(:second))
 
     case Req.post("https://oauth2.googleapis.com/token",
            headers: [{"content-type", "application/x-www-form-urlencoded"}],
@@ -76,8 +58,32 @@ defmodule Veejr.Push.AndroidPush do
     end
   end
 
-  defp private_key(pem) do
-    [entry] = :public_key.pem_decode(String.to_charlist(pem))
+  @doc false
+  # The signed service-account JWT exchanged for an FCM access token. Public
+  # only so the signing can be tested without calling Google.
+  def jwt_assertion(account, now) do
+    [
+      %{"alg" => "RS256", "typ" => "JWT"},
+      %{
+        "iss" => account["client_email"],
+        "scope" => @scope,
+        "aud" => "https://oauth2.googleapis.com/token",
+        "iat" => now,
+        "exp" => now + 3600
+      }
+    ]
+    |> Enum.map(&Base.url_encode64(Jason.encode!(&1), padding: false))
+    |> then(fn [header, claims] ->
+      signing_input = header <> "." <> claims
+      signature = :public_key.sign(signing_input, :sha256, private_key(account["private_key"]))
+      signing_input <> "." <> Base.url_encode64(signature, padding: false)
+    end)
+  end
+
+  # :public_key.pem_decode/1 takes the PEM as a binary; a charlist raises
+  # FunctionClauseError, which silently killed every Android push.
+  defp private_key(pem) when is_binary(pem) do
+    [entry] = :public_key.pem_decode(pem)
     :public_key.pem_entry_decode(entry)
   end
 
