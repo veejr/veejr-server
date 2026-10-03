@@ -81,7 +81,7 @@ export const KeyUnlock = {
         form.querySelectorAll("input, button, label").forEach((el) => el.classList.add("hidden"))
         const note = document.createElement("p")
         note.className = "text-sm text-success"
-        note.textContent = "✓ Keys are unlocked for this session."
+        note.textContent = "✓ Keys are unlocked on this browser."
         form.appendChild(note)
       }
       return

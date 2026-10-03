@@ -75,6 +75,11 @@ export function installCallExitGuard() {
   if (callExitGuardInstalled) return
   callExitGuardInstalled = true
 
+  window.addEventListener("veejr:keys-locked", () => {
+    // An expired unlock must not be kept alive by the leave-call prompt.
+    if (activeCallExitGuard) activeCallExitGuard.allowExit = true
+  })
+
   window.addEventListener("beforeunload", event => {
     if (!activeCallExitGuard || activeCallExitGuard.allowExit) return
     event.preventDefault()

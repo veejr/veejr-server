@@ -43,6 +43,7 @@ import {
 } from "./hooks/ui.js"
 import VeejrMap from "./map_hook.js"
 import {InlineKeyUnlock} from "./key_unlock.js"
+import {KeyRemember, KeySession} from "./hooks/key_remember.js"
 
 // Named exports preserved: this module exported these individually before the
 // split, and dropping them would be a silent API change for anything that
@@ -80,6 +81,8 @@ export {
 }
 
 export default {
+  KeyRemember,
+  KeySession,
   KeySetup,
   KeyUnlock,
   KeyLock,
