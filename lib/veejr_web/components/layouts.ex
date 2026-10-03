@@ -103,6 +103,14 @@ defmodule VeejrWeb.Layouts do
     ~H"""
     <div class="flex h-svh min-h-svh flex-col">
       <div
+        :if={@current_scope}
+        id="key-session"
+        phx-hook="KeySession"
+        phx-update="ignore"
+        data-user-id={@current_scope.user.id}
+        hidden
+      />
+      <div
         id="connection-status"
         role="status"
         aria-live="polite"

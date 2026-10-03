@@ -88,9 +88,20 @@ salt. The X25519 secret key is wrapped using XSalsa20-Poly1305
 (`nacl.secretbox`) with a random nonce.
 
 The server stores `public_key`, `enc_secret_key`, `key_salt`, and `key_nonce`.
-The unlocked secret key is cached in `sessionStorage`, scoped to the browser
-tab session. A user can therefore roam with the wrapped key, but must supply
-the passphrase on each new browser session.
+By default, the unlocked secret key is cached in `sessionStorage`, scoped to
+the browser tab. Under Settings → Privacy key, a user can opt into a custom
+unlock duration (1 minute to 30 days) for this account on this browser. That
+mode stores the raw unlocked key in `localStorage` with an absolute expiry,
+allowing reuse across tabs and browser restarts. The passphrase is never
+stored. This is a convenience tradeoff for trusted devices: browser storage
+access exposes the unlocked key, and expiry is enforced by the client, not a
+cryptographic time lock. Visiting pages does not extend the deadline.
+
+Changing the preference requires a fresh unlock. Expiry removes the cached
+key when checked; open authenticated pages check every second and on resume,
+then reload to discard decrypted content and in-memory keys (ending calls).
+While the browser is closed, no cleanup runs; expired bytes are removed on
+the next access. Lock now and browser sign-out revoke cached keys across tabs.
 
 Surfaces that need a key mid-action unwrap it where they stand rather than
 navigating to the keys page: the call page does this, and so does the message

@@ -6,6 +6,18 @@ defmodule VeejrWeb.KeysLiveTest do
 
   alias Veejr.Accounts
 
+  test "offers a browser-local unlock duration before key setup", %{conn: conn} do
+    conn = log_in_user(conn, user_fixture())
+    {:ok, view, _html} = live(conn, "/keys")
+
+    assert has_element?(view, "#key-remember[phx-hook='KeyRemember'][phx-update='ignore']")
+    assert has_element?(view, "#key-remember select[name='unlock_mode']")
+    assert has_element?(view, "#key-remember input[name='unlock_duration'][min='1']")
+    assert has_element?(view, "#key-remember select[name='unlock_unit']")
+    assert has_element?(view, "#save-unlock-duration")
+    assert has_element?(view, "#key-session[phx-hook='KeySession']")
+  end
+
   test "returns a user without keys to the full calling conversation URL", %{conn: conn} do
     conn = log_in_user(conn, user_fixture())
 

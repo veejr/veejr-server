@@ -1,6 +1,6 @@
 // One same-page passphrase prompt shared by every encrypted surface.
 // The passphrase and unwrapped key never cross the LiveView socket: this hook
-// only writes the secret key to this tab's sessionStorage, then reloads the
+// caches the secret key using this browser's unlock preference, then reloads the
 // current URL so every mounted decryptor can continue where the user was.
 
 import {cacheSecretKey, getSecretKey, unlockIdentity} from "./crypto.js"

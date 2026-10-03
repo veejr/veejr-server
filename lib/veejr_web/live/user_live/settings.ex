@@ -16,6 +16,20 @@ defmodule VeejrWeb.UserLive.Settings do
         </.header>
       </div>
 
+      <section class="mt-8 rounded-2xl border border-base-300 p-5">
+        <h2 class="text-lg font-semibold">Privacy key</h2>
+        <p class="mt-1 text-sm text-base-content/70">
+          Set a custom unlock duration to avoid entering your privacy key each time.
+        </p>
+        <.link
+          id="settings-unlock-duration"
+          navigate={~p"/keys"}
+          class="mt-3 inline-block font-medium text-primary hover:underline"
+        >
+          Manage unlock duration
+        </.link>
+      </section>
+
       <section class="mt-8">
         <h2 class="text-lg font-semibold">Profile image</h2>
         <div class="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center">

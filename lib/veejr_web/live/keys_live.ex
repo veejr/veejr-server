@@ -8,6 +8,62 @@ defmodule VeejrWeb.KeysLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="mx-auto max-w-md">
+        <section class="mb-8 rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <h2 class="text-lg font-semibold">Stay unlocked on this browser</h2>
+          <p class="mt-2 text-sm text-base-content/70">
+            Choose how long to use messages, notes and calls without entering your privacy key again.
+          </p>
+          <.form
+            for={@unlock_form}
+            id="key-remember"
+            phx-hook="KeyRemember"
+            phx-update="ignore"
+            data-user-id={@user.id}
+            class="mt-4 space-y-4"
+          >
+            <.input
+              field={@unlock_form[:unlock_mode]}
+              type="select"
+              label="Remember my unlock"
+              options={[
+                {"Until this tab closes (default)", "session"},
+                {"For a custom duration", "timed"}
+              ]}
+            />
+            <div data-role="duration-fields" class="grid grid-cols-2 gap-3" hidden>
+              <.input
+                field={@unlock_form[:unlock_duration]}
+                type="number"
+                label="Duration"
+                min="1"
+                max="43200"
+                step="1"
+                required
+              />
+              <.input
+                field={@unlock_form[:unlock_unit]}
+                type="select"
+                label="Unit"
+                options={[{"Minutes", "1"}, {"Hours", "60"}, {"Days", "1440"}]}
+              />
+            </div>
+            <p class="text-xs leading-relaxed text-base-content/70">
+              Custom durations last from 1 minute to 30 days, including browser restarts.
+              Use this only on a trusted device: anyone with access to this browser can use your
+              unlocked private space. Your passphrase is never saved; the unlocked encryption key
+              stays in this browser until expiry, sign-out or Lock now. Expiry reloads open pages
+              and ends active calls. Saving locks your current session; unlock once to start the new duration.
+            </p>
+            <button
+              id="save-unlock-duration"
+              type="submit"
+              class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              Save unlock preference
+            </button>
+            <p role="status" aria-live="polite" class="text-sm text-error"></p>
+          </.form>
+        </section>
         <%= if @user.public_key do %>
           <.header>
             Unlock your private space
@@ -47,7 +103,7 @@ defmodule VeejrWeb.KeysLive do
             data-user-id={@user.id}
             class="btn btn-ghost btn-sm mt-6"
           >
-            Lock this session
+            Lock now
           </button>
 
           <div class="divider" />
@@ -243,6 +299,8 @@ defmodule VeejrWeb.KeysLive do
     {:ok,
      assign(socket,
        user: socket.assigns.current_scope.user,
+       unlock_form:
+         to_form(%{"unlock_mode" => "session", "unlock_duration" => "8", "unlock_unit" => "60"}),
        return_to: valid_return_to(params["return_to"]),
        page_title: "Keys"
      )}

@@ -150,22 +150,4 @@ export async function openLocalBlob(value, secretKey, mime = "application/octet-
   }
 }
 
-// --- Session key cache -------------------------------------------------
-//
-// The unlocked secret key lives in sessionStorage only: it survives page
-// navigation but is dropped when the tab closes.
-
-const cacheKey = (userId) => `veejr:sk:${userId}`
-
-export function cacheSecretKey(userId, secretKey) {
-  sessionStorage.setItem(cacheKey(userId), toB64(secretKey))
-}
-
-export function getSecretKey(userId) {
-  const b64 = sessionStorage.getItem(cacheKey(userId))
-  return b64 ? fromB64(b64) : null
-}
-
-export function forgetSecretKey(userId) {
-  sessionStorage.removeItem(cacheKey(userId))
-}
+export {cacheSecretKey, getSecretKey, forgetSecretKey} from "./key_cache.js"
