@@ -22,6 +22,13 @@ import {
   normalizeSelfNoteColor,
   noteAsMessageText,
   noteFilterSummary,
+  LABEL_LIMIT,
+  LABEL_MAX_LENGTH,
+  addLabel,
+  normalizeLabel,
+  parseLabels,
+  removeLabel,
+  suggestLabels,
   selfNoteColorNames,
   selfNoteColors,
 } from "../../assets/js/veejr/hooks/notes_document.js"
@@ -308,4 +315,64 @@ test("several filters are all named", () => {
     noteFilterSummary({count: 1, filter: "archived", searching: true, label: "work", dateFrom: "2026-09-01"}),
     "1 note shown. In Archive. Matching your search. Label #work. Updated 2026-09-01 to today.",
   )
+})
+
+test("a label is tidied into the form it is stored in", () => {
+  assert.equal(normalizeLabel("  home  "), "home")
+  assert.equal(normalizeLabel("#errands"), "errands")
+  assert.equal(normalizeLabel("##  to do"), "to do")
+  assert.equal(normalizeLabel("a,b"), "a b")
+  assert.equal(normalizeLabel("too   many   spaces"), "too many spaces")
+  assert.equal(normalizeLabel("   "), "")
+  assert.equal(normalizeLabel(null), "")
+  assert.equal(normalizeLabel(undefined), "")
+})
+
+test("a label is bounded in length, and never ends on a space", () => {
+  const long = normalizeLabel("x".repeat(100))
+  assert.equal(long.length, LABEL_MAX_LENGTH)
+  assert.equal(normalizeLabel("a".repeat(LABEL_MAX_LENGTH - 1) + " b"), "a".repeat(LABEL_MAX_LENGTH - 1))
+})
+
+test("parsing comma-separated text keeps clean, distinct labels in order", () => {
+  assert.deepEqual(parseLabels("home, work,  #errands ,, home"), ["home", "work", "errands"])
+  assert.deepEqual(parseLabels(""), [])
+  assert.deepEqual(parseLabels(null), [])
+})
+
+test("case does not make a second label", () => {
+  assert.deepEqual(parseLabels("Work, work, WORK"), ["Work"])
+  assert.deepEqual(addLabel(["Work"], "work"), ["Work"])
+})
+
+test("labels stop at the limit", () => {
+  const eleven = Array.from({length: 11}, (_, i) => `l${i}`).join(",")
+  assert.equal(parseLabels(eleven).length, LABEL_LIMIT)
+  assert.deepEqual(addLabel(parseLabels(eleven), "one more"), parseLabels(eleven))
+})
+
+test("adding returns a new list and leaves the old one alone", () => {
+  const before = ["a"]
+  const after = addLabel(before, "b")
+
+  assert.deepEqual(after, ["a", "b"])
+  assert.deepEqual(before, ["a"])
+  // Nothing to add: the very same list comes back, so a caller can tell.
+  assert.equal(addLabel(before, "  "), before)
+  assert.equal(addLabel(before, "a"), before)
+})
+
+test("removing ignores case and leaves the rest in order", () => {
+  assert.deepEqual(removeLabel(["Home", "work", "errands"], "HOME"), ["work", "errands"])
+  assert.deepEqual(removeLabel(["a"], "missing"), ["a"])
+})
+
+test("suggestions are labels in use elsewhere that this note lacks", () => {
+  const all = ["work", "home", "errands", "Home", "ideas"]
+
+  assert.deepEqual(suggestLabels(all, ["home"], "", 8), ["errands", "ideas", "work"])
+  assert.deepEqual(suggestLabels(all, [], "er", 8), ["errands"])
+  assert.deepEqual(suggestLabels(all, [], "#WO", 8), ["work"])
+  assert.deepEqual(suggestLabels(all, [], "", 2), ["errands", "home"])
+  assert.deepEqual(suggestLabels([], [], ""), [])
 })
