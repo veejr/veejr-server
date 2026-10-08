@@ -141,6 +141,7 @@ defmodule VeejrWeb.CrapsComponents do
               phx-update="ignore"
               class="btn btn-ghost btn-sm gap-1 text-current"
               aria-pressed="false"
+              title="Hold the view where it is"
             >
               <.icon name="hero-lock-open" class="size-4" />
               <span data-role="label">Lock view</span>
@@ -194,6 +195,7 @@ defmodule VeejrWeb.CrapsComponents do
           phx-update="ignore"
           class="btn btn-ghost btn-xs gap-1"
           aria-pressed="false"
+          title="Hold the view where it is"
         >
           <.icon name="hero-lock-open" class="size-3.5" />
           <span data-role="label">Lock view</span>
@@ -262,11 +264,12 @@ defmodule VeejrWeb.CrapsComponents do
         }
       </script>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".LockView">
-        // Pins the camera so dragging and scrolling stop moving the table —
-        // meant for full screen, where every touch is aimed at a bet. The
-        // choice is this browser's, so it never reaches the server; the felt
-        // listens for the event. There are two buttons (page and full-screen
-        // bar), so each repaints from the event rather than from its own click.
+        // Pins the camera where it stands, so dragging and scrolling stop
+        // moving the table — meant for full screen, where every touch is aimed
+        // at a bet. The choice is this browser's, so it never reaches the
+        // server; the felt listens for the event and keeps the angle. There
+        // are two buttons (page and full-screen bar), so each repaints from
+        // the event rather than from its own click.
         const KEY = "veejr:craps-lock"
 
         export default {
@@ -298,6 +301,7 @@ defmodule VeejrWeb.CrapsComponents do
             this.el.setAttribute("aria-pressed", this.on ? "true" : "false")
             this.el.querySelector("[data-role=label]").textContent =
               this.on ? "View locked" : "Lock view"
+            this.el.title = this.on ? "Free the view" : "Hold the view where it is"
             const icon = this.el.querySelector("span.hero-lock-open, span.hero-lock-closed")
             if (icon) {
               icon.classList.toggle("hero-lock-closed", this.on)
