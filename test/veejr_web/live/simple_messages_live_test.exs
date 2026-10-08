@@ -95,7 +95,11 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
            )
 
     assert has_element?(view, "#simple-back[href='/messages/simple']")
-    refute has_element?(view, "#simple-message-composer [data-role='toggle-options']")
+    assert has_element?(view, "#simple-message-composer [data-role='toggle-options']")
+    assert has_element?(view, "#simple-message-composer [data-role='toggle-card']")
+    assert has_element?(view, "#simple-message-composer [data-role='deliver-at']")
+    assert has_element?(view, "#simple-call-now[phx-value-id='#{friend.id}']")
+    assert has_element?(view, "#simple-schedule-call[href='/calls?friend_id=#{friend.id}']")
   end
 
   test "keeps every attachment type behind one closed paper clip", %{

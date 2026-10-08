@@ -94,6 +94,30 @@ defmodule VeejrWeb.SimpleMessagesLive do
             <.icon name="hero-user-group" class="size-5" />
           </span>
           <h1 class="min-w-0 flex-1 truncate text-base font-semibold">{@thread.title}</h1>
+          <%!-- Calls are one-to-one, so the pair only appears beside a single person. --%>
+          <div :if={@thread.avatar_user} class="flex shrink-0 items-center gap-1">
+            <button
+              id="simple-call-now"
+              type="button"
+              phx-click="start_call"
+              phx-value-id={@thread.avatar_user.id}
+              phx-disable-with="…"
+              title="Call now"
+              aria-label="Call now"
+              class="flex size-9 items-center justify-center rounded-full transition hover:bg-base-200 hover:text-primary"
+            >
+              <.icon name="hero-phone" class="size-5" />
+            </button>
+            <.link
+              id="simple-schedule-call"
+              navigate={~p"/calls?friend_id=#{@thread.avatar_user.id}"}
+              title="Schedule a call"
+              aria-label="Schedule a call"
+              class="flex size-9 items-center justify-center rounded-full transition hover:bg-base-200 hover:text-primary"
+            >
+              <.icon name="hero-calendar-days" class="size-5" />
+            </.link>
+          </div>
         </header>
 
         <div
@@ -129,9 +153,9 @@ defmodule VeejrWeb.SimpleMessagesLive do
         </div>
 
         <div class="border-t border-base-300 py-3">
-          <%!-- A line to type in and a paper clip that opens the rest:
-                files, voice, video. Expiry, display limits and send-later
-                stay on the full page. --%>
+          <%!-- A line to type in, with the tools one tap away: options (expiry,
+                display limits, send later), send as a card, and a paper clip
+                for files, voice and video. --%>
           <.composer
             id="simple-message-composer"
             user={@current_scope.user}
@@ -141,7 +165,7 @@ defmodule VeejrWeb.SimpleMessagesLive do
             surface="messages"
             show_recipients={false}
             files_layout="menu"
-            show_options={false}
+            show_options={true}
             selected_friend_ids={@thread.friend_ids}
             draft_key={"simple-#{@thread.key}"}
             text_placeholder="Write a message…"
@@ -331,17 +355,56 @@ defmodule VeejrWeb.SimpleMessagesLive do
     {:noreply, socket |> assign(:message_limit, limit) |> refresh()}
   end
 
+  def handle_event("start_call", %{"id" => id}, socket) do
+    thread = socket.assigns.thread
+    friend = thread && thread.avatar_user
+
+    if friend && to_string(friend.id) == to_string(id) do
+      case Veejr.Calls.start_call(socket.assigns.current_scope.user, friend.id) do
+        {:ok, call} ->
+          return_to = ~p"/messages/simple?conversation=#{thread.key}"
+
+          {:noreply,
+           push_navigate(socket, to: ~p"/call/#{call.public_id}?#{[return_to: return_to]}")}
+
+        {:error, :callee_unreachable} ->
+          {:noreply,
+           put_flash(socket, :error, "Their instance is unreachable right now — try again later.")}
+
+        {:error, _reason} ->
+          {:noreply, put_flash(socket, :error, "Could not start the call.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Could not start the call.")}
+    end
+  end
+
   def handle_event("resolve_recipients", params, socket) do
     {:reply, VeejrWeb.RecipientResolver.resolve(socket.assigns.current_scope.user, params),
      socket}
   end
 
   def handle_event("send_batch", %{"kind" => kind, "envelopes" => envelopes} = params, socket) do
-    opts = Map.take(params, ["attachment_ids", "client_batch_id"])
+    opts =
+      Map.take(params, [
+        "expires_at",
+        "max_displays",
+        "attachment_ids",
+        "deliver_at",
+        "client_batch_id"
+      ])
 
     case Messaging.send_batch(socket.assigns.current_scope.user, kind, envelopes, opts) do
       {:ok, _batch_id, _queued} ->
-        {:reply, %{ok: true}, refresh(socket)}
+        socket = refresh(socket)
+
+        socket =
+          if params["deliver_at"],
+            do:
+              put_flash(socket, :info, "Scheduled — it will be delivered at the time you chose."),
+            else: socket
+
+        {:reply, %{ok: true}, socket}
 
       {:error, _reason} ->
         {:reply, %{error: "Sending failed — are all recipients still your friends?"}, socket}
