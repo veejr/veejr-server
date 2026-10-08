@@ -9,12 +9,13 @@ import {
   openFrom,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
-import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteFilterSummary, noteSearchClauses, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
+import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteFilterSummary, noteSearchClauses, parseLabels, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
 import {requestKeyUnlock} from "../key_unlock.js"
 import {deleteDraftMedia, loadDraftMedia, saveDraftMedia} from "../local_media_drafts.js"
 import {openNoteSendDialog} from "./note_send.js"
+import {createLabelEditor} from "./label_editor.js"
 
 // The spreadsheet and word processor, and everything they pull in (the
 // document model, the formula engine), live behind this one dynamic import.
@@ -63,6 +64,16 @@ function documentSummary(payload) {
   }
 }
 
+// Every label in use on any note on the board, for offering to a note that does
+// not have them yet.
+function boardLabels() {
+  const labels = new Set()
+  document.querySelectorAll(".self-note-card").forEach((card) => {
+    try { JSON.parse(card.dataset.noteLabels || "[]").forEach((label) => labels.add(label)) } catch { /* a card with no readable labels */ }
+  })
+  return [...labels]
+}
+
 function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
   const returnFocus = document.activeElement
   const inline = !!mount
@@ -79,7 +90,7 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
   editor.className = inline
     ? "self-note-inline-editor rounded-xl border border-primary/30 bg-base-100/95 p-3 shadow-inner"
     : "mb-5 rounded-2xl border border-primary/30 bg-base-100 p-4 shadow-lg"
-  editor.innerHTML = `<input data-note-title class="mb-3 w-full bg-transparent text-lg font-semibold outline-none" placeholder="Title"><textarea data-note-body class="min-h-28 w-full resize-y bg-transparent text-sm outline-none" placeholder="Take a note…"></textarea><input data-note-labels class="mt-3 w-full bg-transparent text-xs outline-none" placeholder="Labels, separated by commas"><div class="mt-3 flex flex-wrap items-center gap-2"><label title="Attach files" class="flex size-9 cursor-pointer items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-attachment-icon aria-hidden="true"></span><span class="sr-only">Attach files</span><input data-note-files type="file" multiple class="sr-only" aria-label="Attach files"></label><button type="button" data-note-audio title="Record voice note" aria-label="Record voice note" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-audio-icon aria-hidden="true"></span></button><button type="button" data-note-video title="Record video note" aria-label="Record video note" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-video-icon aria-hidden="true"></span></button><button type="button" data-note-camera title="Switch camera" aria-label="Switch camera" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-camera-icon aria-hidden="true"></span></button><button type="button" data-note-checklist class="btn btn-ghost btn-xs">Checklist</button><select data-note-color class="select select-sm"><option value="default">Default</option><option value="sand">Sand</option><option value="rose">Rose</option><option value="violet">Violet</option><option value="blue">Blue</option><option value="mint">Mint</option></select><span class="flex-1"></span><button type="button" data-note-cancel class="btn btn-ghost btn-sm">Cancel</button><button type="button" data-note-save class="btn btn-primary btn-sm">Save note</button></div><section data-note-record-stage class="mt-3 hidden overflow-hidden rounded-2xl bg-slate-950 text-white shadow-xl" aria-label="Recording controls"><div data-note-record-visual class="flex min-h-52 max-h-[68svh] items-center justify-center bg-black sm:min-h-80"></div><div class="flex flex-wrap items-center gap-2 border-t border-white/10 p-3"><span class="size-2.5 animate-pulse rounded-full bg-red-500"></span><strong data-note-record-label class="text-sm">Recording</strong><span data-note-record-time class="font-mono text-sm text-white/70">0:00</span><span class="flex-1"></span><button type="button" data-note-record-pause class="btn btn-sm border-white/20 bg-white/10 text-white">Pause</button><button type="button" data-note-record-camera class="btn btn-sm border-white/20 bg-white/10 text-white">Switch camera</button><button type="button" data-note-record-stop class="btn btn-error btn-sm">■ Stop</button></div></section><p data-note-record-status class="mt-3 hidden text-sm opacity-70" aria-live="polite"></p><div data-note-recordings class="mt-3 space-y-2"></div><p data-note-error class="mt-3 hidden text-sm text-error" role="alert"></p><div data-note-items class="mt-3 space-y-2"></div>`
+  editor.innerHTML = `<input data-note-title class="mb-3 w-full bg-transparent text-lg font-semibold outline-none" placeholder="Title"><textarea data-note-body class="min-h-28 w-full resize-y bg-transparent text-sm outline-none" placeholder="Take a note…"></textarea><div data-note-labels-ui class="mt-3"></div><input data-note-labels type="hidden"><div class="mt-3 flex flex-wrap items-center gap-2"><label title="Attach files" class="flex size-9 cursor-pointer items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-attachment-icon aria-hidden="true"></span><span class="sr-only">Attach files</span><input data-note-files type="file" multiple class="sr-only" aria-label="Attach files"></label><button type="button" data-note-audio title="Record voice note" aria-label="Record voice note" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-audio-icon aria-hidden="true"></span></button><button type="button" data-note-video title="Record video note" aria-label="Record video note" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-video-icon aria-hidden="true"></span></button><button type="button" data-note-camera title="Switch camera" aria-label="Switch camera" class="flex size-9 items-center justify-center rounded-full bg-base-200 opacity-70 transition hover:bg-base-300 hover:opacity-100"><span data-note-camera-icon aria-hidden="true"></span></button><button type="button" data-note-checklist class="btn btn-ghost btn-xs">Checklist</button><select data-note-color class="select select-sm"><option value="default">Default</option><option value="sand">Sand</option><option value="rose">Rose</option><option value="violet">Violet</option><option value="blue">Blue</option><option value="mint">Mint</option></select><span class="flex-1"></span><button type="button" data-note-cancel class="btn btn-ghost btn-sm">Cancel</button><button type="button" data-note-save class="btn btn-primary btn-sm">Save note</button></div><section data-note-record-stage class="mt-3 hidden overflow-hidden rounded-2xl bg-slate-950 text-white shadow-xl" aria-label="Recording controls"><div data-note-record-visual class="flex min-h-52 max-h-[68svh] items-center justify-center bg-black sm:min-h-80"></div><div class="flex flex-wrap items-center gap-2 border-t border-white/10 p-3"><span class="size-2.5 animate-pulse rounded-full bg-red-500"></span><strong data-note-record-label class="text-sm">Recording</strong><span data-note-record-time class="font-mono text-sm text-white/70">0:00</span><span class="flex-1"></span><button type="button" data-note-record-pause class="btn btn-sm border-white/20 bg-white/10 text-white">Pause</button><button type="button" data-note-record-camera class="btn btn-sm border-white/20 bg-white/10 text-white">Switch camera</button><button type="button" data-note-record-stop class="btn btn-error btn-sm">■ Stop</button></div></section><p data-note-record-status class="mt-3 hidden text-sm opacity-70" aria-live="polite"></p><div data-note-recordings class="mt-3 space-y-2"></div><p data-note-error class="mt-3 hidden text-sm text-error" role="alert"></p><div data-note-items class="mt-3 space-y-2"></div>`
   const title = editor.querySelector("[data-note-title]")
   const body = editor.querySelector("[data-note-body]")
   const labels = editor.querySelector("[data-note-labels]")
@@ -215,6 +226,17 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
   title.value = payload.title || ""
   body.value = payload.body || ""
   labels.value = (payload.labels || []).join(", ")
+  // The labels are edited as chips. The hidden input keeps the comma-joined
+  // value, so saving and the draft read them exactly as before.
+  const labelEditor = createLabelEditor(document, {
+    labels: parseLabels(labels.value),
+    suggestions: boardLabels(),
+    onChange: (next) => {
+      labels.value = next.join(", ")
+      labels.dispatchEvent(new Event("input", {bubbles: true}))
+    },
+  })
+  editor.querySelector("[data-note-labels-ui]").appendChild(labelEditor.el)
   color.value = normalizeSelfNoteColor(payload.color)
   const previewColor = () => {
     const value = normalizeSelfNoteColor(color.value)
@@ -335,7 +357,7 @@ function noteEditor(board, payload, save, {mount = null, tall = false} = {}) {
   // Auto-save only when focus leaves the editor entirely (Keep-style
   // "click away to save"), never when moving between the editor's own fields —
   // otherwise editing a note would save and close it mid-edit.
-  ;[title, body, labels, color, sortChecked].forEach((field) =>
+  ;[title, body, labelEditor.input, color, sortChecked].forEach((field) =>
     field.addEventListener("blur", (event) => {
       if (!editor.contains(event.relatedTarget)) scheduleSave()
     }),
@@ -1682,6 +1704,47 @@ export const SelfNotes = {
     }
     action(payload.pinned ? "Unpin" : "Pin", () => { payload.pinned = !payload.pinned })
     action(payload.archived_at ? "Unarchive" : "Archive", () => { payload.archived_at = payload.archived_at ? null : new Date().toISOString() })
+    if (!payload.trashed_at) {
+      const toggle = document.createElement("button")
+      toggle.type = "button"
+      toggle.className = "rounded-full border border-dashed border-current/30 px-2 py-0.5 text-xs opacity-60 transition hover:border-solid hover:opacity-100"
+      toggle.textContent = (payload.labels || []).length > 0 ? "✎ Labels" : "+ Label"
+      toggle.setAttribute("aria-label", "Add or remove labels")
+      toggle.setAttribute("aria-expanded", "false")
+
+      const panel = document.createElement("div")
+      panel.className = "mt-1 hidden w-full basis-full space-y-2 rounded-xl border border-current/20 p-2"
+      panel.dataset.role = "card-label-panel"
+
+      const picker = createLabelEditor(document, {labels: payload.labels || [], suggestions: boardLabels()})
+      const buttons = document.createElement("div")
+      buttons.className = "flex justify-end gap-1"
+      const cancel = document.createElement("button")
+      cancel.type = "button"; cancel.className = "btn btn-ghost btn-xs"; cancel.textContent = "Cancel"
+      const done = document.createElement("button")
+      done.type = "button"; done.className = "btn btn-primary btn-xs"; done.textContent = "Save labels"
+      buttons.append(cancel, done)
+      panel.append(picker.el, buttons)
+
+      const setOpen = (open) => {
+        panel.classList.toggle("hidden", !open)
+        toggle.setAttribute("aria-expanded", String(open))
+        if (open) picker.input.focus()
+      }
+      toggle.addEventListener("click", (event) => { event.stopPropagation(); setOpen(panel.classList.contains("hidden")) })
+      cancel.addEventListener("click", (event) => { event.stopPropagation(); picker.set(payload.labels || []); setOpen(false) })
+      done.addEventListener("click", async (event) => {
+        event.stopPropagation()
+        // Whatever is typed in the field counts, even without pressing Enter.
+        const next = picker.flush()
+        if (next.join("\n") === (payload.labels || []).join("\n")) return setOpen(false)
+        done.disabled = true
+        if (!(await commit(() => { payload.labels = next }))) done.disabled = false
+      })
+      panel.addEventListener("click", (event) => event.stopPropagation())
+
+      meta.append(toggle, panel)
+    }
     action(payload.trashed_at ? "Restore" : "Trash", () => { payload.trashed_at = payload.trashed_at ? null : new Date().toISOString() })
     if (payload.trashed_at) {
       const remove = document.createElement("button")

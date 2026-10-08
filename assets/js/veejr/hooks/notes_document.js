@@ -23,6 +23,60 @@ export function normalizeSelfNoteColor(value) {
   return selfNoteColors.has(value) ? value : "default"
 }
 
+// ── Labels ──
+//
+// A label is a short word on a note. These are the rules for what one may be,
+// kept apart from the control that edits them so they can be tested and so the
+// editor and the card cannot disagree.
+
+export const LABEL_LIMIT = 10
+export const LABEL_MAX_LENGTH = 40
+
+// One label as it will be stored: no leading "#", no commas (they separate
+// labels in the saved draft), single spaces, trimmed and bounded.
+export function normalizeLabel(raw) {
+  return String(raw ?? "")
+    .replace(/,/g, " ")
+    .replace(/^[#\s]+/, "")
+    .replace(/\s+/g, " ")
+    .slice(0, LABEL_MAX_LENGTH)
+    .trim()
+}
+
+const sameLabel = (a, b) => a.toLocaleLowerCase() === b.toLocaleLowerCase()
+
+// Splits comma-separated text into clean, distinct labels, within the limit.
+// Distinct ignores case, so "Work" and "work" are one label.
+export function parseLabels(text) {
+  return String(text ?? "")
+    .split(",")
+    .reduce((labels, part) => addLabel(labels, part), [])
+}
+
+// The list with `raw` added; the same list if it is empty, already there, or
+// there is no room. Never mutates its input.
+export function addLabel(labels, raw, limit = LABEL_LIMIT) {
+  const label = normalizeLabel(raw)
+  if (!label || labels.length >= limit || labels.some((existing) => sameLabel(existing, label))) return labels
+  return [...labels, label]
+}
+
+export function removeLabel(labels, label) {
+  return labels.filter((existing) => !sameLabel(existing, label))
+}
+
+// Labels already in use on other notes that could be offered for this one:
+// not on this note yet, matching what has been typed, in order, a few at a time.
+export function suggestLabels(all, current, query = "", limit = 8) {
+  const needle = normalizeLabel(query).toLocaleLowerCase()
+
+  return [...new Set(all)]
+    .filter((label) => !current.some((existing) => sameLabel(existing, label)))
+    .filter((label) => !needle || label.toLocaleLowerCase().includes(needle))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, limit)
+}
+
 // The one line under the notes toolbar that says what is narrowing the list.
 //
 // It is empty — and the line hidden — when nothing is: "12 notes shown" over an
