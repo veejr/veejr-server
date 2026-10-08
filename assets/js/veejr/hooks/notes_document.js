@@ -94,7 +94,6 @@ export function noteFilterSummary({count, filter = "active", label = null, dateF
   if (searching) parts.push("Matching your search.")
   if (label) parts.push(`Label #${label}.`)
   if (dateFrom || dateTo) parts.push(`Updated ${dateFrom || "any time"} to ${dateTo || "today"}.`)
-  if (filter === "reminders") parts.push("Reminders are not available yet.")
 
   return parts.join(" ")
 }

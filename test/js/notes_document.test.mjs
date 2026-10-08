@@ -306,7 +306,7 @@ test("the archive and trash lists are named, since they are narrowing too", () =
   assert.equal(noteFilterSummary({count: 0, filter: "trashed"}), "0 notes shown. In Trash.")
   assert.equal(
     noteFilterSummary({count: 0, filter: "reminders"}),
-    "0 notes shown. In Reminders. Reminders are not available yet.",
+    "0 notes shown. In Reminders.",
   )
 })
 

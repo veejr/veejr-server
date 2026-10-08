@@ -472,7 +472,10 @@ defmodule VeejrWeb.MessagesLive do
     case Messaging.set_reminder(user, public_id, params["remind_at"]) do
       {:ok, envelope} ->
         message = if envelope.remind_at, do: "Reminder set.", else: "Reminder cleared."
-        {:reply, %{ok: true}, socket |> put_flash(:info, message) |> refresh()}
+        remind_at = envelope.remind_at && DateTime.to_iso8601(envelope.remind_at)
+
+        {:reply, %{ok: true, remind_at: remind_at},
+         socket |> put_flash(:info, message) |> refresh()}
 
       {:error, :invalid_remind_at} ->
         {:reply, %{error: "Pick a reminder time in the next year."}, socket}
