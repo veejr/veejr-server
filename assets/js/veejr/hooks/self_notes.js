@@ -9,7 +9,7 @@ import {
   openFrom,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
-import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
+import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteFilterSummary, noteSearchClauses, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
 import {requestKeyUnlock} from "../key_unlock.js"
@@ -948,7 +948,7 @@ export const SelfNotesBoard = {
       labelBar.textContent = ""
       labels.forEach((label) => {
         const chip = document.createElement("button")
-        chip.type = "button"; chip.className = "rounded-full bg-base-200 px-2 py-0.5 text-xs hover:bg-base-300"
+        chip.type = "button"; chip.className = "rounded-full bg-base-200 px-2.5 py-0.5 text-xs transition hover:bg-base-300 aria-[pressed=true]:bg-primary aria-[pressed=true]:text-primary-content"
         chip.textContent = `#${label}`; chip.setAttribute("aria-pressed", String(this.label === label))
         chip.addEventListener("click", () => { this.label = this.label === label ? null : label; this.applyFilters() })
         labelBar.appendChild(chip)
@@ -972,9 +972,17 @@ export const SelfNotesBoard = {
     this.markTimelineGroups(cards, timeline)
     const filterStatus = this.control("[data-role=filter-status]")
     if (filterStatus) {
-      const suffix = this.filter === "reminders" ? " Reminders are not available yet." : ""
-      const dateDescription = this.dateFrom || this.dateTo ? ` Updated ${this.dateFrom || "any time"} to ${this.dateTo || "today"}.` : ""
-      filterStatus.textContent = `${visibleCount} note${visibleCount === 1 ? "" : "s"} shown.${dateDescription}${suffix}`
+      // Only says anything when something is narrowing the list.
+      const summary = noteFilterSummary({
+        count: visibleCount,
+        filter: this.filter,
+        label: this.label,
+        dateFrom: this.dateFrom,
+        dateTo: this.dateTo,
+        searching: queryClauses.length > 0,
+      })
+      filterStatus.textContent = summary
+      filterStatus.classList.toggle("hidden", summary === "")
     }
     this.el.querySelector("[data-role=reminders-empty]")?.classList.toggle("hidden", this.filter !== "reminders")
     const deleteTrashed = this.control("[data-role=delete-trashed]")

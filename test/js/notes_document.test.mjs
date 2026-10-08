@@ -21,6 +21,7 @@ import {
   normalizeNoteSearch,
   normalizeSelfNoteColor,
   noteAsMessageText,
+  noteFilterSummary,
   selfNoteColorNames,
   selfNoteColors,
 } from "../../assets/js/veejr/hooks/notes_document.js"
@@ -270,5 +271,41 @@ test("blank checklist rows are left out", () => {
   assert.equal(
     noteAsMessageText({body: "x", checklist: [{text: "  ", checked: false}, {text: "Real", checked: true}, null]}),
     "x\n\n☑ Real",
+  )
+})
+
+test("the filter line says nothing over an unfiltered board", () => {
+  assert.equal(noteFilterSummary({count: 12}), "")
+  assert.equal(noteFilterSummary({count: 12, filter: "active", searching: false}), "")
+  assert.equal(noteFilterSummary(), "")
+})
+
+test("the filter line speaks as soon as something narrows the list", () => {
+  assert.equal(noteFilterSummary({count: 3, searching: true}), "3 notes shown. Matching your search.")
+  assert.equal(noteFilterSummary({count: 1, label: "home"}), "1 note shown. Label #home.")
+  assert.equal(
+    noteFilterSummary({count: 0, dateFrom: "2026-10-01", dateTo: "2026-10-08"}),
+    "0 notes shown. Updated 2026-10-01 to 2026-10-08.",
+  )
+})
+
+test("an open-ended date range reads naturally", () => {
+  assert.equal(noteFilterSummary({count: 2, dateFrom: "2026-10-01"}), "2 notes shown. Updated 2026-10-01 to today.")
+  assert.equal(noteFilterSummary({count: 2, dateTo: "2026-10-01"}), "2 notes shown. Updated any time to 2026-10-01.")
+})
+
+test("the archive and trash lists are named, since they are narrowing too", () => {
+  assert.equal(noteFilterSummary({count: 4, filter: "archived"}), "4 notes shown. In Archive.")
+  assert.equal(noteFilterSummary({count: 0, filter: "trashed"}), "0 notes shown. In Trash.")
+  assert.equal(
+    noteFilterSummary({count: 0, filter: "reminders"}),
+    "0 notes shown. In Reminders. Reminders are not available yet.",
+  )
+})
+
+test("several filters are all named", () => {
+  assert.equal(
+    noteFilterSummary({count: 1, filter: "archived", searching: true, label: "work", dateFrom: "2026-09-01"}),
+    "1 note shown. In Archive. Matching your search. Label #work. Updated 2026-09-01 to today.",
   )
 })

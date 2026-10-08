@@ -23,6 +23,28 @@ export function normalizeSelfNoteColor(value) {
   return selfNoteColors.has(value) ? value : "default"
 }
 
+// The one line under the notes toolbar that says what is narrowing the list.
+//
+// It is empty — and the line hidden — when nothing is: "12 notes shown" over an
+// unfiltered board is noise, and every other state the toolbar shows already
+// says so (the pressed tab, the search box). It speaks only when a filter could
+// be the reason notes are missing, which matters most for the ones the
+// toolbar does not show: a date range set in the gear, or a label chip.
+export function noteFilterSummary({count, filter = "active", label = null, dateFrom = "", dateTo = "", searching = false} = {}) {
+  const lists = {archived: "Archive", trashed: "Trash", reminders: "Reminders"}
+  const narrowed = searching || !!label || !!dateFrom || !!dateTo || filter !== "active"
+  if (!narrowed) return ""
+
+  const parts = [`${count} note${count === 1 ? "" : "s"} shown.`]
+  if (filter !== "active" && lists[filter]) parts.push(`In ${lists[filter]}.`)
+  if (searching) parts.push("Matching your search.")
+  if (label) parts.push(`Label #${label}.`)
+  if (dateFrom || dateTo) parts.push(`Updated ${dateFrom || "any time"} to ${dateTo || "today"}.`)
+  if (filter === "reminders") parts.push("Reminders are not available yet.")
+
+  return parts.join(" ")
+}
+
 // A note as the plain text of a message: its title, its body, and its checklist
 // as ticked and unticked lines. What the sender sees here is what goes, and
 // they can still edit it before sending.
