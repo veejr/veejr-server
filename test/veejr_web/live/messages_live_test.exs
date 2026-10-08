@@ -972,4 +972,54 @@ defmodule VeejrWeb.MessagesLiveTest do
     <<0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 512::16, 512::16, 0::size(12)-unit(8), 0xFF,
       0xD9>>
   end
+
+  describe "message cards" do
+    test "a conversation composer offers a card picker for ordinary messages", %{
+      conn: conn,
+      user: user
+    } do
+      friend = user_fixture()
+      {:ok, request} = Social.send_friend_request(friend, user.username)
+      {:ok, _friendship} = Social.accept_friend_request(user, request.id)
+
+      {:ok, view, _html} = live(conn, "/messages?friend_id=#{friend.id}")
+
+      assert has_element?(
+               view,
+               "#message-composer[data-kind='message'] [data-role='toggle-card']"
+             )
+
+      assert has_element?(
+               view,
+               "#message-composer-card-panel[phx-update='ignore'] [data-role='card-picker']"
+             )
+    end
+
+    test "the notes composer does not, since a note is not sent to anybody", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/messages?self_notes=true")
+
+      refute has_element?(view, "[data-role='toggle-card']")
+      refute has_element?(view, "[data-role='card-picker']")
+    end
+
+    test "the notes board is told who a note can be sent to", %{conn: conn, user: user} do
+      friend = user_fixture(%{username: "cardfriend"})
+      {:ok, request} = Social.send_friend_request(friend, user.username)
+      {:ok, _friendship} = Social.accept_friend_request(user, request.id)
+
+      {:ok, view, _html} = live(conn, "/messages?self_notes=true")
+
+      targets =
+        view
+        |> element("#self-notes-board")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("data-send-targets")
+        |> hd()
+        |> Jason.decode!()
+
+      assert %{"type" => "friend", "id" => id, "label" => "@cardfriend"} = hd(targets)
+      assert id == friend.id
+    end
+  end
 end

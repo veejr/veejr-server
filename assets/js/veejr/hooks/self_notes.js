@@ -14,6 +14,7 @@ import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
 import {requestKeyUnlock} from "../key_unlock.js"
 import {deleteDraftMedia, loadDraftMedia, saveDraftMedia} from "../local_media_drafts.js"
+import {openNoteSendDialog} from "./note_send.js"
 
 // The spreadsheet and word processor, and everything they pull in (the
 // document model, the formula engine), live behind this one dynamic import.
@@ -844,6 +845,14 @@ export const SelfNotesBoard = {
     window.addEventListener("veejr:self-note-save", this.onSave)
     window.addEventListener("veejr:self-note-rendered", this.onRendered)
     window.addEventListener("veejr:self-note-selected", this.onSelected)
+    // A note's Send button asks the board to open the send dialog: the board
+    // knows who the sender can write to and holds the connection to send with.
+    this.onSend = (event) => {
+      let targets = []
+      try { targets = JSON.parse(this.el.dataset.sendTargets || "[]") } catch { /* no targets */ }
+      openNoteSendDialog({hook: this, payload: event.detail.payload, targets, userId: this.el.dataset.userId, myKey: this.el.dataset.peerKey})
+    }
+    window.addEventListener("veejr:self-note-send", this.onSend)
     window.addEventListener("keydown", this.onKeydown)
   },
   syncViewButtons() {
@@ -863,6 +872,7 @@ export const SelfNotesBoard = {
     window.removeEventListener("veejr:self-note-save", this.onSave)
     window.removeEventListener("veejr:self-note-rendered", this.onRendered)
     window.removeEventListener("veejr:self-note-selected", this.onSelected)
+    window.removeEventListener("veejr:self-note-send", this.onSend)
     window.removeEventListener("keydown", this.onKeydown)
   },
   setSelected({element, payload, checked}) {
@@ -1649,6 +1659,16 @@ export const SelfNotes = {
       swatches.appendChild(swatch)
     }
     actions.appendChild(this.reminderButton())
+    if (!payload.trashed_at) {
+      const send = document.createElement("button")
+      send.type = "button"; send.className = "btn btn-ghost btn-xs"; send.textContent = "Send"
+      send.title = "Send this note as a message"
+      send.addEventListener("click", (event) => {
+        event.stopPropagation()
+        window.dispatchEvent(new CustomEvent("veejr:self-note-send", {detail: {payload}}))
+      })
+      actions.appendChild(send)
+    }
     action(payload.pinned ? "Unpin" : "Pin", () => { payload.pinned = !payload.pinned })
     action(payload.archived_at ? "Unarchive" : "Archive", () => { payload.archived_at = payload.archived_at ? null : new Date().toISOString() })
     action(payload.trashed_at ? "Restore" : "Trash", () => { payload.trashed_at = payload.trashed_at ? null : new Date().toISOString() })

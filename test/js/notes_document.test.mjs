@@ -20,6 +20,7 @@ import {
   noteSearchClauses,
   normalizeNoteSearch,
   normalizeSelfNoteColor,
+  noteAsMessageText,
   selfNoteColorNames,
   selfNoteColors,
 } from "../../assets/js/veejr/hooks/notes_document.js"
@@ -241,4 +242,33 @@ test("every stored note colour has a sticky-pad name, and nothing else does", ()
   assert.deepEqual([...named].sort(), [...selfNoteColors].sort())
   assert.equal(new Set(named).size, named.length)
   assert.ok(selfNoteColorNames.every(([, name]) => name.length > 0))
+})
+
+test("a note becomes a message: title, body, then the checklist", () => {
+  assert.equal(
+    noteAsMessageText({
+      title: "Shopping",
+      body: "For the weekend",
+      checklist: [
+        {text: "Milk", checked: true},
+        {text: "Eggs", checked: false},
+      ],
+    }),
+    "Shopping\n\nFor the weekend\n\n☑ Milk\n☐ Eggs",
+  )
+})
+
+test("a note with only some parts has no stray blank lines", () => {
+  assert.equal(noteAsMessageText({body: "Just text"}), "Just text")
+  assert.equal(noteAsMessageText({title: "Only a title"}), "Only a title")
+  assert.equal(noteAsMessageText({checklist: [{text: "One", checked: false}]}), "☐ One")
+  assert.equal(noteAsMessageText({}), "")
+  assert.equal(noteAsMessageText(), "")
+})
+
+test("blank checklist rows are left out", () => {
+  assert.equal(
+    noteAsMessageText({body: "x", checklist: [{text: "  ", checked: false}, {text: "Real", checked: true}, null]}),
+    "x\n\n☑ Real",
+  )
 })

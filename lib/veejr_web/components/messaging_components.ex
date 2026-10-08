@@ -312,6 +312,20 @@ defmodule VeejrWeb.MessagingComponents do
         </p>
       </div>
 
+      <%!--
+      The card picker is built by the composer hook, so LiveView must leave it
+      alone. Which card a message wears is sent inside the encrypted payload.
+      --%>
+      <div
+        :if={@show_options && @surface == "messages" && @kind == "message"}
+        id={"#{@id}-card-panel"}
+        data-role="card-panel"
+        phx-update="ignore"
+        class="hidden rounded-2xl border border-base-300 bg-base-200 p-3"
+      >
+        <div data-role="card-picker"></div>
+      </div>
+
       <input
         :if={!@show_recipients && @selected_self}
         type="hidden"
@@ -495,6 +509,18 @@ defmodule VeejrWeb.MessagingComponents do
           class="messages-composer-action order-1 flex size-11 shrink-0 items-center justify-center rounded-full transition sm:order-none"
         >
           <.icon name="hero-adjustments-horizontal" class="size-5" />
+        </button>
+
+        <button
+          :if={@show_options && @surface == "messages" && @kind == "message"}
+          type="button"
+          data-role="toggle-card"
+          title="Send as a card"
+          aria-label="Send as a card"
+          aria-pressed="false"
+          class="messages-composer-action order-1 flex size-11 shrink-0 items-center justify-center rounded-full transition sm:order-none"
+        >
+          <.icon name="hero-gift" class="size-5" />
         </button>
 
         <div

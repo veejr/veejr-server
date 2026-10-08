@@ -810,6 +810,38 @@ The server does not inspect these fields because they exist only inside
 ciphertext. Clients SHOULD flag, but need not reject, a decrypted `kind` that
 does not match server metadata.
 
+#### Optional message card
+
+A `message` payload MAY carry a `card`, which asks the recipient's client to
+show the text on a template and/or background:
+
+```json
+{
+  "v": 1,
+  "kind": "message",
+  "text": "Happy birthday!",
+  "attachments": [],
+  "to": ["@bob@other.example"],
+  "sent_at": "2026-07-12T14:00:00.000Z",
+  "card": {"template": "birthday", "background": "confetti"}
+}
+```
+
+| Field | Type | Rule |
+| --- | --- | --- |
+| `template` | string, optional | One of `birthday`, `congrats`, `getwell` |
+| `background` | string, optional | One of `plain`, `confetti`, `balloons`, `stars`, `hearts`, `floral`, `sky` |
+
+A card is only ever these identifiers. It never carries markup, a URL, a colour
+or a style, and what each identifier looks like is defined by the receiving
+client. A template with no `background` is shown on that template's default
+(`birthday` on `confetti`, `congrats` on `stars`, `getwell` on `floral`). A
+client MUST ignore an identifier it does not know, and MUST show the text as an
+ordinary message when it knows neither, so a client that has never heard of
+cards loses only the decoration. Like every field of the payload, the card
+exists only inside ciphertext; the server cannot tell a card from any other
+message. Cards apply to kind `message` only.
+
 ### 14.3 Location and note extensions
 
 A `location` payload additionally contains numeric `lat`, numeric `lng`, and

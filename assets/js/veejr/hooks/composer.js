@@ -16,6 +16,7 @@ import {MAX_VIDEO_DURATION_MS, currentLocationPath, encryptAndUpload, liveViewCo
 import {noteDocument} from "./notes_document.js"
 import {localDateTimeToIso} from "../schedule_time.js"
 import {Decrypt} from "./messages.js"
+import {createCardPicker} from "../cards.js"
 import {deleteDraftMedia, loadDraftMedia, saveDraftMedia} from "../local_media_drafts.js"
 
 // A drag only counts when it actually carries files: dragging selected text
@@ -94,8 +95,11 @@ export const Composer = {
 
     this.restoreDraft()
     this.setupAttachments()
+    this.setupCardPicker()
 
     this.onDraftInput = () => {
+      // The card preview shows the message as it will look.
+      this.cardPicker?.setText(this.el.querySelector("[data-role=text]")?.value)
       clearTimeout(this.draftTimer)
       this.draftTimer = setTimeout(() => this.saveDraft(), 250)
     }
@@ -134,6 +138,13 @@ export const Composer = {
     }
 
     this.onComposerClick = (e) => {
+      const cardToggle = e.target.closest("[data-role=toggle-card]")
+      if (cardToggle && this.el.contains(cardToggle)) {
+        e.preventDefault()
+        this.el.querySelector("[data-role=card-panel]")?.classList.toggle("hidden")
+        return
+      }
+
       const optionsToggle = e.target.closest("[data-role=toggle-options]")
       if (optionsToggle && this.el.contains(optionsToggle)) {
         e.preventDefault()
@@ -523,6 +534,25 @@ export const Composer = {
   updated() {
     this.textEl = this.el.querySelector("[data-role=text]")
     this.renderFilePreview()
+    this.setupCardPicker()
+  },
+
+  // The card picker lives in a LiveView-ignored panel, so it is built once and
+  // survives the form being patched. Only ordinary messages carry a card.
+  setupCardPicker() {
+    const host = this.el.querySelector("[data-role=card-picker]")
+    if (!host || host.childElementCount > 0) return
+
+    this.cardPicker = createCardPicker(document, {
+      onChange: (card) => {
+        const toggle = this.el.querySelector("[data-role=toggle-card]")
+        toggle?.classList.toggle("bg-primary/10", !!card)
+        toggle?.classList.toggle("text-primary", !!card)
+        toggle?.setAttribute("aria-pressed", String(!!card))
+      },
+    })
+    host.appendChild(this.cardPicker.el)
+    this.cardPicker.setText(this.textEl?.value)
   },
 
   captureEmojiElements() {
@@ -1283,6 +1313,9 @@ export const Composer = {
       // recipient handles ride inside the encrypted payload so group
       // messages can show all participants after decryption
       const to = recipients.map((r) => r.handle || `@${r.username}`)
+      // A card is only ever the chosen template and background ids; it rides
+      // inside the encrypted payload like everything else.
+      const card = kind === "message" ? this.cardPicker?.value() : null
       const payload = kind === "self_note"
         ? noteDocument({body: text, attachments})
         : {
@@ -1293,6 +1326,7 @@ export const Composer = {
             to,
             sent_at: new Date().toISOString(),
             ...(this.replyTo ? {reply_to: this.replyTo} : {}),
+            ...(card ? {card} : {}),
             ...extra,
           }
       const ttl = parseInt(form.querySelector("[data-role=ttl]")?.value || "", 10)
@@ -1334,6 +1368,8 @@ export const Composer = {
       this.draftClearing = true
       form.reset()
       this.clearReply()
+      this.cardPicker?.reset()
+      this.el.querySelector("[data-role=card-panel]")?.classList.add("hidden")
       this.clearAudioRecordings()
       this.clearVideoRecordings()
       this.clearDraft()

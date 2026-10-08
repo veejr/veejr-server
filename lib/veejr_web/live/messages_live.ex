@@ -57,6 +57,8 @@ defmodule VeejrWeb.MessagesLive do
               self_note_envelopes={@self_note_envelopes}
               has_more_self_notes={@has_more_self_notes}
               current_scope={@current_scope}
+              friends={@friends}
+              groups={@groups}
             />
 
             <.conversation_thread
