@@ -82,6 +82,7 @@ defmodule VeejrWeb.MessagesLiveTest do
            )
 
     refute has_element?(view, "#messages-page-header-content")
+    refute has_element?(view, "#self-notes-settings-section")
   end
 
   test "spends the layout's vertical padding on the thread instead", %{conn: conn} do
@@ -224,15 +225,23 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#self-note-#{note.public_id}")
   end
 
-  test "uses the notes title and moves search into the notes pane header", %{conn: conn} do
+  test "the notes toolbar puts search first, with the rest of the controls in view or behind a gear",
+       %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages?self_notes=true")
 
     assert has_element?(view, "#messages-page-header h1", "Notes to yourself")
     assert has_element?(view, "div#messages-page-header[aria-label='Messages header']")
 
+    # One toolbar, always open: nothing to expand before anything can be done.
+    refute has_element?(view, "details#self-notes-command-center")
+    refute has_element?(view, "#self-notes-command-center-toggle")
+    refute has_element?(view, "#messages-page-header-content")
+    refute has_element?(view, "#self-notes-board #self-notes-command-center")
+
+    # Search is the first and widest thing in it.
     assert has_element?(
              view,
-             "#self-notes-pane-header > #self-notes-search-bar #self-notes-search[data-role='search'][aria-label='Search notes']"
+             "#self-notes-pane-header #self-notes-command-center #self-notes-search-bar #self-notes-search[data-role='search'][aria-label='Search notes']"
            )
 
     refute has_element?(view, "#self-notes-board #self-notes-search-bar")
@@ -243,25 +252,63 @@ defmodule VeejrWeb.MessagesLiveTest do
              "Last edited"
            )
 
-    assert has_element?(
-             view,
-             "#self-notes-sort option[value='created']",
-             "Creation date"
-           )
-
+    assert has_element?(view, "#self-notes-sort option[value='created']", "Creation date")
     assert has_element?(view, "#self-notes-sort option[value='title']", "Title")
 
+    # Making things: a note is the button, the rest is one click further.
+    assert has_element?(view, "#self-notes-new", "New note")
+    assert has_element?(view, "#self-notes-new-menu #self-notes-new-sheet[data-role='new-sheet']")
+    assert has_element?(view, "#self-notes-new-menu #self-notes-new-page[data-role='new-page']")
+    refute has_element?(view, "#self-notes-quick-create")
+
+    # Filtering: the four lists are always one click away.
+    for filter <- ~w(active reminders archived trashed) do
+      assert has_element?(
+               view,
+               "#self-notes-command-center [data-role='filter'][data-filter='#{filter}']"
+             )
+    end
+
     assert has_element?(
              view,
-             "#messages-page-header-content > details#self-notes-command-center[aria-label='Create and filter notes']:not([open])"
+             "#self-notes-command-center [data-role='filter'][data-filter='active'][aria-pressed='true']"
            )
 
-    refute has_element?(view, "#self-notes-board #self-notes-command-center")
-    assert has_element?(view, "#self-notes-command-center-toggle")
-    assert has_element?(view, "#self-notes-quick-create[data-role='new-note']")
-    assert has_element?(view, "#self-notes-date-filters")
-    assert has_element?(view, "#self-notes-new-sheet[data-role='new-sheet']")
-    assert has_element?(view, "#self-notes-new-page[data-role='new-page']")
+    # What is set once lives behind the page's one gear, closed until it is
+    # clicked — not a second gear of its own.
+    assert has_element?(view, "details#messages-tools:not([open]) > #messages-tools-toggle")
+    refute has_element?(view, "#self-notes-settings")
+    refute has_element?(view, "#self-notes-settings-toggle")
+
+    assert has_element?(
+             view,
+             "#messages-tools-content #self-notes-settings-section #self-notes-date-filters"
+           )
+
+    assert has_element?(
+             view,
+             "#self-notes-settings-section [data-role='date-from']"
+           )
+
+    assert has_element?(
+             view,
+             "#self-notes-settings-section [data-role='date-preset'][data-days='7']"
+           )
+
+    assert has_element?(view, "#self-notes-settings-section #self-notes-import", "Import notes")
+
+    assert has_element?(
+             view,
+             "#self-notes-settings-section [data-role='delete-trashed'][disabled]"
+           )
+
+    # The page settings are still there beside the notes ones.
+    assert has_element?(view, "#messages-tools-content #messages-appearance-tool")
+    assert has_element?(view, "#messages-tools-content #messages-invite-person")
+
+    # The board finds all of it under the one wrapper.
+    assert has_element?(view, "#self-notes-command-center [data-role='labels']")
+    assert has_element?(view, "#self-notes-command-center [data-role='filter-status']")
   end
 
   test "offers grid, list, timeline and sticky-note views of the notes board", %{conn: conn} do
