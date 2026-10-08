@@ -260,6 +260,48 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert has_element?(view, "#self-notes-new-page[data-role='new-page']")
   end
 
+  test "offers grid, list, timeline and sticky-note views of the notes board", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/messages?self_notes=true")
+
+    for {id, view_name, label} <- [
+          {"grid", "grid", "Grid view"},
+          {"list", "list", "List view"},
+          {"timeline", "timeline", "Timeline view"},
+          {"postit", "postit", "Sticky note view"}
+        ] do
+      assert has_element?(
+               view,
+               "#self-notes-view-#{id}[data-role='view'][data-view='#{view_name}'][aria-label='#{label}']"
+             )
+    end
+
+    # Grid is the one pressed to begin with; the hook restores a saved choice.
+    assert has_element?(view, "#self-notes-view-grid[aria-pressed='true']")
+    assert has_element?(view, "#self-notes-view-timeline[aria-pressed='false']")
+    assert has_element?(view, "#self-notes-view-postit[aria-pressed='false']")
+  end
+
+  test "gives each note card its server creation time for notes without their own", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, _batch, []} =
+      Messaging.send_batch(user, "self_note", [
+        %{"recipient_id" => user.id, "ciphertext" => "encrypted", "nonce" => "nonce"}
+      ])
+
+    [note] = Messaging.list_self_envelopes(user)
+    {:ok, view, _html} = live(conn, "/messages?self_notes=true")
+
+    created = DateTime.to_iso8601(note.inserted_at)
+    updated = DateTime.to_iso8601(note.updated_at)
+
+    assert has_element?(
+             view,
+             "#self-note-content-#{note.public_id}[data-created-at='#{created}'][data-updated-at='#{updated}']"
+           )
+  end
+
   test "creates a document on the notes board", %{conn: conn, user: user} do
     {:ok, view, _html} = live(conn, "/messages")
 

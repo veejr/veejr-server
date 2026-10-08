@@ -10,6 +10,11 @@ import assert from "node:assert/strict"
 
 import {
   compareSelfNotes,
+  compareTimeline,
+  formatNoteTime,
+  noteTimes,
+  relativeNoteTime,
+  timelineGroupLabel,
   mergeNoteDocuments,
   noteDocument,
   noteSearchClauses,
@@ -160,4 +165,70 @@ test("quoted search terms stay one phrase, including curly quotes", () => {
 test("an unclosed quote treats the remainder as one phrase", () => {
   // Typed mid-search, this must not throw or silently drop the text.
   assert.deepEqual(noteSearchClauses('"shopping list'), ["shopping list"])
+})
+
+test("noteTimes uses the note's own timestamps and flags a real edit", () => {
+  const times = noteTimes({createdAt: "2026-10-04T10:00:00Z", updatedAt: "2026-10-08T12:30:00Z"})
+  assert.equal(times.created.toISOString(), "2026-10-04T10:00:00.000Z")
+  assert.equal(times.updated.toISOString(), "2026-10-08T12:30:00.000Z")
+  assert.equal(times.edited, true)
+})
+
+test("noteTimes does not call a save in the same minute an edit", () => {
+  const times = noteTimes({createdAt: "2026-10-04T10:00:00Z", updatedAt: "2026-10-04T10:00:40Z"})
+  assert.equal(times.edited, false)
+})
+
+test("noteTimes falls back to the server timestamps for notes without their own", () => {
+  const times = noteTimes({
+    createdAt: "",
+    updatedAt: undefined,
+    serverCreatedAt: "2026-09-01T08:00:00Z",
+    serverUpdatedAt: "2026-09-02T09:00:00Z",
+  })
+  assert.equal(times.created.toISOString(), "2026-09-01T08:00:00.000Z")
+  assert.equal(times.updated.toISOString(), "2026-09-02T09:00:00.000Z")
+  assert.equal(times.edited, true)
+})
+
+test("noteTimes survives garbage and missing dates", () => {
+  assert.deepEqual(noteTimes({createdAt: "nope", updatedAt: "also nope"}), {created: null, updated: null, edited: false})
+  assert.deepEqual(noteTimes(), {created: null, updated: null, edited: false})
+  const onlyUpdated = noteTimes({updatedAt: "2026-10-08T12:30:00Z"})
+  assert.equal(onlyUpdated.created.toISOString(), onlyUpdated.updated.toISOString())
+  assert.equal(onlyUpdated.edited, false)
+})
+
+test("formatNoteTime and timelineGroupLabel honour the time zone", () => {
+  const date = new Date("2026-10-31T23:30:00Z")
+  assert.equal(timelineGroupLabel(date, {locale: "en-US", timeZone: "UTC"}), "October 2026")
+  assert.equal(timelineGroupLabel(date, {locale: "en-US", timeZone: "Pacific/Auckland"}), "November 2026")
+  assert.match(formatNoteTime(date, {locale: "en-US", timeZone: "UTC"}), /Oct 31, 2026/)
+  assert.equal(formatNoteTime(null), "")
+  assert.equal(timelineGroupLabel(null), "Undated")
+})
+
+test("relativeNoteTime picks a sensible unit", () => {
+  const now = new Date("2026-10-08T12:00:00Z")
+  const ago = (ms) => new Date(now.getTime() - ms)
+  assert.equal(relativeNoteTime(ago(10_000), now, {locale: "en"}), "just now")
+  assert.equal(relativeNoteTime(ago(5 * 60_000), now, {locale: "en"}), "5 minutes ago")
+  assert.equal(relativeNoteTime(ago(3 * 3_600_000), now, {locale: "en"}), "3 hours ago")
+  assert.equal(relativeNoteTime(ago(4 * 86_400_000), now, {locale: "en"}), "4 days ago")
+  assert.equal(relativeNoteTime(ago(90 * 86_400_000), now, {locale: "en"}), "3 months ago")
+  assert.equal(relativeNoteTime(ago(800 * 86_400_000), now, {locale: "en"}), "2 years ago")
+  assert.equal(relativeNoteTime(null, now), "")
+})
+
+test("compareTimeline orders newest first, ignores pinning, and puts undated last", () => {
+  const notes = [
+    {title: "old", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-02T00:00:00Z", pinned: true},
+    {title: "new", createdAt: "2026-05-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z"},
+    {title: "undated", createdAt: "", updatedAt: ""},
+    {title: "mid", createdAt: "2026-03-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z"},
+  ]
+  assert.deepEqual([...notes].sort((a, b) => compareTimeline(a, b, "updated")).map((n) => n.title),
+    ["mid", "new", "old", "undated"])
+  assert.deepEqual([...notes].sort((a, b) => compareTimeline(a, b, "created")).map((n) => n.title),
+    ["new", "mid", "old", "undated"])
 })

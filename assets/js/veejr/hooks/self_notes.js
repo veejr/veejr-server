@@ -9,7 +9,7 @@ import {
   openFrom,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
-import {compareSelfNotes, mergeNoteDocuments, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
+import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
 import {requestKeyUnlock} from "../key_unlock.js"
@@ -618,6 +618,103 @@ async function keepContentFingerprint(secret, k) {
 
 // A small fixed progress banner for the import run.
 
+const NOTE_VIEWS = ["grid", "list", "timeline", "postit"]
+const NOTE_VIEW_KEY = "veejr:self-notes-view"
+
+function savedNoteView() {
+  try {
+    const view = window.localStorage.getItem(NOTE_VIEW_KEY)
+    return NOTE_VIEWS.includes(view) ? view : "grid"
+  } catch { return "grid" }
+}
+
+function saveNoteView(view) {
+  try { window.localStorage.setItem(NOTE_VIEW_KEY, view) } catch { /* private mode: the view just will not be remembered */ }
+}
+
+const NOTE_VIEW_CLASSES = {
+  grid: "columns-1 gap-4 sm:columns-2 xl:columns-3",
+  list: "space-y-3",
+  timeline: "self-notes-timeline",
+  postit: "self-notes-postits",
+}
+
+// "Created …" and "Last edited …" for the timeline, from the note's own
+// timestamps or, for notes that lack them, the server's.
+function timesLine(label, date) {
+  const line = document.createElement("span")
+  line.className = "self-note-times-line"
+  const name = document.createElement("span")
+  name.className = "self-note-times-label"
+  name.textContent = label
+  const time = document.createElement("time")
+  time.dateTime = date.toISOString()
+  time.textContent = formatNoteTime(date)
+  const ago = document.createElement("span")
+  ago.className = "self-note-times-ago"
+  ago.textContent = relativeNoteTime(date)
+  line.append(name, time, ago)
+  return line
+}
+
+function noteTimesFor(payload, content) {
+  return noteTimes({
+    createdAt: payload.created_at,
+    updatedAt: payload.updated_at,
+    serverCreatedAt: content.dataset.createdAt,
+    serverUpdatedAt: content.dataset.updatedAt,
+  })
+}
+
+function noteTimesBlock(times) {
+  const block = document.createElement("p")
+  block.className = "self-note-times"
+  block.dataset.role = "note-times"
+  if (times.created) block.appendChild(timesLine("Created", times.created))
+  if (times.edited) block.appendChild(timesLine("Last edited", times.updated))
+  return block
+}
+
+// A clamped note body can be expanded by click; a sticky note scrolls instead.
+function setBodyExpandedState(body, expanded) {
+  body.dataset.expanded = String(expanded)
+  body.setAttribute("aria-expanded", String(expanded))
+  body.setAttribute(
+    "aria-label",
+    expanded ? "Expanded note text. Click to edit or Control-click to collapse." : "Expand note text",
+  )
+  body.title = expanded ? "Click to edit · Control-click to collapse" : "Expand note text"
+}
+
+function inStickyView(element) {
+  return element.closest("#self-notes-grid")?.dataset.view === "postit"
+}
+
+function measureBodyCollapsible(body) {
+  if (!body.isConnected || !body.textContent) return
+  if (inStickyView(body) || body.dataset.expanded === "true") return
+  const collapsible = body.scrollHeight > body.clientHeight + 1
+  body.dataset.collapsible = String(collapsible)
+  if (collapsible) {
+    body.tabIndex = 0
+    body.setAttribute("role", "button")
+    setBodyExpandedState(body, false)
+  } else {
+    body.removeAttribute("tabindex")
+    body.removeAttribute("role")
+  }
+}
+
+function releaseBodyForSticky(body) {
+  body.dataset.expanded = "false"
+  body.dataset.collapsible = "false"
+  body.removeAttribute("tabindex")
+  body.removeAttribute("role")
+  body.removeAttribute("aria-expanded")
+  body.removeAttribute("aria-label")
+  body.removeAttribute("title")
+}
+
 export const SelfNotesBoard = {
   control(selector) {
     return document.querySelector(`#self-notes-command-center ${selector}`)
@@ -627,7 +724,7 @@ export const SelfNotesBoard = {
   },
   mounted() {
     this.filter = "active"
-    this.view = "grid"
+    this.view = savedNoteView()
     this.label = null
     this.searchTerm = ""
     this.sortBy = "updated"
@@ -697,9 +794,11 @@ export const SelfNotesBoard = {
     }))
     this.controls("[data-role=view]").forEach((button) => button.addEventListener("click", () => {
       this.view = button.dataset.view
-      this.controls("[data-role=view]").forEach((control) => control.setAttribute("aria-pressed", String(control === button)))
+      saveNoteView(this.view)
+      this.syncViewButtons()
       this.applyFilters()
     }))
+    this.syncViewButtons()
     this.el.querySelector("[data-role=bulk-clear]")?.addEventListener("click", () => this.clearSelection())
     this.el.querySelector("[data-role=bulk-pin]")?.addEventListener("click", () => this.bulk((note) => { note.pinned = true }))
     this.el.querySelector("[data-role=bulk-archive]")?.addEventListener("click", () => this.bulk((note) => { note.archived_at = new Date().toISOString(); note.trashed_at = null }))
@@ -746,6 +845,9 @@ export const SelfNotesBoard = {
     window.addEventListener("veejr:self-note-rendered", this.onRendered)
     window.addEventListener("veejr:self-note-selected", this.onSelected)
     window.addEventListener("keydown", this.onKeydown)
+  },
+  syncViewButtons() {
+    this.controls("[data-role=view]").forEach((control) => control.setAttribute("aria-pressed", String(control.dataset.view === this.view)))
   },
   updated() {
     const search = document.querySelector("#self-notes-search")
@@ -794,9 +896,19 @@ export const SelfNotesBoard = {
     const queryClauses = this.queryClauses || []
     const grid = this.el.querySelector("#self-notes-grid")
     const cards = [...this.el.querySelectorAll(".self-note-card")]
-    grid.className = this.view === "list" ? "space-y-3" : "columns-1 gap-4 sm:columns-2 xl:columns-3"
+    const previousView = grid.dataset.view
+    grid.className = NOTE_VIEW_CLASSES[this.view] || NOTE_VIEW_CLASSES.grid
+    grid.dataset.view = this.view
+    const timeline = this.view === "timeline"
+    const cardTimes = (card) => ({
+      createdAt: card.dataset.noteCreated,
+      updatedAt: card.dataset.noteUpdated,
+      title: card.dataset.noteTitle,
+    })
     cards
-      .sort((left, right) => compareSelfNotes(
+      .sort(timeline
+        ? (left, right) => compareTimeline(cardTimes(left), cardTimes(right), this.sortBy === "created" ? "created" : "updated")
+        : (left, right) => compareSelfNotes(
         {
           pinned: left.dataset.notePinned === "true",
           title: left.dataset.noteTitle,
@@ -812,6 +924,11 @@ export const SelfNotesBoard = {
         this.sortBy,
       ))
       .forEach((card) => grid.appendChild(card))
+    if (previousView !== this.view) {
+      const bodies = cards.map((card) => card.querySelector(".self-note-body")).filter(Boolean)
+      if (this.view === "postit") bodies.forEach(releaseBodyForSticky)
+      else requestAnimationFrame(() => bodies.forEach(measureBodyCollapsible))
+    }
     const labels = [...new Set(cards.flatMap((card) => JSON.parse(card.dataset.noteLabels || "[]")))].sort()
     const labelBar = this.control("[data-role=labels]")
     if (labelBar) {
@@ -839,6 +956,7 @@ export const SelfNotesBoard = {
       card.hidden = !stateMatch || !labelMatch || !dateMatch || !searchMatch
       if (!card.hidden) visibleCount += 1
     })
+    this.markTimelineGroups(cards, timeline)
     const filterStatus = this.control("[data-role=filter-status]")
     if (filterStatus) {
       const suffix = this.filter === "reminders" ? " Reminders are not available yet." : ""
@@ -854,6 +972,38 @@ export const SelfNotesBoard = {
         ? "Delete all trashed forever"
         : `Delete all ${count} trashed note${count === 1 ? "" : "s"} forever`
     }
+  },
+  // The timeline groups notes under their month. The heading lives inside the
+  // note's own (LiveView-ignored) content, on the first visible card of each
+  // month, so a server patch cannot strand or duplicate it.
+  markTimelineGroups(cards, timeline) {
+    let previous = null
+    cards.forEach((card) => {
+      const content = card.querySelector("[data-public-id]")
+      let heading = content?.querySelector("[data-role=timeline-heading]")
+      if (!timeline || card.hidden || !content) {
+        delete card.dataset.timelineFirst
+        return
+      }
+      const times = noteTimes({createdAt: card.dataset.noteCreated, updatedAt: card.dataset.noteUpdated})
+      const label = timelineGroupLabel(this.sortBy === "created" ? times.created : times.updated)
+      if (!heading) {
+        heading = document.createElement("p")
+        heading.dataset.role = "timeline-heading"
+        heading.className = "self-note-timeline-heading"
+        content.prepend(heading)
+      }
+      heading.textContent = label
+      // "3 days ago" goes stale on a board that stays open, so refresh it here.
+      content.querySelectorAll(".self-note-times-line").forEach((line) => {
+        const when = new Date(line.querySelector("time")?.dateTime || "")
+        const ago = line.querySelector(".self-note-times-ago")
+        if (ago && !Number.isNaN(when.getTime())) ago.textContent = relativeNoteTime(when)
+      })
+      if (label !== previous) card.dataset.timelineFirst = "true"
+      else delete card.dataset.timelineFirst
+      previous = label
+    })
   },
   async deleteTrashed() {
     const button = this.control("[data-role=delete-trashed]")
@@ -1243,8 +1393,9 @@ export const SelfNotes = {
     card.dataset.noteLabels = JSON.stringify(
       (Array.isArray(payload.labels) ? payload.labels : []).filter((label) => typeof label === "string").slice(0, 10)
     )
-    card.dataset.noteUpdated = payload.updated_at || ""
-    card.dataset.noteCreated = payload.created_at || ""
+    const times = noteTimesFor(payload, this.el)
+    card.dataset.noteUpdated = times.updated?.toISOString() || ""
+    card.dataset.noteCreated = times.created?.toISOString() || ""
     card.dataset.noteTitle = summary.title
     card.dataset.noteArchived = String(!!payload.archived_at)
     card.dataset.noteTrashed = String(!!payload.trashed_at)
@@ -1327,7 +1478,7 @@ export const SelfNotes = {
       actions.appendChild(remove)
     }
 
-    this.el.append(header, preview, actions)
+    this.el.append(header, noteTimesBlock(times), preview, actions)
     window.dispatchEvent(new CustomEvent("veejr:self-note-rendered"))
   },
   render() {
@@ -1379,8 +1530,9 @@ export const SelfNotes = {
       "legacy id", payload.legacy_message_id,
     ].filter((value) => value !== undefined && value !== null).join(" ")))
     card.dataset.noteLabels = JSON.stringify(payload.labels.filter((label) => typeof label === "string").slice(0, 10))
-    card.dataset.noteUpdated = payload.updated_at || ""
-    card.dataset.noteCreated = payload.created_at || ""
+    const times = noteTimesFor(payload, this.el)
+    card.dataset.noteUpdated = times.updated?.toISOString() || ""
+    card.dataset.noteCreated = times.created?.toISOString() || ""
     card.dataset.noteTitle = payload.title || "Untitled note"
     card.dataset.noteArchived = String(!!payload.archived_at)
     card.dataset.noteTrashed = String(!!payload.trashed_at)
@@ -1393,17 +1545,9 @@ export const SelfNotes = {
     body.className = "self-note-body mt-2 whitespace-pre-wrap text-sm"
     body.textContent = payload.body || ""
     body.dataset.expanded = "false"
-    const setBodyExpanded = (expanded) => {
-      body.dataset.expanded = String(expanded)
-      body.setAttribute("aria-expanded", String(expanded))
-      body.setAttribute(
-        "aria-label",
-        expanded ? "Expanded note text. Click to edit or Control-click to collapse." : "Expand note text",
-      )
-      body.title = expanded ? "Click to edit · Control-click to collapse" : "Expand note text"
-    }
+    const setBodyExpanded = (expanded) => setBodyExpandedState(body, expanded)
     const handleBodyAction = (event) => {
-      if (body.dataset.collapsible !== "true") return
+      if (body.dataset.collapsible !== "true" || inStickyView(body)) return
       const expanded = body.dataset.expanded === "true"
       if (!expanded || event.ctrlKey) {
         event.preventDefault()
@@ -1490,17 +1634,13 @@ export const SelfNotes = {
       })
       actions.appendChild(remove)
     }
-    this.el.append(title, body, list, meta, attachments, actions)
-    requestAnimationFrame(() => {
-      if (!body.isConnected || !body.textContent) return
-      const collapsible = body.scrollHeight > body.clientHeight + 1
-      body.dataset.collapsible = String(collapsible)
-      if (collapsible) {
-        body.tabIndex = 0
-        body.setAttribute("role", "button")
-        setBodyExpanded(false)
-      }
-    })
+    // On a sticky note this middle part scrolls while the title and buttons stay put.
+    const scroll = document.createElement("div")
+    scroll.className = "self-note-scroll"
+    scroll.dataset.role = "note-scroll"
+    scroll.append(body, list, meta, attachments)
+    this.el.append(title, noteTimesBlock(times), scroll, actions)
+    requestAnimationFrame(() => measureBodyCollapsible(body))
     card.dataset.noteColor = normalizeSelfNoteColor(payload.color)
     card.style.removeProperty("background")
   },

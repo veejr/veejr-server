@@ -3321,3 +3321,271 @@ select :is(option, optgroup) {
   margin-top: 0.35rem;
   opacity: 0.6;
 }
+
+/* ---------------------------------------------------------------------------
+   Notes board: timeline and sticky-note views.
+
+   The board always renders the same cards; #self-notes-grid[data-view] decides
+   how they are laid out. The hook sets data-view on every filter pass, and the
+   cards keep their own `hidden` flag for search and filters, so every rule that
+   gives a card a `display` has to leave `[hidden]` alone.
+   --------------------------------------------------------------------------- */
+
+#self-notes-grid .self-note-card[hidden] {
+  display: none;
+}
+
+/* The scroll wrapper is invisible to the grid and list layouts. */
+.self-note-scroll {
+  display: contents;
+}
+
+/* When it was written and last changed; only the timeline shows it. */
+.self-note-times,
+.self-note-timeline-heading {
+  display: none;
+}
+
+/* ---- Timeline ---- */
+
+#self-notes-grid[data-view="timeline"] {
+  --tl-pad: 2.25rem;
+  --tl-x: 0.7rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 44rem;
+  margin-inline: auto;
+  padding-left: var(--tl-pad);
+}
+
+@media (max-width: 40rem) {
+  #self-notes-grid[data-view="timeline"] {
+    --tl-pad: 1.75rem;
+    --tl-x: 0.45rem;
+  }
+}
+
+/* The rail every note hangs off. */
+#self-notes-grid[data-view="timeline"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--tl-x);
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--color-base-300) 1.5rem,
+    var(--color-base-300) calc(100% - 1.5rem),
+    transparent
+  );
+}
+
+#self-notes-grid[data-view="timeline"] .self-note-card {
+  position: relative;
+}
+
+#self-notes-grid[data-view="timeline"] .self-note-card::before {
+  content: "";
+  position: absolute;
+  top: 1.2rem;
+  left: calc(var(--tl-x) + 1px - 0.45rem - var(--tl-pad) - 1px);
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-base-100);
+}
+
+#self-notes-grid[data-view="timeline"] .self-note-times {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+.self-note-times-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.4rem;
+}
+
+.self-note-times-label {
+  min-width: 4.75rem;
+  font-weight: 600;
+}
+
+.self-note-times-ago::before {
+  content: "· ";
+}
+
+/* On a phone the buttons would otherwise spill out of the card's left edge. */
+#self-notes-grid[data-view="timeline"] .self-note-card > [data-public-id] > :last-child {
+  flex-wrap: wrap;
+}
+
+/* A month heading sits above the first note of that month. */
+#self-notes-grid[data-view="timeline"] .self-note-card[data-timeline-first="true"] {
+  margin-top: 2.1rem;
+}
+
+#self-notes-grid[data-view="timeline"] .self-note-card[data-timeline-first="true"] .self-note-timeline-heading {
+  display: block;
+  position: absolute;
+  top: -1.9rem;
+  left: calc(-1 * var(--tl-pad));
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---- Sticky notes ---- */
+
+#self-notes-grid[data-view="postit"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: 1.9rem 1.4rem;
+  padding: 0.9rem 0.25rem 1.5rem;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 18rem;
+  min-width: 0;
+  padding: 1.3rem 1rem 0.7rem;
+  border-width: 0;
+  border-radius: 2px 2px 16px 2px;
+  background-image: linear-gradient(to bottom right, transparent 88%, rgb(0 0 0 / 0.1) 100%);
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 0.12),
+    0 16px 20px -14px rgb(0 0 0 / 0.5);
+}
+
+/* Uncolored notes are the classic yellow, in every site theme. */
+#self-notes-grid[data-view="postit"] .self-note-card[data-note-color="default"] {
+  --self-note-bg: #fff3a0;
+  --self-note-fg: #3b3300;
+  --self-note-border: transparent;
+  --self-note-surface: #f1e083;
+  background-color: var(--self-note-bg);
+  border-color: var(--self-note-border);
+  color: var(--self-note-fg);
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card[data-note-color="default"] .bg-base-200 {
+  background-color: var(--self-note-surface);
+  color: var(--self-note-fg);
+}
+
+/* A strip of tape holding it up. */
+#self-notes-grid[data-view="postit"] .self-note-card::before {
+  content: "";
+  position: absolute;
+  top: -0.65rem;
+  left: 50%;
+  width: 4.25rem;
+  height: 1.3rem;
+  transform: translateX(-50%) rotate(-2deg);
+  background: rgb(255 255 255 / 0.5);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+  pointer-events: none;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card > [data-public-id] {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card h3 {
+  flex: none;
+  overflow-wrap: anywhere;
+}
+
+/* The text, checklist and attachments scroll inside the note; the title and
+   buttons stay where they are. */
+#self-notes-grid[data-view="postit"] .self-note-scroll {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-right: -0.35rem;
+  padding-right: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, currentColor 38%, transparent) transparent;
+}
+
+/* No ten-line clamp here: a long note scrolls rather than collapsing. */
+#self-notes-grid[data-view="postit"] .self-note-body {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  cursor: text;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card > [data-public-id] > :last-child {
+  flex: none;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"] {
+  grid-column: 1 / -1;
+  height: auto;
+  border-width: 1px;
+  border-radius: 1rem;
+  background-image: none;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"]::before {
+  display: none;
+}
+
+/* Tilt, and the lift on hover, only for people who have not asked for less
+   motion. */
+@media (prefers-reduced-motion: no-preference) {
+  #self-notes-grid[data-view="postit"] .self-note-card {
+    transition:
+      rotate 0.2s ease,
+      translate 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  #self-notes-grid[data-view="postit"] .self-note-card:nth-child(3n + 1) {
+    rotate: -1.1deg;
+  }
+
+  #self-notes-grid[data-view="postit"] .self-note-card:nth-child(3n + 2) {
+    rotate: 0.9deg;
+  }
+
+  #self-notes-grid[data-view="postit"] .self-note-card:nth-child(3n) {
+    rotate: -0.4deg;
+  }
+
+  #self-notes-grid[data-view="postit"] .self-note-card:not([data-editing="true"]):hover,
+  #self-notes-grid[data-view="postit"] .self-note-card:not([data-editing="true"]):focus-within {
+    rotate: 0deg;
+    translate: 0 -3px;
+    box-shadow:
+      0 1px 1px rgb(0 0 0 / 0.12),
+      0 22px 24px -14px rgb(0 0 0 / 0.55);
+  }
+}
