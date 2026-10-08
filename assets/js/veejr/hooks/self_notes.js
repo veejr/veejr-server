@@ -717,11 +717,14 @@ function releaseBodyForSticky(body) {
 }
 
 export const SelfNotesBoard = {
+  // The board's controls live in two places: the toolbar under the page bar
+  // (search, create, filters, layouts) and the page's settings gear (date
+  // range, import, clearing the trash), which also holds the page settings.
   control(selector) {
-    return document.querySelector(`#self-notes-command-center ${selector}`)
+    return document.querySelector(`#self-notes-command-center ${selector}, #self-notes-settings-section ${selector}`)
   },
   controls(selector) {
-    return document.querySelectorAll(`#self-notes-command-center ${selector}`)
+    return document.querySelectorAll(`#self-notes-command-center ${selector}, #self-notes-settings-section ${selector}`)
   },
   mounted() {
     this.filter = "active"

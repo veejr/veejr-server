@@ -133,6 +133,96 @@ defmodule VeejrWeb.MessagesLive.Components do
               </div>
             </section>
 
+            <div
+              :if={@self_notes}
+              id="self-notes-settings-section"
+              class="space-y-4 border-t border-base-300 pt-3"
+            >
+              <section id="self-notes-date-filters" aria-labelledby="self-notes-date-title">
+                <h2
+                  id="self-notes-date-title"
+                  class="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase opacity-70"
+                >
+                  <.icon name="hero-calendar-days" class="size-4" /> Filter by updated date
+                </h2>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <label class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1.5">
+                    <span class="text-base-content/55">From</span>
+                    <input
+                      id="self-notes-date-from"
+                      data-role="date-from"
+                      type="date"
+                      class="min-w-0 flex-1 bg-transparent text-base-content outline-none"
+                    />
+                  </label>
+                  <label class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1.5">
+                    <span class="text-base-content/55">To</span>
+                    <input
+                      id="self-notes-date-to"
+                      data-role="date-to"
+                      type="date"
+                      class="min-w-0 flex-1 bg-transparent text-base-content outline-none"
+                    />
+                  </label>
+                </div>
+                <div class="mt-2 flex flex-wrap items-center gap-1 text-xs">
+                  <button
+                    :for={
+                      {days, label} <- [
+                        {"0", "Today"},
+                        {"7", "Last 7 days"},
+                        {"30", "Last 30 days"}
+                      ]
+                    }
+                    data-role="date-preset"
+                    data-days={days}
+                    type="button"
+                    class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
+                    aria-pressed="false"
+                  >
+                    {label}
+                  </button>
+                  <button
+                    data-role="clear-dates"
+                    type="button"
+                    class="ml-auto rounded-lg px-2.5 py-1.5 font-medium text-base-content/50 transition hover:bg-base-200 hover:text-base-content"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </section>
+
+              <div class="space-y-1 border-t border-base-300 pt-3">
+                <button
+                  id="self-notes-import"
+                  type="button"
+                  class="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm font-medium transition hover:bg-base-200"
+                  phx-click={
+                    JS.dispatch("self-notes:import", to: "#self-notes-board")
+                    |> JS.remove_attribute("open", to: "#messages-tools")
+                  }
+                >
+                  <span class="flex size-8 items-center justify-center rounded-lg bg-base-200 text-base-content/60">
+                    <.icon name="hero-arrow-down-tray" class="size-4" />
+                  </span>
+                  <span>
+                    <span class="block">Import notes</span>
+                    <span class="block text-xs font-normal text-base-content/55">
+                      From a Google Keep export (.zip)
+                    </span>
+                  </span>
+                </button>
+                <button
+                  data-role="delete-trashed"
+                  type="button"
+                  disabled
+                  class="w-full rounded-lg px-2 py-2 text-left text-xs font-semibold text-error transition hover:bg-error/10 disabled:hidden"
+                >
+                  Delete all trashed forever
+                </button>
+              </div>
+            </div>
+
             <div class="border-t border-base-300 pt-3">
               <.link
                 id="messages-invite-person"
@@ -153,252 +243,7 @@ defmodule VeejrWeb.MessagesLive.Components do
           </div>
         </details>
       </div>
-
-      <div
-        :if={@self_notes}
-        id="messages-page-header-content"
-        class="border-t border-base-300 px-4 pt-3 pb-4"
-      >
-        <.self_notes_command_center />
-      </div>
     </div>
-    """
-  end
-
-  @doc false
-  def self_notes_command_center(assigns) do
-    ~H"""
-    <details
-      id="self-notes-command-center"
-      class="group mb-5 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-[0_18px_55px_-36px_color-mix(in_oklab,var(--color-base-content)_48%,transparent)]"
-      aria-label="Create and filter notes"
-    >
-      <summary
-        id="self-notes-command-center-toggle"
-        class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-semibold text-base-content/70 transition hover:bg-base-200/60 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-      >
-        <span class="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <.icon name="hero-plus" class="size-4" />
-        </span>
-        <span>Create and filter</span>
-        <span class="hidden text-xs font-normal text-base-content/45 sm:inline">
-          Notes, spreadsheets, documents, and views
-        </span>
-        <.icon
-          name="hero-chevron-down"
-          class="ml-auto size-4 transition duration-200 group-open:rotate-180"
-        />
-      </summary>
-      <div class="border-t border-base-300">
-        <div class="grid gap-px bg-base-300/70 lg:grid-cols-2">
-          <button
-            id="self-notes-quick-create"
-            data-role="new-note"
-            type="button"
-            class="group flex min-h-24 items-center gap-4 bg-base-100 px-5 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-          >
-            <span class="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-content shadow-lg shadow-primary/20 transition duration-200 group-hover:-translate-y-0.5 group-hover:rotate-2">
-              <.icon name="hero-plus" class="size-6" />
-            </span>
-            <span class="min-w-0 flex-1">
-              <span class="block text-base font-semibold text-base-content">
-                Capture a new note
-              </span>
-              <span class="mt-0.5 block text-xs text-base-content/60">
-                Write, make a checklist, or add private media
-              </span>
-            </span>
-            <kbd class="hidden rounded-lg border border-base-300 bg-base-200 px-2 py-1 text-[0.65rem] font-semibold text-base-content/55 sm:block">
-              C
-            </kbd>
-          </button>
-
-          <div class="flex min-h-24 items-stretch gap-px bg-base-300/70">
-            <button
-              id="self-notes-new-sheet"
-              data-role="new-sheet"
-              type="button"
-              class="group flex flex-1 items-center gap-3 bg-base-100 px-4 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-            >
-              <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60 transition group-hover:bg-primary/10 group-hover:text-primary">
-                <.icon name="hero-table-cells" class="size-5" />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block text-sm font-semibold text-base-content">Spreadsheet</span>
-                <span class="mt-0.5 block text-xs text-base-content/60">
-                  Grid with formulas
-                </span>
-              </span>
-            </button>
-
-            <button
-              id="self-notes-new-page"
-              data-role="new-page"
-              type="button"
-              class="group flex flex-1 items-center gap-3 bg-base-100 px-4 py-4 text-left transition hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-            >
-              <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60 transition group-hover:bg-primary/10 group-hover:text-primary">
-                <.icon name="hero-document-text" class="size-5" />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block text-sm font-semibold text-base-content">Document</span>
-                <span class="mt-0.5 block text-xs text-base-content/60">
-                  Headings, lists, formatting
-                </span>
-              </span>
-            </button>
-          </div>
-        </div>
-        <div class="border-t border-base-300 bg-base-100 px-4 py-3">
-          <details
-            id="self-notes-date-filters"
-            class="group rounded-xl border border-transparent open:border-base-300 open:bg-base-200/40"
-          >
-            <summary class="flex cursor-pointer list-none items-center gap-2 rounded-xl px-2 py-2 text-xs font-semibold text-base-content/60 transition hover:bg-base-200/70 hover:text-base-content">
-              <.icon name="hero-calendar-days" class="size-4" /> Filter by updated date
-              <.icon
-                name="hero-chevron-down"
-                class="ml-auto size-4 transition group-open:rotate-180"
-              />
-            </summary>
-            <div class="flex flex-wrap items-center gap-2 border-t border-base-300 px-3 py-3 text-xs">
-              <label class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1.5">
-                <span class="text-base-content/55">From</span>
-                <input
-                  id="self-notes-date-from"
-                  data-role="date-from"
-                  type="date"
-                  class="bg-transparent text-base-content outline-none"
-                />
-              </label>
-              <label class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1.5">
-                <span class="text-base-content/55">To</span>
-                <input
-                  id="self-notes-date-to"
-                  data-role="date-to"
-                  type="date"
-                  class="bg-transparent text-base-content outline-none"
-                />
-              </label>
-              <button
-                data-role="date-preset"
-                data-days="0"
-                type="button"
-                class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
-                aria-pressed="false"
-              >Today</button>
-              <button
-                data-role="date-preset"
-                data-days="7"
-                type="button"
-                class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
-                aria-pressed="false"
-              >Last 7 days</button>
-              <button
-                data-role="date-preset"
-                data-days="30"
-                type="button"
-                class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/60 transition hover:bg-base-200 hover:text-base-content aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
-                aria-pressed="false"
-              >Last 30 days</button>
-              <button
-                data-role="clear-dates"
-                type="button"
-                class="rounded-lg px-2.5 py-1.5 font-medium text-base-content/50 transition hover:bg-base-200 hover:text-base-content"
-              >Clear</button>
-            </div>
-          </details>
-          <div
-            class="mt-3 flex flex-wrap items-center gap-1 rounded-xl bg-base-200/75 p-1"
-            role="tablist"
-            aria-label="Note filters"
-          >
-            <button
-              data-role="filter"
-              data-filter="active"
-              type="button"
-              class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-              aria-pressed="true"
-            >Notes</button>
-            <button
-              data-role="filter"
-              data-filter="reminders"
-              type="button"
-              class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-              aria-pressed="false"
-            >Reminders</button>
-            <button
-              data-role="filter"
-              data-filter="archived"
-              type="button"
-              class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-              aria-pressed="false"
-            >Archive</button>
-            <button
-              data-role="filter"
-              data-filter="trashed"
-              type="button"
-              class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-              aria-pressed="false"
-            >Trash</button>
-            <button
-              id="self-notes-view-grid"
-              data-role="view"
-              data-view="grid"
-              type="button"
-              title="Grid view"
-              aria-label="Grid view"
-              class="ml-auto rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-              aria-pressed="true"
-            ><.icon name="hero-squares-2x2" class="size-4" /></button>
-            <button
-              id="self-notes-view-list"
-              data-role="view"
-              data-view="list"
-              type="button"
-              title="List view"
-              aria-label="List view"
-              class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-              aria-pressed="false"
-            ><.icon name="hero-list-bullet" class="size-4" /></button>
-            <button
-              id="self-notes-view-timeline"
-              data-role="view"
-              data-view="timeline"
-              type="button"
-              title="Timeline view"
-              aria-label="Timeline view"
-              class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-              aria-pressed="false"
-            ><.icon name="hero-clock" class="size-4" /></button>
-            <button
-              id="self-notes-view-postit"
-              data-role="view"
-              data-view="postit"
-              type="button"
-              title="Sticky note view"
-              aria-label="Sticky note view"
-              class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
-              aria-pressed="false"
-            ><.icon name="hero-rectangle-group" class="size-4" /></button>
-          </div>
-          <div id="self-notes-labels" data-role="labels" class="mt-3 flex flex-wrap gap-1"></div>
-          <p
-            id="self-notes-filter-status"
-            data-role="filter-status"
-            class="mt-3 border-t border-base-300 pt-3 text-xs text-base-content/55"
-            aria-live="polite"
-          >
-          </p>
-          <button
-            data-role="delete-trashed"
-            type="button"
-            disabled
-            class="mt-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-error transition hover:bg-error/10 disabled:hidden"
-          >Delete all trashed forever</button>
-        </div>
-      </div>
-    </details>
     """
   end
 
@@ -745,64 +590,189 @@ defmodule VeejrWeb.MessagesLive.Components do
     <div :if={@self_notes} class="flex min-h-0 flex-1 flex-col">
       <div
         id="self-notes-pane-header"
-        class="flex flex-wrap items-center gap-3 border-b border-base-300 bg-base-100 px-4 py-3 sm:px-5"
+        class="border-b border-base-300 bg-base-100 px-3 py-3 sm:px-5"
       >
+        <%!-- Everything for finding, making and filtering notes, in one place
+              and one glance. Search is the main way in, so it gets the room;
+              what you set once (date range, import, clearing the trash) is
+              behind the gear. The wrapper keeps its old id because the board
+              looks its controls up under it. --%>
         <div
-          id="self-notes-search-bar"
-          class="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-base-300 bg-base-100/95 p-2 shadow-sm"
+          id="self-notes-command-center"
+          aria-label="Search, create and filter notes"
+          class="space-y-3"
         >
-          <label class="group/search flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 transition focus-within:bg-base-200/60">
-            <.icon
-              name="hero-magnifying-glass"
-              class="size-5 shrink-0 text-base-content/45 transition group-focus-within/search:text-primary"
-            />
-            <input
-              id="self-notes-search"
-              data-role="search"
-              type="search"
-              placeholder="Search notes"
-              aria-label="Search notes"
-              class="min-w-0 flex-1 bg-transparent text-sm text-base-content outline-none placeholder:text-base-content/40"
-            />
-            <kbd class="hidden rounded-lg border border-base-300 bg-base-200 px-2 py-1 text-[0.65rem] font-semibold text-base-content/55 sm:block">
-              /
-            </kbd>
-          </label>
-          <label
-            for="self-notes-sort"
-            class="flex shrink-0 items-center gap-1.5 rounded-xl border border-base-300 bg-base-100 px-2 text-base-content/60 transition focus-within:border-primary focus-within:text-primary"
-          >
-            <.icon name="hero-arrows-up-down" class="size-4" />
-            <span class="sr-only">Sort notes by</span>
-            <select
-              id="self-notes-sort"
-              data-role="sort"
-              aria-label="Sort notes by"
-              class="h-10 max-w-32 bg-transparent pr-1 text-xs font-semibold text-base-content outline-none sm:max-w-none"
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div
+              id="self-notes-search-bar"
+              class="flex min-w-0 flex-1 items-center rounded-2xl border border-base-300 bg-base-100 shadow-sm transition focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20"
             >
-              <option value="updated" selected>Last edited</option>
-              <option value="created">Creation date</option>
-              <option value="title">Title</option>
-            </select>
-          </label>
-        </div>
-        <div class="flex items-center gap-2">
-          <button
-            id="self-notes-import"
-            type="button"
-            class="btn btn-ghost btn-sm"
-            phx-click={JS.dispatch("self-notes:import", to: "#self-notes-board")}
+              <label class="group/search flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
+                <.icon
+                  name="hero-magnifying-glass"
+                  class="size-5 shrink-0 text-base-content/45 transition group-focus-within/search:text-primary"
+                />
+                <input
+                  id="self-notes-search"
+                  data-role="search"
+                  type="search"
+                  placeholder="Search notes"
+                  aria-label="Search notes"
+                  class="min-w-0 flex-1 bg-transparent text-base text-base-content outline-none placeholder:text-base-content/40"
+                />
+                <kbd class="hidden rounded-lg border border-base-300 bg-base-200 px-2 py-1 text-[0.65rem] font-semibold text-base-content/55 sm:block">
+                  /
+                </kbd>
+              </label>
+            </div>
+
+            <%!-- A note is what most people make, so that is the button; the
+                  other things you can make are one click further. --%>
+            <div class="join shrink-0">
+              <button
+                id="self-notes-new"
+                type="button"
+                title="New note (C)"
+                class="btn btn-primary join-item"
+                phx-click={JS.dispatch("self-notes:new", to: "#self-notes-board")}
+              >
+                <.icon name="hero-plus" class="size-5" />
+                <span class="max-sm:sr-only">New note</span>
+              </button>
+              <details
+                id="self-notes-new-menu"
+                class="dropdown dropdown-end join-item"
+                phx-click-away={JS.remove_attribute("open")}
+                phx-window-keydown={JS.remove_attribute("open", to: "#self-notes-new-menu")}
+                phx-key="Escape"
+              >
+                <summary
+                  aria-label="More things to create"
+                  title="Spreadsheet or document"
+                  class="btn btn-primary list-none px-2 [&::-webkit-details-marker]:hidden"
+                >
+                  <.icon name="hero-chevron-down" class="size-4" />
+                </summary>
+                <div class="app-menu-surface dropdown-content z-40 mt-2 w-60 rounded-2xl border p-2 shadow-lg">
+                  <button
+                    id="self-notes-new-sheet"
+                    data-role="new-sheet"
+                    type="button"
+                    phx-click={JS.remove_attribute("open", to: "#self-notes-new-menu")}
+                    class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-base-200"
+                  >
+                    <.icon name="hero-table-cells" class="size-5 shrink-0 text-base-content/60" />
+                    <span>
+                      <span class="block font-semibold">Spreadsheet</span>
+                      <span class="block text-xs text-base-content/55">Grid with formulas</span>
+                    </span>
+                  </button>
+                  <button
+                    id="self-notes-new-page"
+                    data-role="new-page"
+                    type="button"
+                    phx-click={JS.remove_attribute("open", to: "#self-notes-new-menu")}
+                    class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-base-200"
+                  >
+                    <.icon name="hero-document-text" class="size-5 shrink-0 text-base-content/60" />
+                    <span>
+                      <span class="block font-semibold">Document</span>
+                      <span class="block text-xs text-base-content/55">
+                        Headings, lists, formatting
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div
+              class="flex flex-wrap items-center gap-1 rounded-xl bg-base-200/75 p-1"
+              role="tablist"
+              aria-label="Note filters"
+            >
+              <button
+                :for={
+                  {filter, label} <- [
+                    {"active", "Notes"},
+                    {"reminders", "Reminders"},
+                    {"archived", "Archive"},
+                    {"trashed", "Trash"}
+                  ]
+                }
+                data-role="filter"
+                data-filter={filter}
+                type="button"
+                class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+                aria-pressed={to_string(filter == "active")}
+              >
+                {label}
+              </button>
+            </div>
+
+            <div class="ml-auto flex items-center gap-2">
+              <label
+                for="self-notes-sort"
+                class="flex shrink-0 items-center gap-1.5 rounded-xl border border-base-300 bg-base-100 px-2 text-base-content/60 transition focus-within:border-primary focus-within:text-primary"
+              >
+                <.icon name="hero-arrows-up-down" class="size-4" />
+                <span class="sr-only">Sort notes by</span>
+                <select
+                  id="self-notes-sort"
+                  data-role="sort"
+                  aria-label="Sort notes by"
+                  class="h-8 max-w-32 bg-transparent pr-1 text-xs font-semibold text-base-content outline-none sm:max-w-none"
+                >
+                  <option value="updated" selected>Last edited</option>
+                  <option value="created">Creation date</option>
+                  <option value="title">Title</option>
+                </select>
+              </label>
+
+              <div
+                class="flex items-center gap-1 rounded-xl bg-base-200/75 p-1"
+                role="group"
+                aria-label="Note layout"
+              >
+                <button
+                  :for={
+                    {view, label, icon} <- [
+                      {"grid", "Grid view", "hero-squares-2x2"},
+                      {"list", "List view", "hero-list-bullet"},
+                      {"timeline", "Timeline view", "hero-clock"},
+                      {"postit", "Sticky note view", "hero-rectangle-group"}
+                    ]
+                  }
+                  id={"self-notes-view-#{view}"}
+                  data-role="view"
+                  data-view={view}
+                  type="button"
+                  title={label}
+                  aria-label={label}
+                  class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+                  aria-pressed={to_string(view == "grid")}
+                >
+                  <.icon name={icon} class="size-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="self-notes-labels"
+            data-role="labels"
+            class="flex flex-wrap gap-1 [&:not(:has(*))]:hidden"
           >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> Import
-          </button>
-          <button
-            id="self-notes-new"
-            type="button"
-            class="btn btn-primary btn-sm"
-            phx-click={JS.dispatch("self-notes:new", to: "#self-notes-board")}
+          </div>
+          <p
+            id="self-notes-filter-status"
+            data-role="filter-status"
+            class="text-xs text-base-content/55 empty:hidden"
+            aria-live="polite"
           >
-            <.icon name="hero-plus" class="size-4" /> New note
-          </button>
+          </p>
         </div>
       </div>
       <div
