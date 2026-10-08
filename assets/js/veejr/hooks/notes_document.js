@@ -7,6 +7,18 @@
 
 export const selfNoteColors = new Set(["default", "sand", "rose", "violet", "blue", "mint"])
 
+// What each stored colour looks like as a pad of sticky notes, in the order the
+// swatches are laid out. The stored values are older than the sticky view and
+// are kept as they are, so notes written by any other client still open.
+export const selfNoteColorNames = [
+  ["default", "Yellow"],
+  ["sand", "Orange"],
+  ["rose", "Pink"],
+  ["violet", "Purple"],
+  ["blue", "Blue"],
+  ["mint", "Green"],
+]
+
 export function normalizeSelfNoteColor(value) {
   return selfNoteColors.has(value) ? value : "default"
 }
