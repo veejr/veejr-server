@@ -20,12 +20,16 @@ defmodule VeejrWeb.MessagingComponents do
   attr :friends, :list, required: true
   attr :groups, :list, required: true
   attr :submit_event, :string, default: "start_conversation"
+  attr :rest, :global, doc: "e.g. phx-click-away, to close the menu on a click elsewhere"
 
   def conversation_builder(assigns) do
     ~H"""
-    <details id={@id} class="dropdown dropdown-end">
-      <summary class="btn btn-primary btn-sm list-none">
-        <.icon name="hero-chat-bubble-left-right" class="size-4" /> New conversation
+    <details id={@id} class="dropdown dropdown-end" {@rest}>
+      <summary class="btn btn-primary btn-sm list-none" title="New conversation">
+        <.icon name="hero-chat-bubble-left-right" class="size-4" />
+        <%!-- Words on a wide screen, just the icon on a narrow one, where the
+              bar has no room for both the title and a long button. --%>
+        <span class="max-sm:sr-only">New conversation</span>
         <.icon name="hero-chevron-down" class="size-3.5" />
       </summary>
       <form

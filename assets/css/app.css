@@ -3716,6 +3716,47 @@ select :is(option, optgroup) {
   display: none;
 }
 
+/* An open note is still the paper. The editor used to keep the site theme's
+   own surface — dark in a dark theme — under the paper's dark ink, which left
+   the text unreadable. It is now transparent on the paper and everything in it
+   takes the paper's ink; the tilt is dropped so the page being written on
+   sits straight. */
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"]:nth-child(n) {
+  rotate: 0deg;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"] [data-role="note-editor"] {
+  background-color: transparent;
+  color: inherit;
+  border-color: color-mix(in oklab, currentColor 28%, transparent);
+  box-shadow: none;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"] [data-role="note-editor"] :is([data-note-title], [data-note-body], [data-note-labels]) {
+  color: inherit;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"] [data-role="note-editor"] :is([data-note-title], [data-note-body], [data-note-labels])::placeholder {
+  color: color-mix(in oklab, currentColor 55%, transparent);
+}
+
+/* Buttons and fields that were drawn on the theme's surface: a tint of the ink
+   over the paper reads on every colour. */
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"] [data-role="note-editor"] :is(.select, .bg-base-200, .btn-ghost) {
+  background-color: color-mix(in oklab, currentColor 10%, transparent);
+  border-color: color-mix(in oklab, currentColor 28%, transparent);
+  color: inherit;
+}
+
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"] [data-role="note-editor"] .btn-ghost:hover {
+  background-color: color-mix(in oklab, currentColor 20%, transparent);
+}
+
+/* Recording controls and errors keep their own colours. */
+#self-notes-grid[data-view="postit"] .self-note-card[data-editing="true"] [data-role="note-editor"] .text-error {
+  color: #a4161a;
+}
+
 /* Tilt, and the lift on hover, only for people who have not asked for less
    motion. */
 @media (prefers-reduced-motion: no-preference) {

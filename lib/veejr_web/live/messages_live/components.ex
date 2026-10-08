@@ -26,7 +26,7 @@ defmodule VeejrWeb.MessagesLive.Components do
     statics: VeejrWeb.static_paths()
 
   @doc """
-  Title and layout switch, over a back link and collapsed secondary tools.
+  The page bar: back, title, New conversation, and a settings gear.
   """
   attr :conversations, :list, required: true
   attr :friends, :list, required: true
@@ -35,169 +35,132 @@ defmodule VeejrWeb.MessagesLive.Components do
 
   def page_header(assigns) do
     ~H"""
-    <%!-- The Simple switch has to sit outside the details: everything after a
-          summary is the disclosure's content, and a collapsed header would
-          take the one-click way out of this layout down with it. --%>
+    <%!-- One bar that is always there: where you are, the one thing most people
+          come here to do, and a gear for everything else. Settings used to sit
+          behind two nested disclosures, so starting a conversation took four
+          clicks and the page opened as a title and the word "Expand". --%>
     <div class="messages-page-header relative z-20 rounded-t-[31px] border-b border-base-300 bg-base-100">
-      <details
+      <div
         id="messages-page-header"
-        class="group/header"
         aria-label="Messages header"
+        class="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4"
       >
-        <summary
-          id="messages-page-header-toggle"
-          class="flex min-h-12 cursor-pointer list-none items-center gap-3 py-2.5 pr-32 pl-4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
+        <.link
+          id="back-to-contacts"
+          navigate={~p"/contacts"}
+          title="Back to contacts"
+          aria-label="Back to contacts"
+          class="btn btn-ghost btn-sm btn-circle shrink-0 text-base-content/65 hover:text-primary"
         >
-          <h1 class="text-lg font-semibold tracking-tight text-base-content">
+          <.icon name="hero-arrow-left" class="size-5" />
+        </.link>
+
+        <div id="messages-page-header-title" class="min-w-0 flex-1">
+          <h1 class="truncate text-lg leading-tight font-semibold tracking-tight text-base-content">
             {if(@self_notes, do: "Notes to yourself", else: "Messages")}
           </h1>
-          <span class="ml-auto text-xs font-medium text-base-content/55 group-open/header:hidden">
-            Expand
-          </span>
-          <span class="ml-auto hidden text-xs font-medium text-base-content/55 group-open/header:inline">
-            Collapse
-          </span>
-          <.icon
-            name="hero-chevron-down"
-            class="size-4 text-base-content/55 transition duration-200 group-open/header:rotate-180"
-          />
-        </summary>
-
-        <div
-          id="messages-page-header-content"
-          class="border-t border-base-300 px-4 pt-3 pb-4"
-        >
-          <div class="flex flex-wrap items-center gap-3">
-            <.link
-              id="back-to-contacts"
-              navigate={~p"/contacts"}
-              class="group/back inline-flex items-center gap-1 text-sm font-medium text-base-content/65 transition hover:text-primary"
-            >
-              <.icon
-                name="hero-arrow-left"
-                class="size-4 transition-transform group-hover/back:-translate-x-0.5"
-              /> Back to contacts
-            </.link>
-            <p class="text-sm opacity-70 sm:ml-auto">
-              {if(@self_notes,
-                do: "Private, end-to-end encrypted notes",
-                else: "End-to-end encrypted conversations"
-              )}
-            </p>
-          </div>
-
-          <details
-            id="messages-tools"
-            class="group/tools mt-3"
-            aria-label="Message tools"
-          >
-            <summary
-              id="messages-tools-toggle"
-              aria-label="Message tools"
-              title="Message tools"
-              class="ml-auto flex h-9 cursor-pointer list-none items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-xs font-semibold text-base-content/65 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/10 hover:text-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary group-open/tools:border-primary/40 group-open/tools:bg-primary/10 group-open/tools:text-primary"
-            >
-              <.icon
-                name="hero-cog-6-tooth"
-                class="size-4 transition duration-300 group-open/tools:rotate-90"
-              /> Tools
-            </summary>
-
-            <div
-              id="messages-tools-content"
-              class="mt-3 grid gap-3 rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
-            >
-              <section
-                id="messages-appearance-tool"
-                class="rounded-2xl border border-base-300 bg-base-200/45 p-3"
-                aria-labelledby="messages-appearance-title"
-              >
-                <div class="mb-2 flex items-center gap-2">
-                  <span class="flex size-8 items-center justify-center rounded-lg bg-base-100 text-base-content/60">
-                    <.icon name="hero-swatch" class="size-4" />
-                  </span>
-                  <span>
-                    <span id="messages-appearance-title" class="block text-sm font-semibold">
-                      Appearance
-                    </span>
-                    <span class="block text-xs text-base-content/50">
-                      Choose a conversation style
-                    </span>
-                  </span>
-                </div>
-                <div
-                  id="chat-theme-picker"
-                  class="chat-theme-picker flex flex-wrap items-center gap-1 rounded-2xl border border-base-300 bg-base-200 p-1.5"
-                  role="group"
-                  aria-label="Chat appearance"
-                >
-                  <span class="chat-theme-picker-label">
-                    <.icon name="hero-swatch" class="size-4" /> Style
-                  </span>
-                  <button
-                    id="chat-theme-classic"
-                    type="button"
-                    data-chat-theme-option="classic"
-                    aria-pressed="true"
-                    class="chat-theme-option"
-                  >
-                    <span class="chat-theme-swatch" aria-hidden="true"></span>
-                    <span>Classic</span>
-                  </button>
-                  <button
-                    id="chat-theme-salon"
-                    type="button"
-                    data-chat-theme-option="salon"
-                    aria-pressed="false"
-                    class="chat-theme-option"
-                  >
-                    <span class="chat-theme-swatch" aria-hidden="true"></span>
-                    <span>Salon</span>
-                  </button>
-                  <button
-                    id="chat-theme-party"
-                    type="button"
-                    data-chat-theme-option="party"
-                    aria-pressed="false"
-                    class="chat-theme-option"
-                  >
-                    <span class="chat-theme-swatch" aria-hidden="true"></span>
-                    <span>Party</span>
-                  </button>
-                  <button
-                    id="chat-theme-comic"
-                    type="button"
-                    data-chat-theme-option="comic"
-                    aria-pressed="false"
-                    class="chat-theme-option"
-                  >
-                    <span class="chat-theme-swatch" aria-hidden="true"></span>
-                    <span>Comic</span>
-                  </button>
-                </div>
-              </section>
-
-              <div class="grid content-center gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                <.link
-                  id="messages-invite-person"
-                  navigate={~p"/invites/new"}
-                  class="btn btn-outline btn-sm justify-start"
-                >
-                  <.icon name="hero-qr-code" class="size-4" /> Invite person
-                </.link>
-                <.conversation_builder
-                  id="messages-conversation-builder"
-                  form_id="messages-conversation-builder-form"
-                  conversations={@conversations}
-                  friends={@friends}
-                  groups={@groups}
-                />
-              </div>
-            </div>
-          </details>
-          <.self_notes_command_center :if={@self_notes} />
+          <p class="hidden truncate text-xs text-base-content/60 sm:block">
+            {if(@self_notes,
+              do: "Private, end-to-end encrypted notes",
+              else: "End-to-end encrypted conversations"
+            )}
+          </p>
         </div>
-      </details>
+
+        <.conversation_builder
+          id="messages-conversation-builder"
+          form_id="messages-conversation-builder-form"
+          conversations={@conversations}
+          friends={@friends}
+          groups={@groups}
+          phx-click-away={JS.remove_attribute("open")}
+        />
+
+        <%!-- Settings: the things you set once, not the things you do. Closes
+              on a click elsewhere or Escape, like any menu. --%>
+        <details
+          id="messages-tools"
+          class="group dropdown dropdown-end shrink-0"
+          aria-label="Message settings"
+          phx-click-away={JS.remove_attribute("open")}
+          phx-window-keydown={JS.remove_attribute("open", to: "#messages-tools")}
+          phx-key="Escape"
+        >
+          <summary
+            id="messages-tools-toggle"
+            aria-label="Settings"
+            title="Settings"
+            class="btn btn-ghost btn-sm btn-circle list-none text-base-content/65 transition hover:text-primary group-open:text-primary [&::-webkit-details-marker]:hidden"
+          >
+            <.icon name="hero-cog-6-tooth" class="size-5" />
+          </summary>
+
+          <div
+            id="messages-tools-content"
+            class="app-menu-surface dropdown-content z-40 mt-2 w-[min(21rem,calc(100vw-2rem))] space-y-4 rounded-2xl border p-4 shadow-lg"
+          >
+            <section id="messages-appearance-tool" aria-labelledby="messages-appearance-title">
+              <h2
+                id="messages-appearance-title"
+                class="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase opacity-70"
+              >
+                <.icon name="hero-swatch" class="size-4" /> Appearance
+              </h2>
+              <div
+                id="chat-theme-picker"
+                class="chat-theme-picker grid grid-cols-2 gap-1 rounded-2xl border border-base-300 bg-base-200 p-1.5"
+                role="group"
+                aria-label="Chat appearance"
+              >
+                <button
+                  :for={
+                    {id, label} <- [
+                      classic: "Classic",
+                      salon: "Salon",
+                      party: "Party",
+                      comic: "Comic"
+                    ]
+                  }
+                  id={"chat-theme-#{id}"}
+                  type="button"
+                  data-chat-theme-option={id}
+                  aria-pressed={to_string(id == :classic)}
+                  class="chat-theme-option justify-start"
+                >
+                  <span class="chat-theme-swatch" aria-hidden="true"></span>
+                  <span>{label}</span>
+                </button>
+              </div>
+            </section>
+
+            <div class="border-t border-base-300 pt-3">
+              <.link
+                id="messages-invite-person"
+                navigate={~p"/invites/new"}
+                class="flex items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium transition hover:bg-base-200"
+              >
+                <span class="flex size-8 items-center justify-center rounded-lg bg-base-200 text-base-content/60">
+                  <.icon name="hero-qr-code" class="size-4" />
+                </span>
+                <span class="min-w-0">
+                  <span class="block">Invite a person</span>
+                  <span class="block text-xs font-normal text-base-content/55">
+                    Share a link or QR code
+                  </span>
+                </span>
+              </.link>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div
+        :if={@self_notes}
+        id="messages-page-header-content"
+        class="border-t border-base-300 px-4 pt-3 pb-4"
+      >
+        <.self_notes_command_center />
+      </div>
     </div>
     """
   end
