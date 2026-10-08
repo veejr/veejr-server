@@ -173,19 +173,33 @@ defmodule VeejrWeb.SimpleMessagesLive do
             <.link
               id={"simple-conversation-#{conversation.key}"}
               navigate={~p"/messages/simple?conversation=#{conversation.key}"}
-              class="flex items-center gap-3 rounded-2xl px-2 py-3 transition hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              data-unread={to_string(conversation.unread_count > 0)}
+              class={[
+                "flex items-center gap-3 rounded-2xl px-2 py-3 transition hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                conversation.unread_count > 0 && "conversation-unread"
+              ]}
             >
-              <.user_avatar
-                :if={conversation.avatar_user}
-                user={conversation.avatar_user}
-                class="size-11 text-sm"
-                ring={false}
-              />
               <span
-                :if={!conversation.avatar_user}
-                class="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
+                id={"simple-conversation-avatar-#{conversation.key}"}
+                data-unread={to_string(conversation.unread_count > 0)}
+                class={[
+                  "relative inline-flex shrink-0 rounded-full",
+                  conversation.unread_count > 0 && "avatar-unread"
+                ]}
               >
-                <.icon name="hero-user-group" class="size-5" />
+                <.user_avatar
+                  :if={conversation.avatar_user}
+                  user={conversation.avatar_user}
+                  class="size-11 text-sm"
+                  ring={false}
+                />
+                <span
+                  :if={!conversation.avatar_user}
+                  class="flex size-11 items-center justify-center rounded-full bg-primary/15 text-primary"
+                >
+                  <.icon name="hero-user-group" class="size-5" />
+                </span>
+                <span :if={conversation.unread_count > 0} class="sr-only">Unread messages</span>
               </span>
               <span class="min-w-0 flex-1">
                 <span class="flex items-baseline gap-2">

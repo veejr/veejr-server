@@ -63,6 +63,7 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
            )
 
     refute has_element?(view, "#simple-messages-layout")
+    refute has_element?(view, "#simple-conversation-avatar-#{key}.avatar-unread")
     refute has_element?(view, "#messages-page-header")
     refute has_element?(view, ".messages-rail")
   end
@@ -200,6 +201,34 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
     assert has_element?(view, "#message-shell-#{envelope.public_id}", "@#{friend.username}")
   end
 
+  test "glows when an incoming message arrives while the conversation list is open", %{
+    conn: conn,
+    user: user,
+    friend: friend,
+    key: key
+  } do
+    :ok = send_to_friend(user, friend)
+    Messaging.touch_conversation(user.id, friend.id)
+
+    {:ok, view, _html} = live(conn, "/messages/simple")
+    selector = "#simple-conversation-avatar-#{key}"
+    refute has_element?(view, "#{selector}.avatar-unread")
+    refute has_element?(view, "#simple-conversation-#{key}.conversation-unread")
+
+    {:ok, _batch_id, _queued} =
+      Messaging.send_batch(friend, "message", [
+        %{"recipient_id" => user.id, "ciphertext" => "new-message", "nonce" => "nonce"}
+      ])
+
+    assert has_element?(view, "#{selector}.avatar-unread[data-unread='true']")
+    assert has_element?(view, "#{selector} .sr-only")
+
+    assert has_element?(
+             view,
+             "#simple-conversation-#{key}.conversation-unread[data-unread='true']"
+           )
+  end
+
   test "marks the open conversation read", %{conn: conn, user: user, friend: friend, key: key} do
     {:ok, _policy} =
       Messaging.put_delivery_policy(user, "contact", friend.id, %{
@@ -215,8 +244,19 @@ defmodule VeejrWeb.SimpleMessagesLiveTest do
     [notification] = Messaging.list_pending_notifications(user)
     {:ok, _notification} = Messaging.accept_notification(user, notification.id)
 
+    {:ok, list, _html} = live(conn, "/messages/simple")
+
+    assert has_element?(
+             list,
+             "#simple-conversation-avatar-#{key}.avatar-unread[data-unread='true']"
+           )
+
     {:ok, _view, _html} = live(conn, "/messages/simple?conversation=#{key}")
 
     assert Repo.get_by!(Envelope, recipient_id: user.id, thread_key: key).read_at
+
+    {:ok, read_list, _html} = live(conn, "/messages/simple")
+    refute has_element?(read_list, "#simple-conversation-avatar-#{key}.avatar-unread")
+    refute has_element?(read_list, "#simple-conversation-#{key}.conversation-unread")
   end
 end

@@ -90,8 +90,12 @@ defmodule VeejrWeb.SimpleContactsLive do
             <.link
               id={"simple-contact-#{friend.id}"}
               navigate={~p"/messages/simple?friend=#{friend.id}"}
-              aria-label={"Message #{contact_name(friend)}"}
-              class="relative inline-flex rounded-full transition hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+              aria-label={"Message #{contact_name(friend)}#{if(MapSet.member?(@unread_contacts, friend.id), do: ", unread messages", else: "")}"}
+              data-unread={to_string(MapSet.member?(@unread_contacts, friend.id))}
+              class={[
+                "relative inline-flex rounded-full transition hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary",
+                MapSet.member?(@unread_contacts, friend.id) && "avatar-unread"
+              ]}
             >
               <.user_avatar
                 user={friend}
@@ -516,8 +520,10 @@ defmodule VeejrWeb.SimpleContactsLive do
     {:noreply, assign(socket, :presence, Map.put(socket.assigns.presence, user_id, state))}
   end
 
-  # A new encrypted item only matters here for the count on the Contacts link.
+  # Refresh the unread halos as accepted items arrive.
   def handle_info({:veejr_notification, _notification}, socket), do: {:noreply, refresh(socket)}
+
+  def handle_info({:veejr_schedule_released}, socket), do: {:noreply, refresh(socket)}
 
   # Everything else on the user's topic belongs to other views; without this
   # clause a new broadcast would take the page down.
@@ -527,8 +533,23 @@ defmodule VeejrWeb.SimpleContactsLive do
     user = socket.assigns.current_scope.user
     friends = Social.list_friends(user)
 
+    unread_keys =
+      user
+      |> Messaging.list_conversation_summaries()
+      |> Enum.filter(&(&1.unread_count > 0))
+      |> MapSet.new(& &1.key)
+
+    unread_contacts =
+      friends
+      |> Enum.filter(fn friend ->
+        key = Messaging.conversation_key([Social.Address.handle(friend)])
+        MapSet.member?(unread_keys, key)
+      end)
+      |> MapSet.new(& &1.id)
+
     assign(socket,
       friends: friends,
+      unread_contacts: unread_contacts,
       presence: Presence.states(friends),
       pending_count: length(Messaging.list_pending_notifications(user))
     )
