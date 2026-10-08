@@ -135,7 +135,7 @@ defmodule VeejrWeb.CrapsLive do
 
   def handle_event("bet", params, socket) do
     bet_type = String.to_existing_atom(params["type"])
-    target = params["target"] && String.to_integer(params["target"])
+    target = CrapsComponents.parse_target(params["target"])
 
     case Table.place_bet(
            socket.assigns.current_scope.user.id,
@@ -150,12 +150,35 @@ defmodule VeejrWeb.CrapsLive do
 
   # A chip dropped on the felt. The region only reports which bet it is; the
   # rules about odds and phases were decided server-side in felt_actions/2.
-  def handle_event("felt_bet", %{"bet" => bet}, socket) do
-    handle_event("bet", %{"type" => bet, "target" => nil}, socket)
+  def handle_event("felt_bet", %{"bet" => bet} = params, socket) do
+    handle_event("bet", %{"type" => bet, "target" => params["target"]}, socket)
   end
 
-  def handle_event("felt_odds", %{"target" => target}, socket) do
-    handle_event("bet", %{"type" => "come_odds", "target" => target}, socket)
+  # A chip dropped on a come marker. The marker says which kind of come bet it
+  # sits on, so a don't-come marker lays don't-come odds.
+  def handle_event("felt_odds", %{"target" => target} = params, socket) do
+    type = CrapsComponents.marker_odds_type(params["type"])
+    handle_event("bet", %{"type" => type, "target" => target}, socket)
+  end
+
+  # Raise, lower, pull down or turn off a bet already on the felt. Held while
+  # the dice are in the air: the server has resolved that roll, so the board it
+  # holds is not the one this player is still looking at.
+  def handle_event(event, %{"id" => _} = params, socket)
+      when event in ~w(raise_bet lower_bet pull_bet toggle_off) do
+    if socket.assigns.rolling do
+      {:noreply, put_flash(socket, :error, "Wait for the dice to land.")}
+    else
+      user_id = socket.assigns.current_scope.user.id
+
+      case CrapsComponents.adjust_bet(event, params, user_id, socket.assigns.stake) do
+        {:ok, _} ->
+          {:noreply, absorb(socket, Table.state())}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, CrapsComponents.bet_error(reason))}
+      end
+    end
   end
 
   def handle_event("roll", _params, socket) do

@@ -19,7 +19,7 @@ import {announce, playBounce, playThrow} from "./audio.js"
 
 export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled} = {}) {
   const scene3d = createScene(THREE, container)
-  const {scene, camera, pointerNdc, onTap, onHover, destroy} = scene3d
+  const {scene, camera, pointerNdc, onTap, onHover, setLocked, destroy} = scene3d
   const {betMeshes, pointPucks} = createTable(THREE, scene)
 
   const die1 = createDieMesh(THREE, scene, [-1.1, 0.45, 1.6])
@@ -41,6 +41,16 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
 
   setDiceFace(die1, 1)
   setDiceFace(die2, 2)
+
+  // Whether the camera is pinned is this browser's business, like sound: the
+  // button announces it and the preference survives a reload.
+  const onLock = (event) => setLocked(!!event.detail)
+  window.addEventListener("veejr:craps-lock", onLock)
+  try {
+    setLocked(window.localStorage.getItem("veejr:craps-lock") === "on")
+  } catch (_error) {
+    // Storage can be blocked; the camera simply starts free.
+  }
 
   function pick(event) {
     raycaster.setFromCamera(pointerNdc(event, pointer), camera)
@@ -102,9 +112,11 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
     if (!hit || !action || !action.enabled) return
 
     if (hit.kind === "come_odds") {
-      if (onComeOdds) onComeOdds(hit.object.userData.comeTarget)
+      const {comeTarget, comeType} = hit.object.userData
+      if (onComeOdds) onComeOdds(comeTarget, comeType)
     } else if (action.bet && onBet) {
-      onBet(action.bet)
+      // A number box holding your come bet carries the number its odds ride on.
+      onBet(action.bet, action.target ?? null)
     }
   })
 
@@ -184,6 +196,7 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
     },
 
     destroy() {
+      window.removeEventListener("veejr:craps-lock", onLock)
       label.remove()
       destroy()
     },

@@ -45,6 +45,8 @@ defmodule Veejr.AddOns.Craps.Table do
           | :no_shooter
           | :not_shooter
           | :shooter_needs_line_bet
+          | :no_such_bet
+          | :not_allowed
 
   # ── Client ──
 
@@ -83,6 +85,38 @@ defmodule Veejr.AddOns.Craps.Table do
           {:ok, Bet.t()} | {:error, error()}
   def place_bet(user_id, bet_type, amount, target \\ nil, server \\ __MODULE__) do
     GenServer.call(server, {:place_bet, user_id, bet_type, amount, target})
+  end
+
+  @doc """
+  Adds `amount` chips to a bet already on the felt, where the rules allow it.
+  """
+  @spec raise_bet(integer(), term(), integer(), GenServer.server()) ::
+          {:ok, Bet.t()} | {:error, error()}
+  def raise_bet(user_id, bet_id, amount, server \\ __MODULE__) do
+    GenServer.call(server, {:raise_bet, user_id, bet_id, amount})
+  end
+
+  @doc """
+  Takes `amount` chips back off a bet. Taking all of it, or more, pulls the bet
+  down (along with any odds riding on it).
+  """
+  @spec lower_bet(integer(), term(), integer(), GenServer.server()) ::
+          {:ok, Bet.t() | :pulled} | {:error, error()}
+  def lower_bet(user_id, bet_id, amount, server \\ __MODULE__) do
+    GenServer.call(server, {:lower_bet, user_id, bet_id, amount})
+  end
+
+  @doc "Pulls a bet off the felt, refunding it and any odds riding on it."
+  @spec pull_bet(integer(), term(), GenServer.server()) :: {:ok, :pulled} | {:error, error()}
+  def pull_bet(user_id, bet_id, server \\ __MODULE__) do
+    GenServer.call(server, {:pull_bet, user_id, bet_id})
+  end
+
+  @doc "Turns a bet off (it stays down but no roll can win or lose it) or back on."
+  @spec set_bet_off(integer(), term(), boolean(), GenServer.server()) ::
+          {:ok, Bet.t()} | {:error, error()}
+  def set_bet_off(user_id, bet_id, off?, server \\ __MODULE__) when is_boolean(off?) do
+    GenServer.call(server, {:set_bet_off, user_id, bet_id, off?})
   end
 
   @doc """
@@ -206,6 +240,55 @@ defmodule Veejr.AddOns.Craps.Table do
 
         {:reply, {:ok, bet}, broadcast(state)}
       end
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:raise_bet, user_id, bet_id, amount}, _from, state) do
+    with {:ok, player, bet} <- fetch_own_bet(state, user_id, bet_id),
+         :ok <- check_amount(amount),
+         :ok <- check_allowed(state, bet, :raise),
+         :ok <- check_funds(player, amount) do
+      raised = %{bet | amount: bet.amount + amount}
+      state = state |> replace_bet(raised) |> credit(user_id, -amount)
+      {:reply, {:ok, raised}, broadcast(state)}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:lower_bet, user_id, bet_id, amount}, _from, state) do
+    with {:ok, _player, bet} <- fetch_own_bet(state, user_id, bet_id),
+         :ok <- check_amount(amount),
+         :ok <- check_allowed(state, bet, :pull) do
+      if amount >= bet.amount do
+        state = take_down(state, bet)
+        {:reply, {:ok, :pulled}, broadcast(state)}
+      else
+        lowered = %{bet | amount: bet.amount - amount}
+        state = state |> replace_bet(lowered) |> credit(user_id, amount)
+        {:reply, {:ok, lowered}, broadcast(state)}
+      end
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:pull_bet, user_id, bet_id}, _from, state) do
+    with {:ok, _player, bet} <- fetch_own_bet(state, user_id, bet_id),
+         :ok <- check_allowed(state, bet, :pull) do
+      {:reply, {:ok, :pulled}, state |> take_down(bet) |> broadcast()}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:set_bet_off, user_id, bet_id, off?}, _from, state) do
+    with {:ok, _player, bet} <- fetch_own_bet(state, user_id, bet_id),
+         :ok <- check_allowed(state, bet, :off) do
+      switched = %{bet | off: off?}
+      {:reply, {:ok, switched}, state |> replace_bet(switched) |> broadcast()}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -339,6 +422,53 @@ defmodule Veejr.AddOns.Craps.Table do
       {:ok, player} -> {:ok, player}
       :error -> {:error, :not_at_table}
     end
+  end
+
+  defp fetch_own_bet(state, user_id, bet_id) do
+    with {:ok, player} <- fetch_player(state, user_id) do
+      case Enum.find(state.bets, &(&1.id == bet_id and &1.player_id == user_id)) do
+        nil -> {:error, :no_such_bet}
+        bet -> {:ok, player, bet}
+      end
+    end
+  end
+
+  defp check_amount(amount) when is_integer(amount) and amount > 0, do: :ok
+  defp check_amount(_amount), do: {:error, :invalid_amount}
+
+  defp check_funds(player, amount) when player.chips >= amount, do: :ok
+  defp check_funds(_player, _amount), do: {:error, :insufficient_chips}
+
+  defp check_allowed(state, bet, action) do
+    if Map.fetch!(Bets.permissions(bet.type, bet.target, state.game.phase), action),
+      do: :ok,
+      else: {:error, :not_allowed}
+  end
+
+  defp replace_bet(state, bet) do
+    %{state | bets: Enum.map(state.bets, &if(&1.id == bet.id, do: bet, else: &1))}
+  end
+
+  # Adds (or, negative, takes) chips from a player's stack and writes it through.
+  defp credit(state, user_id, delta) do
+    player = Map.fetch!(state.players, user_id)
+    chips = player.chips + delta
+    Craps.put_chip_balance(user_id, chips)
+    %{state | players: Map.put(state.players, user_id, %{player | chips: chips})}
+  end
+
+  # Removes a bet and any odds riding on it, refunding every stake. Odds with
+  # their base bet gone would otherwise sit on the felt with nothing to back.
+  defp take_down(state, bet) do
+    riding = fn other ->
+      other.player_id == bet.player_id and Bets.odds_base(other.type) == bet.type and
+        (not Bets.odds_needs_target?(other.type) or other.target == bet.target)
+    end
+
+    {gone, kept} = Enum.split_with(state.bets, &(&1.id == bet.id or riding.(&1)))
+    refund = gone |> Enum.map(& &1.amount) |> Enum.sum()
+
+    credit(%{state | bets: kept}, bet.player_id, refund)
   end
 
   defp validate_bet(state, user_id, bet_type, amount, target) do

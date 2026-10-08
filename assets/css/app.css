@@ -3317,6 +3317,24 @@ select :is(option, optgroup) {
   gap: 1rem;
 }
 
+.craps-hud-bet-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.craps-hud-bets .craps-bet-controls .btn {
+  color: inherit;
+}
+
+.craps-hud-off {
+  margin-left: 0.35rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(82% 0.15 80);
+}
+
 .craps-hud-empty {
   margin-top: 0.35rem;
   opacity: 0.6;

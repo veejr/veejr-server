@@ -289,12 +289,14 @@ export function setComePucks(THREE, betMeshes, bets) {
     if (existing.length >= 3) continue
 
     const puck = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.1, 0.1, 0.05, 16),
+      // Big enough to hit on a phone; the number box underneath takes the
+      // same odds, so this is the second way in, not the only one.
+      new THREE.CylinderGeometry(0.15, 0.15, 0.06, 20),
       new THREE.MeshLambertMaterial({
         color: bet.type === "come" ? 0xf0f0f0 : 0x8b0000,
       }),
     )
-    puck.position.set(-0.15 + existing.length * 0.14, 0.2, -0.12)
+    puck.position.set(-0.2 + existing.length * 0.2, 0.2, -0.12)
     puck.userData = {isPuck: true, comeTarget: bet.target, comeType: bet.type, mine: !!bet.mine}
     mesh.add(puck)
 

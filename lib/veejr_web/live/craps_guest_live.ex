@@ -80,10 +80,32 @@ defmodule VeejrWeb.CrapsGuestLive do
     {:noreply, assign(socket, :stake, String.to_integer(amount))}
   end
 
-  def handle_event("felt_bet", %{"bet" => bet}, socket), do: place(socket, bet, nil)
+  def handle_event("felt_bet", %{"bet" => bet} = params, socket),
+    do: place(socket, bet, params["target"])
 
-  def handle_event("felt_odds", %{"target" => target}, socket),
-    do: place(socket, "come_odds", target)
+  def handle_event("felt_odds", %{"target" => target} = params, socket),
+    do: place(socket, CrapsComponents.marker_odds_type(params["type"]), target)
+
+  # See CrapsLive: held while the dice are in the air.
+  def handle_event(event, %{"id" => _} = params, socket)
+      when event in ~w(raise_bet lower_bet pull_bet toggle_off) do
+    if socket.assigns.rolling do
+      {:noreply, put_flash(socket, :error, "Wait for the dice to land.")}
+    else
+      case CrapsComponents.adjust_bet(
+             event,
+             params,
+             socket.assigns.player_id,
+             socket.assigns.stake
+           ) do
+        {:ok, _} ->
+          {:noreply, absorb(socket, Table.state())}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, CrapsComponents.bet_error(reason))}
+      end
+    end
+  end
 
   def handle_event("roll", _params, socket) do
     case Table.roll(socket.assigns.player_id) do
@@ -116,7 +138,7 @@ defmodule VeejrWeb.CrapsGuestLive do
 
   defp place(socket, bet, target) do
     bet_type = String.to_existing_atom(bet)
-    target = target && String.to_integer(target)
+    target = CrapsComponents.parse_target(target)
 
     case Table.place_bet(socket.assigns.player_id, bet_type, socket.assigns.stake, target) do
       {:ok, _bet} -> {:noreply, absorb(socket, Table.state())}

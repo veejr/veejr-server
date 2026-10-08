@@ -88,6 +88,10 @@ export function createScene(THREE, container) {
     canvas.setPointerCapture(event.pointerId)
   }
 
+  // A pinned camera ignores drag and wheel but still takes taps, so a locked
+  // table can be played without the view sliding under the pointer.
+  let locked = false
+
   const onPointerMove = (event) => {
     if (!dragging) {
       if (handlers.hover) handlers.hover(event)
@@ -97,6 +101,7 @@ export function createScene(THREE, container) {
     const dy = event.clientY - dragging.y
     travelled += Math.abs(dx) + Math.abs(dy)
     dragging = {x: event.clientX, y: event.clientY}
+    if (locked) return
     desired.theta -= dx * 0.005
     desired.phi = Math.min(MAX_POLAR, Math.max(0.12, desired.phi - dy * 0.005))
   }
@@ -109,6 +114,8 @@ export function createScene(THREE, container) {
   }
 
   const onWheel = (event) => {
+    // Left alone when pinned, so the page can still scroll past the table.
+    if (locked) return
     event.preventDefault()
     const next = desired.radius + event.deltaY * 0.02
     desired.radius = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, next))
@@ -176,6 +183,10 @@ export function createScene(THREE, container) {
     pointerNdc,
     onTap: (fn) => (handlers.tap = fn),
     onHover: (fn) => (handlers.hover = fn),
+    setLocked: (on) => {
+      locked = on
+      canvas.style.cursor = on ? "default" : ""
+    },
     destroy,
   }
 }
