@@ -769,7 +769,7 @@ defmodule VeejrWeb.MessagesLive.Components do
           <p
             id="self-notes-filter-status"
             data-role="filter-status"
-            class="text-xs text-base-content/55 empty:hidden"
+            class="hidden text-xs text-base-content/55"
             aria-live="polite"
           >
           </p>
