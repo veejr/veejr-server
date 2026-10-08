@@ -379,6 +379,7 @@ defmodule VeejrWeb.MessagesLive.Components do
               aria-pressed="false"
             >Trash</button>
             <button
+              id="self-notes-view-grid"
               data-role="view"
               data-view="grid"
               type="button"
@@ -388,6 +389,7 @@ defmodule VeejrWeb.MessagesLive.Components do
               aria-pressed="true"
             ><.icon name="hero-squares-2x2" class="size-4" /></button>
             <button
+              id="self-notes-view-list"
               data-role="view"
               data-view="list"
               type="button"
@@ -396,6 +398,26 @@ defmodule VeejrWeb.MessagesLive.Components do
               class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
               aria-pressed="false"
             ><.icon name="hero-list-bullet" class="size-4" /></button>
+            <button
+              id="self-notes-view-timeline"
+              data-role="view"
+              data-view="timeline"
+              type="button"
+              title="Timeline view"
+              aria-label="Timeline view"
+              class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+              aria-pressed="false"
+            ><.icon name="hero-clock" class="size-4" /></button>
+            <button
+              id="self-notes-view-postit"
+              data-role="view"
+              data-view="postit"
+              type="button"
+              title="Sticky note view"
+              aria-label="Sticky note view"
+              class="rounded-lg p-1.5 text-base-content/50 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
+              aria-pressed="false"
+            ><.icon name="hero-rectangle-group" class="size-4" /></button>
           </div>
           <div id="self-notes-labels" data-role="labels" class="mt-3 flex flex-wrap gap-1"></div>
           <p

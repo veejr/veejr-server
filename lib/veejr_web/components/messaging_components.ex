@@ -985,14 +985,23 @@ defmodule VeejrWeb.MessagingComponents do
     """
   end
 
+  # What the notes hook writes onto the card once it has decrypted the note:
+  # its colour, title, dates, state and accessibility labels. They are not in
+  # the server's markup, so without this every LiveView patch (adding a note,
+  # say) strips them from every other card until the page is reloaded.
+  @client_owned_attributes ~w(data-note-* data-editing data-self-doc data-legacy-source tabindex aria-label)
+
   attr :envelope, Envelope, required: true
   attr :user, User, required: true
 
   def self_note_card(assigns) do
+    assigns = assign(assigns, :client_owned_attributes, @client_owned_attributes)
+
     ~H"""
     <article
       id={"self-note-#{@envelope.public_id}"}
       class="self-note-card break-inside-avoid rounded-2xl border border-base-300 bg-base-100 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      phx-mounted={JS.ignore_attributes(@client_owned_attributes)}
     >
       <div
         id={"self-note-content-#{@envelope.public_id}"}
@@ -1003,6 +1012,7 @@ defmodule VeejrWeb.MessagingComponents do
         data-ciphertext={@envelope.ciphertext}
         data-nonce={@envelope.nonce}
         data-public-id={@envelope.public_id}
+        data-created-at={DateTime.to_iso8601(@envelope.inserted_at)}
         data-updated-at={DateTime.to_iso8601(@envelope.updated_at)}
         data-kind={@envelope.kind}
         data-remind-at={@envelope.remind_at && DateTime.to_iso8601(@envelope.remind_at)}

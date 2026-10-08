@@ -178,4 +178,66 @@ export function compareSelfNotes(left, right, sortBy = "updated") {
     .localeCompare(normalizeNoteSearch(right.title || "Untitled note"))
 }
 
+// --- When a note was written and last changed ---------------------------------
+//
+// Used by the timeline view. Notes carry their own created_at / updated_at
+// inside the encrypted payload; older or imported notes may lack them, so the
+// server's timestamps for the envelope stand in rather than showing nothing.
+
+// An edit within this long of creation is the same sitting, not a revision.
+const EDITED_AFTER_MS = 60_000
+
+function validDate(value) {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export function noteTimes({createdAt, updatedAt, serverCreatedAt, serverUpdatedAt} = {}) {
+  const lastChange = validDate(updatedAt) || validDate(serverUpdatedAt)
+  const created = validDate(createdAt) || validDate(serverCreatedAt) || lastChange
+  const updated = lastChange || created
+  const edited = !!(created && updated && updated.getTime() - created.getTime() > EDITED_AFTER_MS)
+  return {created, updated, edited}
+}
+
+export function formatNoteTime(date, {locale, timeZone} = {}) {
+  if (!date) return ""
+  return new Intl.DateTimeFormat(locale, {dateStyle: "medium", timeStyle: "short", timeZone}).format(date)
+}
+
+export function relativeNoteTime(date, now = new Date(), {locale} = {}) {
+  if (!date) return ""
+  const seconds = Math.round((now.getTime() - date.getTime()) / 1000)
+  if (seconds < 45) return "just now"
+  const rtf = new Intl.RelativeTimeFormat(locale, {numeric: "auto"})
+  const steps = [
+    ["minute", 60, 3600],
+    ["hour", 3600, 86400],
+    ["day", 86400, 86400 * 30],
+    ["month", 86400 * 30, 86400 * 365],
+  ]
+  for (const [unit, size, limit] of steps) {
+    if (seconds < limit) return rtf.format(-Math.max(1, Math.round(seconds / size)), unit)
+  }
+  return rtf.format(-Math.max(1, Math.round(seconds / (86400 * 365))), "year")
+}
+
+// The heading a note falls under on the timeline: its month.
+export function timelineGroupLabel(date, {locale, timeZone} = {}) {
+  if (!date) return "Undated"
+  return new Intl.DateTimeFormat(locale, {month: "long", year: "numeric", timeZone}).format(date)
+}
+
+// Newest first by creation or last edit. Pinning does not reorder a timeline,
+// since the point of it is the order things happened in.
+export function compareTimeline(left, right, sortBy = "updated") {
+  const field = sortBy === "created" ? "createdAt" : "updatedAt"
+  const a = validDate(left[field])?.getTime() ?? Number.NEGATIVE_INFINITY
+  const b = validDate(right[field])?.getTime() ?? Number.NEGATIVE_INFINITY
+  if (a !== b) return b > a ? 1 : -1
+  return normalizeNoteSearch(left.title || "Untitled note")
+    .localeCompare(normalizeNoteSearch(right.title || "Untitled note"))
+}
+
 export const selfNoteSearchIndex = new WeakMap()
