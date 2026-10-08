@@ -9,13 +9,14 @@ import {
   openFrom,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
-import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteFilterSummary, noteSearchClauses, parseLabels, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
+import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, countLabels, noteFilterSummary, noteSearchClauses, parseLabels, renameLabel, removeLabel, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {matchesNoteFilter, openNoteReminderDialog, reminderLabel} from "./note_reminders.js"
 import {requestKeyUnlock} from "../key_unlock.js"
 import {deleteDraftMedia, loadDraftMedia, saveDraftMedia} from "../local_media_drafts.js"
 import {openNoteSendDialog} from "./note_send.js"
 import {createLabelEditor} from "./label_editor.js"
+import {openLabelManager} from "./label_manager.js"
 
 // The spreadsheet and word processor, and everything they pull in (the
 // document model, the formula engine), live behind this one dynamic import.
@@ -846,6 +847,7 @@ export const SelfNotesBoard = {
       if (label) this.bulk((note) => { note.labels = [...new Set([...(note.labels || []), label])].slice(0, 10) })
     })
     this.control("[data-role=delete-trashed]")?.addEventListener("click", () => this.deleteTrashed())
+    this.control("[data-role=manage-labels]")?.addEventListener("click", () => this.manageLabels())
     this.control("[data-role=new-sheet]")?.addEventListener("click", () => this.createDocument("sheet"))
     this.control("[data-role=new-page]")?.addEventListener("click", () => this.createDocument("page"))
     this.onEdit = (event) => this.edit(event.detail)
@@ -1062,6 +1064,53 @@ export const SelfNotesBoard = {
       if (label !== previous) card.dataset.timelineFirst = "true"
       else delete card.dataset.timelineFirst
       previous = label
+    })
+  },
+  // Every note's decrypted contents, asked of the cards themselves: each one
+  // holds its own note and answers the request.
+  collectNotes() {
+    const detail = {entries: []}
+    window.dispatchEvent(new CustomEvent("veejr:self-note-collect", {detail}))
+    return detail.entries
+  },
+  manageLabels() {
+    // A card's own copy only catches up when the server's patch reaches it, a
+    // moment after the save. What was just written is remembered here, so the
+    // counts the dialog redraws with are the new ones straight away.
+    const written = new Map()
+    const labelsOf = (entry) => written.get(entry.element.dataset.publicId) ?? entry.payload.labels ?? []
+
+    // Saves one note at a time, the way every other bulk change here does.
+    const relabel = async (matches, transform, progress) => {
+      const entries = this.collectNotes().filter((entry) => matches(labelsOf(entry)))
+      for (const [index, entry] of entries.entries()) {
+        progress(index + 1, entries.length)
+        const before = entry.payload.labels
+        entry.payload.labels = transform(labelsOf(entry))
+        try {
+          await this.save(entry)
+        } catch (error) {
+          // A note that did not save must not keep a label change it never got.
+          entry.payload.labels = before
+          throw error
+        }
+        written.set(entry.element.dataset.publicId, entry.payload.labels)
+      }
+      this.applyFilters()
+      return entries.length
+    }
+    const has = (label) => (labels) => labels.some((existing) => existing.toLocaleLowerCase() === label.toLocaleLowerCase())
+
+    openLabelManager({
+      counts: () => countLabels(this.collectNotes().map(labelsOf)),
+      rename: (from, to, progress) => {
+        if (this.label && this.label.toLocaleLowerCase() === from.toLocaleLowerCase()) this.label = to
+        return relabel(has(from), (labels) => renameLabel(labels, from, to), progress)
+      },
+      remove: (label, progress) => {
+        if (this.label && this.label.toLocaleLowerCase() === label.toLocaleLowerCase()) this.label = null
+        return relabel(has(label), (labels) => removeLabel(labels, label), progress)
+      },
     })
   },
   async deleteTrashed() {
@@ -1387,6 +1436,12 @@ export const SelfNotes = {
     }
     this.card.addEventListener("click", this.onCardClick)
     this.card.addEventListener("keydown", this.onCardKeydown)
+    // The board asks every note for itself when it has to change labels on all
+    // of them. Spreadsheets and documents are saved differently and are left out.
+    this.onCollect = (event) => {
+      if (this.payload?.kind === "self_note") event.detail.entries.push({element: this.el, payload: this.payload})
+    }
+    window.addEventListener("veejr:self-note-collect", this.onCollect)
     this.onRefresh = () => this.render()
     this.el.addEventListener("self-notes:refresh", this.onRefresh)
     this.render()
@@ -1397,6 +1452,7 @@ export const SelfNotes = {
   destroyed() {
     this.card?.removeEventListener("click", this.onCardClick)
     this.card?.removeEventListener("keydown", this.onCardKeydown)
+    window.removeEventListener("veejr:self-note-collect", this.onCollect)
     this.el.removeEventListener("self-notes:refresh", this.onRefresh)
     this.reminderDialog?.close()
     this.reminderDialog?.remove()

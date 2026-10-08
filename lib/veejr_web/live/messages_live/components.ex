@@ -194,6 +194,23 @@ defmodule VeejrWeb.MessagesLive.Components do
 
               <div class="space-y-1 border-t border-base-300 pt-3">
                 <button
+                  id="self-notes-manage-labels"
+                  data-role="manage-labels"
+                  type="button"
+                  class="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm font-medium transition hover:bg-base-200"
+                  phx-click={JS.remove_attribute("open", to: "#messages-tools")}
+                >
+                  <span class="flex size-8 items-center justify-center rounded-lg bg-base-200 text-base-content/60">
+                    <.icon name="hero-tag" class="size-4" />
+                  </span>
+                  <span>
+                    <span class="block">Manage labels</span>
+                    <span class="block text-xs font-normal text-base-content/55">
+                      Rename or delete a label on every note
+                    </span>
+                  </span>
+                </button>
+                <button
                   id="self-notes-import"
                   type="button"
                   class="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm font-medium transition hover:bg-base-200"
