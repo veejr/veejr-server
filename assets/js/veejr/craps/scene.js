@@ -134,22 +134,16 @@ export function createScene(THREE, container) {
     camera.updateProjectionMatrix()
     renderer.setSize(w, h, false)
 
-    // Pull back far enough that the whole table is in frame again. Someone
-    // who had zoomed in keeps their view unless the new shape no longer
-    // holds it, which is what going full screen usually means.
-    // A locked view is the whole table square-on, re-framed for whatever
-    // shape the container is now — so going full screen, or leaving it, never
-    // leaves a pinned camera cropped or off-centre.
-    if (locked) return frameTable()
+    // A locked view is the one its owner framed, so a change of shape leaves
+    // it where it is — going full screen and coming back finds the same view,
+    // which is most of the reason to pin one.
+    if (locked) return
 
+    // Otherwise pull back far enough that the whole table is in frame again.
+    // Someone who had zoomed in keeps their view unless the new shape no
+    // longer holds it, which is what going full screen usually means.
     const fit = fitRadius()
     if (desired.radius < fit) desired.radius = Math.min(fit, MAX_DISTANCE)
-  }
-
-  function frameTable() {
-    desired.radius = Math.min(fitRadius(), MAX_DISTANCE)
-    desired.theta = 0
-    desired.phi = 0.92
   }
 
   const observer = new ResizeObserver(resize)
@@ -194,10 +188,27 @@ export function createScene(THREE, container) {
     pointerNdc,
     onTap: (fn) => (handlers.tap = fn),
     onHover: (fn) => (handlers.hover = fn),
+    // Pinning takes the view as it stands rather than re-framing it: a lock
+    // is for holding the angle somebody chose, and one that moved the camera
+    // first would throw that away. Easing is left to finish, so locking right
+    // after a drag settles where the drag was going.
     setLocked: (on) => {
       locked = on
       canvas.style.cursor = on ? "default" : ""
-      if (on) frameTable()
+    },
+    // The orbit the camera is heading for, which is what a lock pins and
+    // what survives a reload.
+    view: () => ({...desired}),
+    setView: (saved) => {
+      if (!saved) return
+      const {radius, theta, phi} = saved
+      if (![radius, theta, phi].every(Number.isFinite)) return
+
+      desired.radius = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, radius))
+      desired.theta = theta
+      desired.phi = Math.min(MAX_POLAR, Math.max(0.12, phi))
+      // Arrive there rather than gliding in from the default on open.
+      Object.assign(orbit, desired)
     },
     destroy,
   }

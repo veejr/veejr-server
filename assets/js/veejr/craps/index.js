@@ -19,7 +19,7 @@ import {announce, playBounce, playThrow} from "./audio.js"
 
 export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled} = {}) {
   const scene3d = createScene(THREE, container)
-  const {scene, camera, pointerNdc, onTap, onHover, setLocked, destroy} = scene3d
+  const {scene, camera, pointerNdc, onTap, onHover, setLocked, view, setView, destroy} = scene3d
   const {betMeshes, pointPucks} = createTable(THREE, scene)
 
   const die1 = createDieMesh(THREE, scene, [-1.1, 0.45, 1.6])
@@ -44,13 +44,40 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
 
   // Whether the camera is pinned is this browser's business, like sound: the
   // button announces it and the preference survives a reload.
-  const onLock = (event) => setLocked(!!event.detail)
-  window.addEventListener("veejr:craps-lock", onLock)
-  try {
-    setLocked(window.localStorage.getItem("veejr:craps-lock") === "on")
-  } catch (_error) {
-    // Storage can be blocked; the camera simply starts free.
+  //
+  // The view it was pinned at is stored with it. A lock now means "hold this
+  // angle", so without the angle a reload would come back locked to a table
+  // nobody had framed.
+  const LOCK_KEY = "veejr:craps-lock"
+  const VIEW_KEY = "veejr:craps-view"
+
+  const onLock = (event) => {
+    const on = !!event.detail
+    setLocked(on)
+    if (!on) return
+
+    try {
+      window.localStorage.setItem(VIEW_KEY, JSON.stringify(view()))
+    } catch (_error) {
+      // Storage can be blocked; the lock still holds for this visit.
+    }
   }
+
+  window.addEventListener("veejr:craps-lock", onLock)
+
+  let startLocked = false
+
+  try {
+    startLocked = window.localStorage.getItem(LOCK_KEY) === "on"
+    // Only when arriving locked: a saved view is part of that lock, not a
+    // standing preference for where a free camera should start.
+    if (startLocked) setView(JSON.parse(window.localStorage.getItem(VIEW_KEY) || "null"))
+  } catch (_error) {
+    // Storage can be blocked, or hold something that is not a view. The lock
+    // is still applied below; only the angle falls back to the default.
+  }
+
+  setLocked(startLocked)
 
   function pick(event) {
     raycaster.setFromCamera(pointerNdc(event, pointer), camera)
