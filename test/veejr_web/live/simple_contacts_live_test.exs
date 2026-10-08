@@ -5,7 +5,7 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
   import Veejr.AccountsFixtures
 
   alias Veejr.Messaging.Envelope
-  alias Veejr.{Accounts, Admin, Calls, Repo, Social}
+  alias Veejr.{Accounts, Admin, Calls, Messaging, Repo, Social}
 
   setup %{conn: conn} do
     user = user_fixture()
@@ -46,6 +46,35 @@ defmodule VeejrWeb.SimpleContactsLiveTest do
              "#simple-contacts-list #simple-self-notes[href='/messages?self_notes=true']",
              "Notes to yourself"
            )
+  end
+
+  test "glows for incoming unread messages and clears after opening the thread", %{
+    conn: conn,
+    user: user,
+    friend: friend
+  } do
+    {:ok, view, _html} = live(conn, "/contacts/simple")
+    selector = "#simple-contact-#{friend.id}"
+
+    refute has_element?(view, "#{selector}.avatar-unread")
+
+    # An active conversation accepts the incoming message immediately.
+    Messaging.touch_conversation(user.id, friend.id)
+
+    {:ok, _batch_id, _queued} =
+      Messaging.send_batch(friend, "message", [
+        %{"recipient_id" => user.id, "ciphertext" => "unread-message", "nonce" => "nonce"}
+      ])
+
+    assert has_element?(view, "#{selector}.avatar-unread[data-unread='true']")
+    assert has_element?(view, "#{selector}[aria-label*='unread messages']")
+    refute has_element?(view, "#simple-self-notes.avatar-unread")
+
+    {:ok, _thread, _html} = live(conn, "/messages/simple?friend=#{friend.id}")
+    {:ok, refreshed, _html} = live(conn, "/contacts/simple")
+
+    assert has_element?(refreshed, "#{selector}[data-unread='false']")
+    refute has_element?(refreshed, "#{selector}.avatar-unread")
   end
 
   test "asks whether to call now or schedule from the contact photo", %{

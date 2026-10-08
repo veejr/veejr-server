@@ -342,6 +342,40 @@ select :is(option, optgroup) {
   }
 }
 
+/* A quiet breathing halo keeps unread faces noticeable without moving the
+   photo or its controls. Theme colors work in light, dark, and Art Deco. */
+.avatar-unread {
+  box-shadow:
+    0 0 0 2px var(--color-base-100),
+    0 0 0 4px color-mix(in oklch, var(--color-primary) 75%, transparent);
+}
+
+.avatar-unread::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    0 0 12px 3px color-mix(in oklch, var(--color-primary) 30%, transparent),
+    0 0 24px 6px color-mix(in oklch, var(--color-primary) 16%, transparent);
+  opacity: 0.55;
+  animation: avatar-unread-breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes avatar-unread-breathe {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50% { opacity: 0.95; transform: scale(1.045); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-unread::after {
+    animation: none;
+    opacity: 0.7;
+    transform: none;
+  }
+}
+
 /* The buttons on a contact's photo in the simple view.
 
    They wait a second before appearing, so passing the pointer over a face on
