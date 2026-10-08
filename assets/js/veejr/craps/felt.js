@@ -106,7 +106,11 @@ export function isOdds(betType) {
 export function chipRegionFor(betType, target, side) {
   let base
 
-  if (betType === "come_odds" || betType === "dont_come_odds") {
+  // A come bet that has travelled lives on its number, not in the come area;
+  // it only sits in the come area until the roll that moves it.
+  const travelled = betType === "come" || betType === "dont_come"
+
+  if (betType === "come_odds" || betType === "dont_come_odds" || (travelled && target)) {
     base = target ? `place${target}` : null
   } else if (ODDS_BEHIND[betType]) {
     base = PRIMARY_REGION[ODDS_BEHIND[betType]]

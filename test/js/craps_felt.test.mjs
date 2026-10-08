@@ -114,6 +114,14 @@ test("every bet a chip can be laid on has a region to lay it on", () => {
   }
 })
 
+test("a come bet moves from the come area to its number once it travels", () => {
+  assert.equal(chipRegionFor("come", null, "left"), "come")
+  assert.equal(chipRegionFor("come", 6, "left"), "place6")
+  assert.equal(chipRegionFor("come", 6, "right"), "place6R")
+  assert.equal(chipRegionFor("dont_come", null, "left"), "dontcome")
+  assert.equal(chipRegionFor("dont_come", 9, "left"), "place9")
+})
+
 test("a player's chips go to their own end of the table", () => {
   // The two ends are mirrors, so the same bet has a region on each.
   assert.equal(chipRegionFor("pass_line", null, "left"), "pass")

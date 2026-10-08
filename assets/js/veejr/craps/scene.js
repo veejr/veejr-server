@@ -137,8 +137,19 @@ export function createScene(THREE, container) {
     // Pull back far enough that the whole table is in frame again. Someone
     // who had zoomed in keeps their view unless the new shape no longer
     // holds it, which is what going full screen usually means.
+    // A locked view is the whole table square-on, re-framed for whatever
+    // shape the container is now — so going full screen, or leaving it, never
+    // leaves a pinned camera cropped or off-centre.
+    if (locked) return frameTable()
+
     const fit = fitRadius()
     if (desired.radius < fit) desired.radius = Math.min(fit, MAX_DISTANCE)
+  }
+
+  function frameTable() {
+    desired.radius = Math.min(fitRadius(), MAX_DISTANCE)
+    desired.theta = 0
+    desired.phi = 0.92
   }
 
   const observer = new ResizeObserver(resize)
@@ -186,6 +197,7 @@ export function createScene(THREE, container) {
     setLocked: (on) => {
       locked = on
       canvas.style.cursor = on ? "default" : ""
+      if (on) frameTable()
     },
     destroy,
   }

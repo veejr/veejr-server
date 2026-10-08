@@ -138,7 +138,8 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
       const mesh = byId.get(chipRegionFor(bet.type, bet.target, side) || "")
       if (!mesh) continue
 
-      const key = `${mesh.userData.regionId}:${slot}:${bet.type}`
+      // Odds sit behind the bet they back, so they are a row of their own.
+      const key = `${mesh.userData.regionId}:${slot}:${isOdds(bet.type)}`
       const stagger = seen.get(key) || 0
       seen.set(key, stagger + 1)
 
