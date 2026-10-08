@@ -71,6 +71,41 @@ defmodule VeejrWeb.CrapsComponentsTest do
     end
   end
 
+  describe "the croupier's stick" do
+    test "the felt is told what the revealed roll did to each bet that left, by id" do
+      roll = %{
+        id: 7,
+        die1: 3,
+        die2: 4,
+        total: 7,
+        event: :seven_out,
+        resolved: [
+          %{bet_id: 11, player_id: 1, result: :lose, payout: 0},
+          %{bet_id: 12, player_id: 1, result: :win, payout: 20}
+        ]
+      }
+
+      shown = %{table(:come_out, [bet(13, :field, nil)]) | last_roll: roll}
+      scene = CrapsComponents.scene_state(shown, shown, 1)
+
+      assert scene.settled == %{
+               roll_id: 7,
+               event: :seven_out,
+               bets: [
+                 %{id: 11, result: :lose, payout: 0},
+                 %{id: 12, result: :win, payout: 20}
+               ]
+             }
+
+      assert [%{id: 13}] = scene.bets
+    end
+
+    test "there is nothing settled before the first roll" do
+      assert CrapsComponents.scene_state(table(:come_out, []), table(:come_out, []), 1).settled ==
+               nil
+    end
+  end
+
   describe "parse_target/1" do
     test "accepts the number the felt sends as well as a form string" do
       assert CrapsComponents.parse_target(6) == 6

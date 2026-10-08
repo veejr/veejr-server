@@ -701,9 +701,29 @@ defmodule VeejrWeb.CrapsComponents do
       # the money is. Each bet carries the station its owner works, so chips
       # land in front of the player they belong to rather than in one heap.
       bets: positioned_bets(shown, user_id),
+      settled: settled_bets(shown),
       actions: felt_actions(shown, mine)
     }
   end
+
+  @doc """
+  What the last revealed roll did to each bet that left the felt, for the
+  croupier's stick.
+
+  Taken from `shown`, never the raw table, so it only appears once the dice
+  have landed — the stick sweeping losers away cannot give the outcome away
+  early. Keyed by roll id so the felt acts on each roll once. `nil` before
+  any roll.
+  """
+  def settled_bets(%{last_roll: %{id: id, resolved: resolved} = roll}) do
+    %{
+      roll_id: id,
+      event: Map.get(roll, :event),
+      bets: Enum.map(resolved, &%{id: &1.bet_id, result: &1.result, payout: &1.payout})
+    }
+  end
+
+  def settled_bets(_shown), do: nil
 
   @doc """
   Every bet on the felt, tagged with where its owner stands.
@@ -732,9 +752,11 @@ defmodule VeejrWeb.CrapsComponents do
       station = Map.get(stations, bet.player_id, %{side: "left", slot: 0})
 
       %{
+        id: bet.id,
         type: bet.type,
         target: bet.target,
         amount: bet.amount,
+        off: bet.off,
         mine: bet.player_id == user_id,
         side: station.side,
         slot: station.slot
