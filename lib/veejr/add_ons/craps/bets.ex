@@ -122,6 +122,58 @@ defmodule Veejr.AddOns.Craps.Bets do
   def odds_base(:dont_come_odds), do: :dont_come
   def odds_base(_bet_type), do: nil
 
+  # Bets that can be switched off. Place, hard-way and Big 6/8 bets are the
+  # classic "working / off" bets; odds can be taken off too. Line bets and
+  # the single-roll propositions cannot, because off would mean nothing.
+  @offable [
+             :pass_odds,
+             :dont_pass_odds,
+             :come_odds,
+             :dont_come_odds,
+             :big_6,
+             :big_8
+           ] ++ Map.keys(@place_numbers) ++ Map.keys(@hard_numbers)
+
+  @doc """
+  What a player may do to a bet already on the felt, right now.
+
+  Returns `%{raise: boolean, pull: boolean, off: boolean}`; lowering a bet is
+  pulling part of it, so it follows `pull`.
+
+  The rule is the one at a real table: a bet that has a contract with the
+  house is stuck, everything else can be adjusted between rolls.
+
+    * A pass line bet is a contract once a point is on — it can be raised,
+      reduced or pulled only on the come-out. A come bet is a contract once it
+      has travelled to a number.
+    * Don't pass and don't come are the other side of that: the house is
+      already behind, so they may always be reduced or pulled, but only added
+      to while they are still fresh (come-out for don't pass, before it
+      travels for don't come).
+    * Odds, place, hard-way, big 6/8, field and proposition bets are free.
+  """
+  @spec permissions(bet_type(), target(), State.phase()) :: %{
+          raise: boolean(),
+          pull: boolean(),
+          off: boolean()
+        }
+  def permissions(bet_type, target, phase) do
+    {raise, pull} =
+      case bet_type do
+        :pass_line -> {phase == :come_out, phase == :come_out}
+        :dont_pass -> {phase == :come_out, true}
+        :come -> {is_nil(target), is_nil(target)}
+        :dont_come -> {is_nil(target), true}
+        _free -> {true, true}
+      end
+
+    %{raise: raise, pull: pull, off: bet_type in @offable}
+  end
+
+  @doc "The number a place bet covers, or `nil` if it is not a place bet."
+  @spec place_number(bet_type()) :: 4 | 5 | 6 | 8 | 9 | 10 | nil
+  def place_number(bet_type), do: Map.get(@place_numbers, bet_type)
+
   @doc "Whether an odds bet has to name the number it rides on."
   @spec odds_needs_target?(bet_type()) :: boolean()
   def odds_needs_target?(bet_type), do: bet_type in [:come_odds, :dont_come_odds]

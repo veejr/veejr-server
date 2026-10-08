@@ -21,10 +21,38 @@ function loadCrapsScene() {
   return modulePromise
 }
 
+// Keys that already mean something where the focus is: typing a space into a
+// field, or pressing a focused button/link, must not also throw the dice.
+const OWN_SPACE = "input, textarea, select, button, a[href], summary, [contenteditable], [role=button]"
+
+// Space throws the dice, same as the Roll button. It clicks the button rather
+// than pushing "roll" itself so the shortcut obeys exactly the same rules —
+// shooter only, a line bet down, nothing already in the air — because a
+// disabled or absent button is a no-op.
+function rollOnSpace(event) {
+  if (event.code !== "Space" || event.repeat) return
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
+  if (event.target instanceof Element && event.target.closest(OWN_SPACE)) return
+
+  // In full screen the page underneath is hidden, so the HUD's button is the
+  // one on screen.
+  const ids = document.fullscreenElement ? ["craps-hud-roll", "craps-roll"] : ["craps-roll"]
+  const button = ids.map((id) => document.getElementById(id)).find(Boolean)
+
+  // Space scrolls the page; on the craps table it means roll.
+  event.preventDefault()
+  if (button && !button.disabled) button.click()
+}
+
 export const CrapsTable = {
   mounted() {
     this.table = null
     this.disposed = false
+
+    // Bound before the WebGL check: the roll button exists with or without
+    // the 3D table, and so should the shortcut.
+    this.onKeydown = rollOnSpace
+    window.addEventListener("keydown", this.onKeydown)
 
     if (!webglAvailable()) {
       this.fallback("This browser cannot draw the 3D table.")
@@ -35,8 +63,8 @@ export const CrapsTable = {
       .then(([THREE, mod]) => {
         if (this.disposed) return
         this.table = mod.createCrapsTable(THREE, this.el, {
-          onBet: (bet) => this.pushEvent("felt_bet", {bet}),
-          onComeOdds: (target) => this.pushEvent("felt_odds", {target}),
+          onBet: (bet, target) => this.pushEvent("felt_bet", {bet, target}),
+          onComeOdds: (target, type) => this.pushEvent("felt_odds", {target, type}),
           // The server holds the outcome back until this reaches it.
           onSettled: (id) => this.pushEvent("dice_settled", {id}),
         })
@@ -57,6 +85,7 @@ export const CrapsTable = {
 
   destroyed() {
     this.disposed = true
+    window.removeEventListener("keydown", this.onKeydown)
     document.documentElement.classList.remove("craps-webgl")
     if (this.table) this.table.destroy()
     this.table = null

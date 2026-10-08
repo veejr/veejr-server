@@ -12,9 +12,10 @@ defmodule VeejrWeb.CrapsComponents do
 
   use VeejrWeb, :html
 
-  alias Veejr.AddOns.Craps.{Bets, Rng}
+  alias Veejr.AddOns.Craps.{Bets, Rng, Table}
 
   @chip_denominations [5, 10, 25, 100]
+  @place_types [:place_4, :place_5, :place_6, :place_8, :place_9, :place_10]
 
   # Pip positions in each face's 3x3 grid, so the faces read like real dice
   # rather than a count of dots.
@@ -132,20 +133,42 @@ defmodule VeejrWeb.CrapsComponents do
                 <.icon name="hero-cube" class="size-4" /> Roll
               </button>
             </div>
+
+            <button
+              id="craps-hud-lock"
+              type="button"
+              phx-hook=".LockView"
+              phx-update="ignore"
+              class="btn btn-ghost btn-sm gap-1 text-current"
+              aria-pressed="false"
+            >
+              <.icon name="hero-lock-open" class="size-4" />
+              <span data-role="label">Lock view</span>
+            </button>
           </div>
 
           <div :if={@me} class="craps-hud-bets">
             <span class="craps-hud-label">Your bets</span>
             <p :if={@my_bets == []} class="craps-hud-empty">Nothing down yet.</p>
             <ul>
-              <li :for={bet <- @my_bets}>
+              <li :for={bet <- @my_bets} id={"hud-bet-#{bet.id}"}>
                 <span>
                   {bet_label(bet.type)}
                   <span :if={bet.target} class="opacity-60">
                     &nbsp;on {bet.target}
                   </span>
+                  <span :if={bet.off} class="craps-hud-off">off</span>
                 </span>
-                <strong class="tabular-nums">{bet.amount}</strong>
+                <span class="craps-hud-bet-end">
+                  <.bet_controls
+                    bet={bet}
+                    phase={@shown.phase}
+                    stake={@stake}
+                    locked={@rolling != nil}
+                    prefix="hud-"
+                  />
+                  <strong class="tabular-nums">{bet.amount}</strong>
+                </span>
               </li>
             </ul>
           </div>
@@ -163,6 +186,17 @@ defmodule VeejrWeb.CrapsComponents do
         >
           <.icon name="hero-arrows-pointing-out" class="size-3.5" />
           <span data-role="label">Full screen</span>
+        </button>
+        <button
+          id="craps-lock"
+          type="button"
+          phx-hook=".LockView"
+          phx-update="ignore"
+          class="btn btn-ghost btn-xs gap-1"
+          aria-pressed="false"
+        >
+          <.icon name="hero-lock-open" class="size-3.5" />
+          <span data-role="label">Lock view</span>
         </button>
         <%!-- Sound is this browser's business, not the session's, so the
                 toggle never reaches the server. --%>
@@ -224,6 +258,51 @@ defmodule VeejrWeb.CrapsComponents do
           destroyed() {
             this.el.removeEventListener("click", this.toggle)
             document.removeEventListener("fullscreenchange", this.paint)
+          }
+        }
+      </script>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".LockView">
+        // Pins the camera so dragging and scrolling stop moving the table —
+        // meant for full screen, where every touch is aimed at a bet. The
+        // choice is this browser's, so it never reaches the server; the felt
+        // listens for the event. There are two buttons (page and full-screen
+        // bar), so each repaints from the event rather than from its own click.
+        const KEY = "veejr:craps-lock"
+
+        export default {
+          mounted() {
+            try { this.on = window.localStorage.getItem(KEY) === "on" } catch (_e) { this.on = false }
+            this.paint()
+
+            this.toggle = () => {
+              this.on = !this.on
+              try { window.localStorage.setItem(KEY, this.on ? "on" : "off") } catch (_e) {}
+              window.dispatchEvent(new CustomEvent("veejr:craps-lock", {detail: this.on}))
+            }
+
+            this.sync = (event) => {
+              this.on = !!event.detail
+              this.paint()
+            }
+
+            this.el.addEventListener("click", this.toggle)
+            window.addEventListener("veejr:craps-lock", this.sync)
+          },
+
+          destroyed() {
+            this.el.removeEventListener("click", this.toggle)
+            window.removeEventListener("veejr:craps-lock", this.sync)
+          },
+
+          paint() {
+            this.el.setAttribute("aria-pressed", this.on ? "true" : "false")
+            this.el.querySelector("[data-role=label]").textContent =
+              this.on ? "View locked" : "Lock view"
+            const icon = this.el.querySelector("span.hero-lock-open, span.hero-lock-closed")
+            if (icon) {
+              icon.classList.toggle("hero-lock-closed", this.on)
+              icon.classList.toggle("hero-lock-open", !this.on)
+            }
           }
         }
       </script>
@@ -377,19 +456,112 @@ defmodule VeejrWeb.CrapsComponents do
         <ul class="mt-3 grid gap-2 sm:grid-cols-2">
           <li
             :for={bet <- @my_bets}
-            class="flex items-center justify-between rounded-lg bg-base-200 px-3 py-2 text-sm"
+            id={"my-bet-#{bet.id}"}
+            class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-base-200 px-3 py-2 text-sm"
           >
             <span>
               {bet_label(bet.type)}
               <span :if={bet.target} class="opacity-60">on {bet.target}</span>
+              <span :if={bet.off} class="badge badge-warning badge-sm ml-1">Off</span>
             </span>
-            <span class="font-medium tabular-nums">{bet.amount}</span>
+            <span class="flex items-center gap-2">
+              <.bet_controls bet={bet} phase={@shown.phase} stake={@stake} locked={@rolling != nil} />
+              <span class="min-w-8 text-right font-medium tabular-nums">{bet.amount}</span>
+            </span>
           </li>
         </ul>
       </div>
       {render_slot(@inner_block)}
     </div>
     """
+  end
+
+  attr :bet, :map, required: true
+  attr :phase, :atom, required: true
+  attr :stake, :integer, required: true
+  attr :locked, :boolean, default: false, doc: "dice in the air — the board is not yours to touch"
+  attr :prefix, :string, default: ""
+
+  # Raise, lower, pull and turn off, each shown only where the rules allow it.
+  # The server checks again; this just keeps the buttons honest.
+  defp bet_controls(assigns) do
+    assigns =
+      assign(assigns, :can, Bets.permissions(assigns.bet.type, assigns.bet.target, assigns.phase))
+
+    ~H"""
+    <span class="craps-bet-controls inline-flex items-center gap-1">
+      <button
+        :if={@can.raise}
+        id={"#{@prefix}raise-#{@bet.id}"}
+        type="button"
+        phx-click="raise_bet"
+        phx-value-id={@bet.id}
+        disabled={@locked}
+        title={"Add #{@stake} to this bet"}
+        aria-label={"Add #{@stake} to #{bet_label(@bet.type)}"}
+        class="btn btn-xs btn-ghost px-1"
+      >
+        <.icon name="hero-plus" class="size-3.5" />
+      </button>
+      <button
+        :if={@can.pull}
+        id={"#{@prefix}lower-#{@bet.id}"}
+        type="button"
+        phx-click="lower_bet"
+        phx-value-id={@bet.id}
+        disabled={@locked}
+        title={"Take #{@stake} off this bet"}
+        aria-label={"Take #{@stake} off #{bet_label(@bet.type)}"}
+        class="btn btn-xs btn-ghost px-1"
+      >
+        <.icon name="hero-minus" class="size-3.5" />
+      </button>
+      <button
+        :if={@can.off}
+        id={"#{@prefix}off-#{@bet.id}"}
+        type="button"
+        phx-click="toggle_off"
+        phx-value-id={@bet.id}
+        phx-value-off={to_string(not @bet.off)}
+        disabled={@locked}
+        aria-pressed={to_string(@bet.off)}
+        title={if @bet.off, do: "Turn this bet back on", else: "Turn this bet off"}
+        class="btn btn-xs btn-ghost px-1.5"
+      >
+        {if @bet.off, do: "On", else: "Off"}
+      </button>
+      <button
+        :if={@can.pull}
+        id={"#{@prefix}pull-#{@bet.id}"}
+        type="button"
+        phx-click="pull_bet"
+        phx-value-id={@bet.id}
+        disabled={@locked}
+        title="Pull this bet down"
+        aria-label={"Pull down #{bet_label(@bet.type)}"}
+        class="btn btn-xs btn-ghost px-1"
+      >
+        <.icon name="hero-x-mark" class="size-3.5" />
+      </button>
+    </span>
+    """
+  end
+
+  @doc """
+  Applies one of the bet-adjusting events from either table page.
+
+  `event` is the LiveView event name; the chip `stake` is how much a raise adds
+  or a lower takes off.
+  """
+  def adjust_bet(event, %{"id" => id} = params, player_id, stake) do
+    id = parse_target(id)
+
+    case event do
+      "raise_bet" -> Table.raise_bet(player_id, id, stake)
+      "lower_bet" -> Table.lower_bet(player_id, id, stake)
+      "pull_bet" -> Table.pull_bet(player_id, id)
+      "toggle_off" -> Table.set_bet_off(player_id, id, params["off"] == "true")
+    end
   end
 
   attr :roll, :map, default: nil
@@ -599,13 +771,51 @@ defmodule VeejrWeb.CrapsComponents do
     end
   end
 
-  defp action_for(type, table, _mine) do
+  # A number box where you already hold a come (or don't come) bet takes odds
+  # behind it rather than a place bet — the same "chip on your own bet" gesture
+  # as the line. Everywhere else a number box is an ordinary place bet.
+  defp action_for(type, table, mine) when type in @place_types do
+    number = Bets.place_number(type)
+
+    case Enum.find(mine, &(&1.type in [:come, :dont_come] and &1.target == number)) do
+      nil ->
+        place_or_blocked(type, table)
+
+      come ->
+        odds = if come.type == :come, do: :come_odds, else: :dont_come_odds
+
+        %{
+          bet: Atom.to_string(odds),
+          target: number,
+          label: "#{bet_label(odds)} on #{number}",
+          enabled: true
+        }
+    end
+  end
+
+  defp action_for(type, table, _mine), do: place_or_blocked(type, table)
+
+  defp place_or_blocked(type, table) do
     if Bets.placeable?(type, table.phase) do
       %{bet: Atom.to_string(type), label: bet_label(type), enabled: true}
     else
       %{bet: nil, label: "#{bet_label(type)} — not this roll", enabled: false}
     end
   end
+
+  @doc """
+  The bet type a chip on a come marker lays odds on.
+
+  The marker reports which kind of come bet it sits on; anything unrecognised
+  falls back to a plain come bet, which is what older clients always meant.
+  """
+  def marker_odds_type("dont_come"), do: "dont_come_odds"
+  def marker_odds_type(_come), do: "come_odds"
+
+  @doc "A target from the browser: a JSON number from the felt, or a string from a form."
+  def parse_target(nil), do: nil
+  def parse_target(target) when is_integer(target), do: target
+  def parse_target(target) when is_binary(target), do: String.to_integer(target)
 
   defp holds?(bets, type), do: Enum.any?(bets, &(&1.type == type))
 
@@ -650,6 +860,8 @@ defmodule VeejrWeb.CrapsComponents do
   def bet_error(:no_base_bet), do: "You need the underlying bet before you can take odds."
   def bet_error(:missing_target), do: "Pick the number those odds ride on."
   def bet_error(:insufficient_chips), do: "You do not have enough chips for that."
+  def bet_error(:no_such_bet), do: "That bet is no longer on the felt."
+  def bet_error(:not_allowed), do: "The rules do not let you do that to this bet right now."
   def bet_error(:not_at_table), do: "Take a seat first."
   def bet_error(:invalid_amount), do: "That is not a valid stake."
   def bet_error(:invalid_bet_type), do: "The table does not take that bet."

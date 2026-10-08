@@ -34,18 +34,22 @@ defmodule Veejr.AddOns.Craps.Resolution do
   @spec resolve_all([Bet.t()], 1..6, 1..6, State.t()) :: t()
   def resolve_all(bets, die1, die2, %State{} = state) do
     {resolved, remaining, updates} =
-      Enum.reduce(bets, {[], [], []}, fn %Bet{} = bet, {resolved, remaining, updates} ->
-        case Bets.payout(bet.type, bet.amount, bet.target, die1, die2, state) do
-          {:come_point_set, nil} ->
-            moved = %{bet | target: die1 + die2}
-            {resolved, [moved | remaining], [moved | updates]}
+      Enum.reduce(bets, {[], [], []}, fn
+        %Bet{off: true} = bet, {resolved, remaining, updates} ->
+          {resolved, [bet | remaining], updates}
 
-          {:pending, nil} ->
-            {resolved, [bet | remaining], updates}
+        %Bet{} = bet, {resolved, remaining, updates} ->
+          case Bets.payout(bet.type, bet.amount, bet.target, die1, die2, state) do
+            {:come_point_set, nil} ->
+              moved = %{bet | target: die1 + die2}
+              {resolved, [moved | remaining], [moved | updates]}
 
-          {result, payout} ->
-            {[settlement(bet, result, payout) | resolved], remaining, updates}
-        end
+            {:pending, nil} ->
+              {resolved, [bet | remaining], updates}
+
+            {result, payout} ->
+              {[settlement(bet, result, payout) | resolved], remaining, updates}
+          end
       end)
 
     %{

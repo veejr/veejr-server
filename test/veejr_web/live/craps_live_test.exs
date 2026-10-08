@@ -210,6 +210,27 @@ defmodule VeejrWeb.CrapsLiveTest do
       assert render_hook(view, "felt_bet", %{"bet" => "place_6"}) =~ "cannot be placed right now"
     end
 
+    test "odds from the felt arrive with a numeric target and do not crash", %{view: view} do
+      sit(view)
+
+      # The scene sends the come point as a JSON number, not a string, and says
+      # which kind of come bet the marker sits on. With no come bet behind it
+      # the table refuses, and says so.
+      assert render_hook(view, "felt_odds", %{"target" => 6, "type" => "come"}) =~
+               "need the underlying bet"
+
+      assert render_hook(view, "felt_odds", %{"target" => 6, "type" => "dont_come"}) =~
+               "need the underlying bet"
+
+      assert render_hook(view, "felt_bet", %{"bet" => "come_odds", "target" => 6}) =~
+               "need the underlying bet"
+    end
+
+    test "the view lock is offered on the page and in the full-screen bar", %{view: view} do
+      assert has_element?(view, "#craps-lock")
+      assert has_element?(view, "#craps-hud-lock")
+    end
+
     test "the felt only offers bets to somebody who is seated", %{view: view} do
       refute scene(view)["seated"]
 
