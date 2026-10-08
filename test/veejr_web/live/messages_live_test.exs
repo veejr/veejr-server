@@ -295,6 +295,12 @@ defmodule VeejrWeb.MessagesLiveTest do
              "#self-notes-settings-section [data-role='date-preset'][data-days='7']"
            )
 
+    assert has_element?(
+             view,
+             "#self-notes-settings-section #self-notes-manage-labels[data-role='manage-labels']",
+             "Manage labels"
+           )
+
     assert has_element?(view, "#self-notes-settings-section #self-notes-import", "Import notes")
 
     assert has_element?(

@@ -25,6 +25,8 @@ import {
   LABEL_LIMIT,
   LABEL_MAX_LENGTH,
   addLabel,
+  countLabels,
+  renameLabel,
   normalizeLabel,
   parseLabels,
   removeLabel,
@@ -375,4 +377,41 @@ test("suggestions are labels in use elsewhere that this note lacks", () => {
   assert.deepEqual(suggestLabels(all, [], "#WO", 8), ["work"])
   assert.deepEqual(suggestLabels(all, [], "", 2), ["errands", "home"])
   assert.deepEqual(suggestLabels([], [], ""), [])
+})
+
+test("renaming a label keeps its place in the list", () => {
+  assert.deepEqual(renameLabel(["home", "work", "ideas"], "work", "job"), ["home", "job", "ideas"])
+  assert.deepEqual(renameLabel(["Work"], "work", "  #Job "), ["Job"])
+})
+
+test("renaming onto a label the note already has merges the two", () => {
+  assert.deepEqual(renameLabel(["home", "work", "job"], "work", "job"), ["home", "job"])
+  assert.deepEqual(renameLabel(["job", "work"], "work", "JOB"), ["job"])
+})
+
+test("renaming to nothing, or something else entirely, changes nothing", () => {
+  const labels = ["home", "work"]
+
+  assert.equal(renameLabel(labels, "work", "  "), labels)
+  assert.equal(renameLabel(labels, "work", "#"), labels)
+  assert.deepEqual(renameLabel(labels, "missing", "x"), ["home", "work"])
+})
+
+test("labels are counted once per note, most used first", () => {
+  assert.deepEqual(
+    countLabels([["home", "work"], ["work"], ["Work", "work", "ideas"], [], ["home"]]),
+    [
+      {label: "work", count: 3},
+      {label: "home", count: 2},
+      {label: "ideas", count: 1},
+    ],
+  )
+})
+
+test("equal counts fall back to alphabetical, and junk is ignored", () => {
+  assert.deepEqual(countLabels([["b"], ["a"], [""], null, ["  "], "not a list"]), [
+    {label: "a", count: 1},
+    {label: "b", count: 1},
+  ])
+  assert.deepEqual(countLabels([]), [])
 })

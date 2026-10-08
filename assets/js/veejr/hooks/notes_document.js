@@ -65,6 +65,44 @@ export function removeLabel(labels, label) {
   return labels.filter((existing) => !sameLabel(existing, label))
 }
 
+// One note's labels after `from` becomes `to`, in the same place in the list.
+// If the note already has `to`, the two become one rather than appearing twice.
+// An empty `to` changes nothing: renaming to nothing is deleting, which is a
+// different request.
+export function renameLabel(labels, from, to) {
+  const target = normalizeLabel(to)
+  if (!target) return labels
+
+  return labels.reduce((result, label) => {
+    const next = sameLabel(label, from) ? target : label
+    return result.some((existing) => sameLabel(existing, next)) ? result : [...result, next]
+  }, [])
+}
+
+// How many notes carry each label, most used first. Spellings that differ only
+// in case are one label, shown the way the first note to use it spells it, and
+// a label repeated on one note counts that note once.
+export function countLabels(labelLists) {
+  const counts = new Map()
+
+  for (const labels of labelLists) {
+    const seen = new Set()
+
+    for (const raw of Array.isArray(labels) ? labels : []) {
+      const label = normalizeLabel(raw)
+      const key = label.toLocaleLowerCase()
+      if (!label || seen.has(key)) continue
+      seen.add(key)
+
+      const entry = counts.get(key) || {label, count: 0}
+      entry.count += 1
+      counts.set(key, entry)
+    }
+  }
+
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+}
+
 // Labels already in use on other notes that could be offered for this one:
 // not on this note yet, matching what has been typed, in order, a few at a time.
 export function suggestLabels(all, current, query = "", limit = 8) {
