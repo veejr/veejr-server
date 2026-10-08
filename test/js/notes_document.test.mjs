@@ -27,6 +27,8 @@ import {
   addLabel,
   countLabels,
   renameLabel,
+  SEARCH_MIN_LENGTH,
+  searchPlan,
   normalizeLabel,
   parseLabels,
   removeLabel,
@@ -414,4 +416,66 @@ test("equal counts fall back to alphabetical, and junk is ignored", () => {
     {label: "b", count: 1},
   ])
   assert.deepEqual(countLabels([]), [])
+})
+
+test("the search minimum is three characters", () => {
+  assert.equal(SEARCH_MIN_LENGTH, 3)
+})
+
+test("nothing typed means nothing to search for, and nothing to complain about", () => {
+  assert.deepEqual(searchPlan(""), {clauses: [], tooShort: false})
+  assert.deepEqual(searchPlan("   "), {clauses: [], tooShort: false})
+  assert.deepEqual(searchPlan(null), {clauses: [], tooShort: false})
+})
+
+test("one or two letters are too short to search", () => {
+  assert.deepEqual(searchPlan("a"), {clauses: [], tooShort: true})
+  assert.deepEqual(searchPlan("to"), {clauses: [], tooShort: true})
+  assert.deepEqual(searchPlan("  to  "), {clauses: [], tooShort: true})
+})
+
+test("three letters search", () => {
+  assert.deepEqual(searchPlan("milk"), {clauses: ["milk"], tooShort: false})
+  assert.deepEqual(searchPlan("tax"), {clauses: ["tax"], tooShort: false})
+})
+
+test("spaces and quotation marks are not letters", () => {
+  assert.equal(searchPlan("a b").tooShort, true)
+  assert.equal(searchPlan('"a"').tooShort, true)
+  assert.equal(searchPlan("to do").tooShort, false)
+  assert.deepEqual(searchPlan("to do").clauses, ["to", "do"])
+  assert.deepEqual(searchPlan('"to do"').clauses, ["to do"])
+})
+
+test("accents do not make a word longer", () => {
+  assert.equal(searchPlan("é").tooShort, true)
+  assert.deepEqual(searchPlan("café").clauses, ["cafe"])
+})
+
+test("Chinese, Japanese and Korean words are searchable at any length", () => {
+  // The clause is the normalised text, exactly as the notes are normalised, so
+  // a query and a note always compare alike.
+  for (const word of ["会议", "会", "ひらがな", "かな", "한글", "カタカナ"]) {
+    const plan = searchPlan(word)
+
+    assert.equal(plan.tooShort, false, word)
+    assert.deepEqual(plan.clauses, [normalizeNoteSearch(word)], word)
+  }
+})
+
+test("a search asked for by clicking works however short it is", () => {
+  assert.deepEqual(searchPlan("go", {force: true}), {clauses: ["go"], tooShort: false})
+  assert.deepEqual(searchPlan("", {force: true}), {clauses: [], tooShort: false})
+})
+
+test("the filter line explains a search that has not started yet", () => {
+  assert.equal(
+    noteFilterSummary({count: 12, shortSearch: true}),
+    "12 notes shown. Type at least 3 characters to search.",
+  )
+  assert.equal(
+    noteFilterSummary({count: 2, shortSearch: true, label: "work"}),
+    "2 notes shown. Type at least 3 characters to search. Label #work.",
+  )
+  assert.equal(noteFilterSummary({count: 12, shortSearch: false}), "")
 })

@@ -122,13 +122,15 @@ export function suggestLabels(all, current, query = "", limit = 8) {
 // says so (the pressed tab, the search box). It speaks only when a filter could
 // be the reason notes are missing, which matters most for the ones the
 // toolbar does not show: a date range set in the gear, or a label chip.
-export function noteFilterSummary({count, filter = "active", label = null, dateFrom = "", dateTo = "", searching = false} = {}) {
+export function noteFilterSummary({count, filter = "active", label = null, dateFrom = "", dateTo = "", searching = false, shortSearch = false} = {}) {
   const lists = {archived: "Archive", trashed: "Trash", reminders: "Reminders"}
-  const narrowed = searching || !!label || !!dateFrom || !!dateTo || filter !== "active"
+  const narrowed = searching || shortSearch || !!label || !!dateFrom || !!dateTo || filter !== "active"
   if (!narrowed) return ""
 
   const parts = [`${count} note${count === 1 ? "" : "s"} shown.`]
   if (filter !== "active" && lists[filter]) parts.push(`In ${lists[filter]}.`)
+  // Nothing is being searched yet; saying so beats seeming to ignore the typing.
+  if (shortSearch) parts.push(`Type at least ${SEARCH_MIN_LENGTH} characters to search.`)
   if (searching) parts.push("Matching your search.")
   if (label) parts.push(`Label #${label}.`)
   if (dateFrom || dateTo) parts.push(`Updated ${dateFrom || "any time"} to ${dateTo || "today"}.`)
@@ -301,6 +303,37 @@ export function noteSearchClauses(value) {
   }
 
   return clauses
+}
+
+// ── Search ──
+//
+// Searching decrypts and scans every note on the board, and the first search
+// also asks the server for the rest of them, so it is not free. Two rules keep
+// it from running on every keystroke or on a single stray letter.
+
+export const SEARCH_MIN_LENGTH = 3
+
+// Chinese, Japanese and Korean words are routinely one or two characters, so a
+// three-character minimum would make most of them unsearchable.
+const IDEOGRAPHIC = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u
+
+/**
+ * What a search box's text means.
+ *
+ * Returns `{clauses, tooShort}`. Until there are at least `minLength` letters
+ * (spaces and quotation marks are not letters) there is nothing to search for,
+ * and `tooShort` says why, so the page can tell the person rather than seem
+ * to ignore them. `force` is for a search someone asked for by clicking, such
+ * as a label, which has to work however short the label is.
+ */
+export function searchPlan(value, {minLength = SEARCH_MIN_LENGTH, force = false} = {}) {
+  const query = normalizeNoteSearch(value)
+  if (!query) return {clauses: [], tooShort: false}
+
+  const letters = [...query.replace(/[\s"]/g, "")].length
+  if (!force && letters < minLength && !IDEOGRAPHIC.test(query)) return {clauses: [], tooShort: true}
+
+  return {clauses: noteSearchClauses(value), tooShort: false}
 }
 
 export function compareSelfNotes(left, right, sortBy = "updated") {
