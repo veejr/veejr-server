@@ -9,7 +9,7 @@ import {
   openFrom,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
-import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, countLabels, noteFilterSummary, noteSearchClauses, parseLabels, renameLabel, removeLabel, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
+import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, countLabels, noteFilterSummary, noteSearchClauses, searchPlan, parseLabels, renameLabel, removeLabel, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {matchesNoteFilter, openNoteReminderDialog, reminderLabel} from "./note_reminders.js"
 import {requestKeyUnlock} from "../key_unlock.js"
@@ -642,6 +642,10 @@ async function keepContentFingerprint(secret, k) {
 
 // A small fixed progress banner for the import run.
 
+// How long typing has to pause before the board searches. Short enough to feel
+// live, long enough that a word is not searched letter by letter.
+const SEARCH_DEBOUNCE_MS = 250
+
 const NOTE_VIEWS = ["grid", "list", "timeline", "postit"]
 const NOTE_VIEW_KEY = "veejr:self-notes-view"
 
@@ -754,6 +758,8 @@ export const SelfNotesBoard = {
     this.view = savedNoteView()
     this.label = null
     this.searchTerm = ""
+    this.searchTooShort = false
+    this.searchTimer = null
     this.sortBy = "updated"
     this.queryClauses = []
     this.allNotesRequested = false
@@ -768,15 +774,40 @@ export const SelfNotesBoard = {
       event.target.value = ""
       if (file) this.importKeep(file)
     })
-    document.querySelector("#self-notes-search")?.addEventListener("input", (event) => {
-      this.searchTerm = event.target.value
-      this.queryClauses = noteSearchClauses(this.searchTerm)
+    // Typing is searched once it pauses, and only once there is enough of it to
+    // mean something. The first real search also fetches the rest of the notes,
+    // so that is held back too.
+    const search = document.querySelector("#self-notes-search")
+    this.runSearch = ({force = false} = {}) => {
+      clearTimeout(this.searchTimer)
+      const plan = searchPlan(this.searchTerm, {force})
+      this.queryClauses = plan.clauses
+      this.searchTooShort = plan.tooShort
       if (this.queryClauses.length > 0 && !this.allNotesRequested && this.el.querySelector("[data-role=load-all-notes]")) {
         this.allNotesRequested = true
         this.pushEvent("load_all_notes", {}, () => { this.allNotesRequested = false })
       }
       this.applyFilters()
+    }
+    search?.addEventListener("input", (event) => {
+      this.searchTerm = event.target.value
+      clearTimeout(this.searchTimer)
+      // Emptying the box brings every note back at once; nobody should wait for that.
+      if (this.searchTerm.trim() === "") return this.runSearch()
+      this.searchTimer = setTimeout(() => this.runSearch(), SEARCH_DEBOUNCE_MS)
     })
+    search?.addEventListener("keydown", (event) => {
+      // Enter says "now": do not make someone wait out the pause.
+      if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); this.runSearch() }
+    })
+    // A search asked for by clicking something (a label on a card) is explicit
+    // and immediate, however short it is.
+    this.onSearchRequest = (event) => {
+      this.searchTerm = String(event.detail?.term ?? "")
+      if (search) { search.value = this.searchTerm; search.focus() }
+      this.runSearch({force: true})
+    }
+    window.addEventListener("veejr:self-notes-search", this.onSearchRequest)
     document.querySelector("#self-notes-sort")?.addEventListener("change", (event) => {
       this.sortBy = event.target.value
       this.applyFilters()
@@ -917,6 +948,8 @@ export const SelfNotesBoard = {
     window.removeEventListener("veejr:self-note-selected", this.onSelected)
     window.removeEventListener("veejr:self-note-send", this.onSend)
     window.removeEventListener("keydown", this.onKeydown)
+    window.removeEventListener("veejr:self-notes-search", this.onSearchRequest)
+    clearTimeout(this.searchTimer)
   },
   setSelected({element, payload, checked}) {
     if (checked) this.selected.set(element.dataset.publicId, {element, payload})
@@ -1020,6 +1053,7 @@ export const SelfNotesBoard = {
         dateFrom: this.dateFrom,
         dateTo: this.dateTo,
         searching: queryClauses.length > 0,
+        shortSearch: this.searchTooShort,
       })
       filterStatus.textContent = summary
       filterStatus.classList.toggle("hidden", summary === "")
@@ -1682,11 +1716,7 @@ export const SelfNotes = {
       chip.type = "button"; chip.className = "rounded-full bg-base-200 px-2 py-0.5 text-xs opacity-70 hover:opacity-100"; chip.textContent = `#${label}`
       chip.addEventListener("click", (event) => {
         event.stopPropagation()
-        const search = document.querySelector("#self-notes-search")
-        if (!search) return
-        search.value = label
-        search.dispatchEvent(new Event("input", {bubbles: true}))
-        search.focus()
+        window.dispatchEvent(new CustomEvent("veejr:self-notes-search", {detail: {term: label}}))
       })
       meta.appendChild(chip)
     })
