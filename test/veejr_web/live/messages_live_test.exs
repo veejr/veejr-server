@@ -23,33 +23,53 @@ defmodule VeejrWeb.MessagesLiveTest do
     %{conn: log_in_user(conn, user), user: user}
   end
 
-  test "starts the full page header and its tools collapsed", %{conn: conn} do
+  test "the page bar is always open, with the main action out and settings behind a gear", %{
+    conn: conn
+  } do
     {:ok, view, _html} = live(conn, "/messages")
 
-    assert has_element?(
-             view,
-             "details#messages-page-header[aria-label='Messages header']:not([open])"
-           )
-
-    assert has_element?(view, "#messages-page-header-toggle", "Messages")
-    assert has_element?(view, "#messages-page-header-toggle", "Expand")
+    # No disclosure to open before anything can be done.
+    assert has_element?(view, "div#messages-page-header[aria-label='Messages header']")
+    refute has_element?(view, "details#messages-page-header")
+    assert has_element?(view, "#messages-page-header h1", "Messages")
+    refute has_element?(view, "#messages-page-header-toggle")
     refute has_element?(view, "#messages-layout")
 
     assert has_element?(
              view,
-             "#messages-page-header-content #back-to-contacts[href='/contacts']",
-             "Back to contacts"
+             "#messages-page-header #back-to-contacts[href='/contacts'][aria-label='Back to contacts']"
+           )
+
+    # Starting a conversation is one click away, not four.
+    assert has_element?(
+             view,
+             "#messages-page-header > #messages-conversation-builder",
+             "New conversation"
+           )
+
+    assert has_element?(view, "#messages-conversation-builder-form")
+
+    # Settings live behind the gear, closed until it is clicked.
+    assert has_element?(
+             view,
+             "#messages-page-header details#messages-tools[aria-label='Message settings']:not([open])"
            )
 
     assert has_element?(
              view,
-             "#messages-page-header-content details#messages-tools[aria-label='Message tools']:not([open])"
+             "#messages-tools > #messages-tools-toggle[aria-label='Settings'][title='Settings'] .hero-cog-6-tooth"
            )
+
+    assert has_element?(view, "#messages-tools-content #messages-appearance-tool")
 
     assert has_element?(
              view,
-             "#messages-tools > #messages-tools-toggle[aria-label='Message tools'][title='Message tools'] .hero-cog-6-tooth"
+             "#messages-tools-content #messages-invite-person[href='/invites/new']",
+             "Invite a person"
            )
+
+    # The new-conversation form is the bar's own, not a setting.
+    refute has_element?(view, "#messages-tools-content #messages-conversation-builder")
 
     assert has_element?(
              view,
@@ -61,20 +81,7 @@ defmodule VeejrWeb.MessagesLiveTest do
              "#inline-key-passphrase-visibility-toggle[aria-label='Show privacy key']"
            )
 
-    assert has_element?(
-             view,
-             "#messages-tools-content #messages-invite-person[href='/invites/new']",
-             "Invite person"
-           )
-
-    assert has_element?(
-             view,
-             "#messages-tools-content #messages-conversation-builder",
-             "New conversation"
-           )
-
-    assert has_element?(view, "#messages-tools-content #messages-conversation-builder-form")
-    refute has_element?(view, "#messages-page-header-content #self-notes-command-center")
+    refute has_element?(view, "#messages-page-header-content")
   end
 
   test "spends the layout's vertical padding on the thread instead", %{conn: conn} do
@@ -106,9 +113,10 @@ defmodule VeejrWeb.MessagesLiveTest do
 
     assert has_element?(
              view,
-             "#messages-appearance-tool #chat-theme-picker[aria-label='Chat appearance'] .chat-theme-picker-label",
-             "Style"
+             "#messages-appearance-tool #chat-theme-picker[aria-label='Chat appearance']"
            )
+
+    assert has_element?(view, "#messages-appearance-title", "Appearance")
 
     assert has_element?(
              view,
@@ -219,12 +227,8 @@ defmodule VeejrWeb.MessagesLiveTest do
   test "uses the notes title and moves search into the notes pane header", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/messages?self_notes=true")
 
-    assert has_element?(view, "#messages-page-header-toggle", "Notes to yourself")
-
-    assert has_element?(
-             view,
-             "details#messages-page-header[aria-label='Messages header']:not([open])"
-           )
+    assert has_element?(view, "#messages-page-header h1", "Notes to yourself")
+    assert has_element?(view, "div#messages-page-header[aria-label='Messages header']")
 
     assert has_element?(
              view,
