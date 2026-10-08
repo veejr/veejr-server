@@ -16,6 +16,7 @@ import {createTable, updatePointPuck, highlightBetArea, clearChips, placeChip, s
 import {chipRegionFor, isOdds} from "./felt.js"
 import {createDieMesh, setDiceFace, throwDice} from "./dice.js"
 import {announce, playBounce, playThrow} from "./audio.js"
+import {createStick, perform, payoutChipCount, winningsChip} from "./stick.js"
 
 export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled} = {}) {
   const scene3d = createScene(THREE, container)
@@ -33,6 +34,14 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
   let hovered = null
   let shownRoll = null
   let opened = false
+
+  // The croupier's stick, and the chip standing for each bet on the felt so a
+  // losing bet's chip can be found again when the roll takes it away.
+  const stick = createStick(THREE, scene)
+  let chipsById = new Map()
+  let betAmounts = new Map()
+  let handledSettle = null
+  let cancelSweep = () => {}
 
   const label = document.createElement("div")
   label.className = "craps-felt-label"
@@ -157,6 +166,8 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
     // Two bets of the same kind from the same player would otherwise land on
     // top of one another.
     const seen = new Map()
+    chipsById = new Map()
+    betAmounts = new Map(state.bets.map((bet) => [bet.id, bet.amount]))
 
     for (const bet of state.bets) {
       const side = bet.side || "left"
@@ -170,8 +181,64 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
       const stagger = seen.get(key) || 0
       seen.set(key, stagger + 1)
 
-      placeChip(THREE, mesh, {mine: !!bet.mine, slot, odds: isOdds(bet.type), stagger})
+      const chip = placeChip(THREE, mesh, {
+        mine: !!bet.mine,
+        slot,
+        odds: isOdds(bet.type),
+        stagger,
+      })
+      if (bet.id !== undefined) chipsById.set(bet.id, chip)
     }
+  }
+
+  // Where the dice are set down for the shooter, which is where the stick
+  // draws them back to after a throw.
+  const DICE_REST = [
+    {mesh: die1, rest: [-1.1, 0.45, 1.6]},
+    {mesh: die2, rest: [0.1, 0.45, 1.6]},
+  ]
+
+  // What a roll has just done to the felt, as the stickman has to deal with it:
+  // chips lifted off their regions and into the scene, where they can be raked
+  // or paid. Each roll is acted on once — the felt is re-fed the same settled
+  // roll on every later patch.
+  //
+  // Nothing happens on the first update: whatever the page opens on is already
+  // history, and there are no chips yet to take.
+  function takeSettledRoll(settled) {
+    if (!settled || String(settled.roll_id) === handledSettle) return null
+    handledSettle = String(settled.roll_id)
+    if (!opened) return null
+
+    const losers = []
+    const paid = []
+
+    for (const bet of settled.bets || []) {
+      const chip = chipsById.get(bet.id)
+      if (!chip || !chip.parent) continue
+
+      scene.attach(chip)
+
+      if (bet.result === "lose") {
+        losers.push(chip)
+        continue
+      }
+
+      // A win or a push goes back to its owner; a win brings winnings with it.
+      paid.push(chip)
+      const stake = betAmounts.get(bet.id)
+      const extra = bet.result === "win" ? payoutChipCount(stake, bet.payout) : 0
+      for (let i = 0; i < extra; i++) paid.push(winningsChip(THREE, scene, chip, i))
+    }
+
+    // Tap the number only when this roll made it the point.
+    let point = null
+    if (settled.event === "point_set" && state.point) {
+      const box = betMeshes.find((m) => m.userData.regionId === `place${state.point}`)
+      if (box) point = box.getWorldPosition(new THREE.Vector3())
+    }
+
+    return {losers, paid, point, dice: DICE_REST}
   }
 
   return {
@@ -180,6 +247,14 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
 
       for (const puck of pointPucks) {
         updatePointPuck(puck, state.phase, state.point, betMeshes)
+      }
+
+      // Before the redraw, which would otherwise throw away the chips the roll
+      // took along with everything else it no longer leaves standing.
+      const act = takeSettledRoll(next.settled)
+      if (act) {
+        cancelSweep()
+        cancelSweep = perform(THREE, stick, act)
       }
 
       drawBets()
@@ -211,6 +286,9 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
 
       shownRoll = String(roll.id)
 
+      // A new throw cuts the stickman off: the dice are wanted back in the air.
+      cancelSweep()
+
       // Nothing about the outcome is on screen until this resolves — the
       // server is holding the total, the payouts and the puck until told the
       // dice have stopped.
@@ -225,6 +303,7 @@ export function createCrapsTable(THREE, container, {onBet, onComeOdds, onSettled
 
     destroy() {
       window.removeEventListener("veejr:craps-lock", onLock)
+      cancelSweep()
       label.remove()
       destroy()
     },
