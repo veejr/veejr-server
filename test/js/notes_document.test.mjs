@@ -20,6 +20,8 @@ import {
   noteSearchClauses,
   normalizeNoteSearch,
   normalizeSelfNoteColor,
+  selfNoteColorNames,
+  selfNoteColors,
 } from "../../assets/js/veejr/hooks/notes_document.js"
 
 const sortableNotes = [
@@ -231,4 +233,12 @@ test("compareTimeline orders newest first, ignores pinning, and puts undated las
     ["mid", "new", "old", "undated"])
   assert.deepEqual([...notes].sort((a, b) => compareTimeline(a, b, "created")).map((n) => n.title),
     ["new", "mid", "old", "undated"])
+})
+
+test("every stored note colour has a sticky-pad name, and nothing else does", () => {
+  const named = selfNoteColorNames.map(([value]) => value)
+
+  assert.deepEqual([...named].sort(), [...selfNoteColors].sort())
+  assert.equal(new Set(named).size, named.length)
+  assert.ok(selfNoteColorNames.every(([, name]) => name.length > 0))
 })

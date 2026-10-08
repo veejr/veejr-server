@@ -9,7 +9,7 @@ import {
   openFrom,
 } from "../crypto.js"
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
-import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
+import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteSearchClauses, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
 import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
 import {requestKeyUnlock} from "../key_unlock.js"
@@ -1592,32 +1592,61 @@ export const SelfNotes = {
     select.addEventListener("click", (event) => event.stopPropagation())
     select.addEventListener("change", () => window.dispatchEvent(new CustomEvent("veejr:self-note-selected", {detail: {element: this.el, payload, checked: select.checked}})))
     actions.appendChild(select)
+    // Applies a change to the note and saves it, resolving true once the save
+    // has gone through. Shared by the action buttons and the colour swatches.
+    const commit = async (update) => {
+      try {
+        update()
+        await new Promise((resolve, reject) => {
+          const listener = async (saveEvent) => {
+            if (saveEvent.detail.element !== this.el) return
+            window.removeEventListener("veejr:self-note-save-complete", listener)
+            resolve()
+          }
+          window.addEventListener("veejr:self-note-save-complete", listener)
+          window.dispatchEvent(new CustomEvent("veejr:self-note-save", {detail: {payload, element: this.el}}))
+          setTimeout(() => reject(new Error("Save timed out")), 15000)
+        })
+        const card = this.el.closest(".self-note-card")
+        card.dataset.noteArchived = String(!!payload.archived_at)
+        card.dataset.noteTrashed = String(!!payload.trashed_at)
+        card.dataset.notePinned = String(!!payload.pinned)
+        card.dataset.noteColor = normalizeSelfNoteColor(payload.color)
+        window.dispatchEvent(new CustomEvent("veejr:self-note-rendered"))
+        return true
+      } catch { return false }
+    }
     const action = (label, update) => {
       const button = document.createElement("button")
       button.type = "button"; button.className = "btn btn-ghost btn-xs"; button.textContent = label
       button.addEventListener("click", async (event) => {
         event.stopPropagation()
         button.disabled = true
-        try {
-          update()
-          await new Promise((resolve, reject) => {
-            const listener = async (saveEvent) => {
-              if (saveEvent.detail.element !== this.el) return
-              window.removeEventListener("veejr:self-note-save-complete", listener)
-              resolve()
-            }
-            window.addEventListener("veejr:self-note-save-complete", listener)
-            window.dispatchEvent(new CustomEvent("veejr:self-note-save", {detail: {payload, element: this.el}}))
-            setTimeout(() => reject(new Error("Save timed out")), 15000)
-          })
-          const card = this.el.closest(".self-note-card")
-          card.dataset.noteArchived = String(!!payload.archived_at)
-          card.dataset.noteTrashed = String(!!payload.trashed_at)
-          card.dataset.notePinned = String(!!payload.pinned)
-          window.dispatchEvent(new CustomEvent("veejr:self-note-rendered"))
-        } catch { button.disabled = false }
+        if (!(await commit(update))) button.disabled = false
       })
       actions.appendChild(button)
+    }
+    // A row of coloured dots to re-colour the note in place; the sticky-note
+    // view shows it, every other view hides it.
+    const swatches = document.createElement("div")
+    swatches.className = "self-note-swatches"
+    swatches.setAttribute("role", "group")
+    swatches.setAttribute("aria-label", "Note colour")
+    for (const [value, name] of selfNoteColorNames) {
+      const swatch = document.createElement("button")
+      swatch.type = "button"; swatch.className = "self-note-swatch"
+      swatch.dataset.swatch = value; swatch.title = name; swatch.setAttribute("aria-label", `${name} note`)
+      swatch.setAttribute("aria-pressed", String(normalizeSelfNoteColor(payload.color) === value))
+      swatch.addEventListener("click", async (event) => {
+        event.stopPropagation()
+        if (normalizeSelfNoteColor(payload.color) === value) return
+        swatch.disabled = true
+        if (await commit(() => { payload.color = value })) {
+          swatches.querySelectorAll(".self-note-swatch").forEach((other) => other.setAttribute("aria-pressed", String(other.dataset.swatch === value)))
+        }
+        swatch.disabled = false
+      })
+      swatches.appendChild(swatch)
     }
     actions.appendChild(this.reminderButton())
     action(payload.pinned ? "Unpin" : "Pin", () => { payload.pinned = !payload.pinned })
@@ -1639,7 +1668,7 @@ export const SelfNotes = {
     scroll.className = "self-note-scroll"
     scroll.dataset.role = "note-scroll"
     scroll.append(body, list, meta, attachments)
-    this.el.append(title, noteTimesBlock(times), scroll, actions)
+    this.el.append(title, noteTimesBlock(times), scroll, swatches, actions)
     requestAnimationFrame(() => measureBodyCollapsible(body))
     card.dataset.noteColor = normalizeSelfNoteColor(payload.color)
     card.style.removeProperty("background")
