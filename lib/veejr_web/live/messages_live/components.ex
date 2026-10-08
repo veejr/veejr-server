@@ -703,6 +703,7 @@ defmodule VeejrWeb.MessagesLive.Components do
                   ]
                 }
                 data-role="filter"
+                id={"self-notes-filter-#{filter}"}
                 data-filter={filter}
                 type="button"
                 class="rounded-lg px-3 py-1.5 text-xs font-semibold text-base-content/60 transition hover:text-base-content aria-[pressed=true]:bg-base-100 aria-[pressed=true]:text-base-content aria-[pressed=true]:shadow-sm"
@@ -791,6 +792,7 @@ defmodule VeejrWeb.MessagesLive.Components do
           aria-hidden="true"
         />
         <div id="self-notes-icon-kit" class="hidden" aria-hidden="true">
+          <span data-note-icon="reminder"><.icon name="hero-clock" class="size-4" /></span>
           <span data-note-icon="attachment"><.icon name="hero-paper-clip" class="size-4" /></span>
           <span data-note-icon="audio"><.icon name="hero-microphone" class="size-4" /></span>
           <span data-note-icon="video"><.icon name="hero-video-camera" class="size-4" /></span>
@@ -818,8 +820,25 @@ defmodule VeejrWeb.MessagesLive.Components do
           data-role="reminders-empty"
           class="hidden mb-4 text-sm opacity-70"
         >
-          Reminders are coming soon. Your notes remain private and are not scheduled yet.
+          No reminders match this view. Use “Remind me” on a note or document to set one.
         </p>
+        <div
+          id="self-notes-reminder-notice"
+          data-role="reminder-notice"
+          phx-update="ignore"
+          role="status"
+          class="hidden mb-4 rounded-xl border border-primary/30 bg-primary/10 p-3 text-sm"
+        >
+          A note reminder is due.
+          <button
+            id="self-notes-show-reminders"
+            data-role="show-reminders"
+            type="button"
+            class="ml-2 rounded-lg px-2 py-1 font-semibold text-primary transition hover:bg-primary/10"
+          >
+            View reminders
+          </button>
+        </div>
         <div id="self-notes-grid" class="columns-1 gap-4 sm:columns-2 xl:columns-3">
           <p
             :if={@self_note_envelopes == []}

@@ -11,7 +11,7 @@ import {
 import {MAX_VIDEO_DURATION_MS, attachmentMime, decryptAttachmentBlob, downloadAttachment, encryptAndUpload, preferredAudioMime, preferredVideoMime, pushWithReply, showMediaModal} from "./shared.js"
 import {compareSelfNotes, compareTimeline, formatNoteTime, mergeNoteDocuments, noteTimes, relativeNoteTime, timelineGroupLabel, normalizeNoteSearch, normalizeSelfNoteColor, noteDocument, noteFilterSummary, noteSearchClauses, resolveNoteConflict, selfNoteColorNames, selfNoteColors, selfNoteSearchIndex} from "./notes_document.js"
 import {unzipSync, strFromU8} from "../../../vendor/fflate.js"
-import {describeScheduledTime, isoToLocalDateTime, localDateTimeIn, localDateTimeToIso} from "../schedule_time.js"
+import {matchesNoteFilter, openNoteReminderDialog, reminderLabel} from "./note_reminders.js"
 import {requestKeyUnlock} from "../key_unlock.js"
 import {deleteDraftMedia, loadDraftMedia, saveDraftMedia} from "../local_media_drafts.js"
 import {openNoteSendDialog} from "./note_send.js"
@@ -792,10 +792,15 @@ export const SelfNotesBoard = {
       this.applyFilters()
     })
     this.controls("[data-role=filter]").forEach((button) => button.addEventListener("click", () => {
-      this.filter = button.dataset.filter
-      this.controls("[data-role=filter]").forEach((control) => control.setAttribute("aria-pressed", String(control === button)))
-      this.applyFilters()
+      this.selectFilter(button.dataset.filter)
     }))
+    this.el.querySelector("[data-role=show-reminders]")?.addEventListener("click", () => {
+      this.selectFilter("reminders")
+      this.el.querySelector("[data-role=reminder-notice]")?.classList.add("hidden")
+    })
+    this.handleEvent("veejr:note_reminder", () => {
+      this.el.querySelector("[data-role=reminder-notice]")?.classList.remove("hidden")
+    })
     this.controls("[data-role=view]").forEach((button) => button.addEventListener("click", () => {
       this.view = button.dataset.view
       saveNoteView(this.view)
@@ -866,6 +871,17 @@ export const SelfNotesBoard = {
     if (search) search.value = this.searchTerm
     const sort = document.querySelector("#self-notes-sort")
     if (sort) sort.value = this.sortBy
+    this.controls("[data-role=filter]").forEach((control) => control.setAttribute("aria-pressed", String(control.dataset.filter === this.filter)))
+    this.applyFilters()
+  },
+  selectFilter(filter) {
+    this.filter = filter
+    this.controls("[data-role=filter]").forEach((control) => control.setAttribute("aria-pressed", String(control.dataset.filter === filter)))
+    // Reminders can belong to older cards outside the first page.
+    if (filter === "reminders" && !this.allNotesRequested && this.el.querySelector("[data-role=load-all-notes]")) {
+      this.allNotesRequested = true
+      this.pushEvent("load_all_notes", {}, () => { this.allNotesRequested = false })
+    }
     this.applyFilters()
   },
   destroyed() {
@@ -956,11 +972,11 @@ export const SelfNotesBoard = {
     }
     let visibleCount = 0
     cards.forEach((card) => {
-      const stateMatch = this.filter === "reminders" ? false : this.filter === "trashed"
-        ? card.dataset.noteTrashed === "true"
-        : this.filter === "archived"
-          ? card.dataset.noteArchived === "true" && card.dataset.noteTrashed !== "true"
-          : card.dataset.noteArchived !== "true" && card.dataset.noteTrashed !== "true"
+      const stateMatch = matchesNoteFilter(this.filter, {
+        archived: card.dataset.noteArchived === "true",
+        trashed: card.dataset.noteTrashed === "true",
+        remindAt: card.querySelector("[data-public-id]")?.dataset.remindAt,
+      })
       const labelMatch = !this.label || JSON.parse(card.dataset.noteLabels || "[]").includes(this.label)
       const updatedOn = (card.dataset.noteUpdated || "").slice(0, 10)
       const dateMatch = (!this.dateFrom || updatedOn >= this.dateFrom) && (!this.dateTo || updatedOn <= this.dateTo)
@@ -984,7 +1000,7 @@ export const SelfNotesBoard = {
       filterStatus.textContent = summary
       filterStatus.classList.toggle("hidden", summary === "")
     }
-    this.el.querySelector("[data-role=reminders-empty]")?.classList.toggle("hidden", this.filter !== "reminders")
+    this.el.querySelector("[data-role=reminders-empty]")?.classList.toggle("hidden", this.filter !== "reminders" || visibleCount > 0)
     const deleteTrashed = this.control("[data-role=delete-trashed]")
     if (deleteTrashed) {
       const count = cards.filter((card) => card.dataset.noteTrashed === "true").length
@@ -1360,6 +1376,8 @@ export const SelfNotes = {
     this.card?.removeEventListener("click", this.onCardClick)
     this.card?.removeEventListener("keydown", this.onCardKeydown)
     this.el.removeEventListener("self-notes:refresh", this.onRefresh)
+    this.reminderDialog?.close()
+    this.reminderDialog?.remove()
     if (this.card) selfNoteSearchIndex.delete(this.card)
   },
   // Set or clear a reminder. Unlike everything else on a card, the time is
@@ -1370,34 +1388,25 @@ export const SelfNotes = {
     const button = document.createElement("button")
     button.type = "button"
     button.className = current ? "btn btn-xs btn-outline btn-primary" : "btn btn-ghost btn-xs"
-    button.textContent = current ? `⏰ ${describeScheduledTime(current)}` : "⏰ Remind me"
+    button.dataset.role = "note-reminder"
+    button.id = `self-note-reminder-${this.el.dataset.publicId}`
+    const icon = document.querySelector('#self-notes-icon-kit [data-note-icon="reminder"]')?.cloneNode(true)
+    const label = document.createElement("span")
+    label.textContent = reminderLabel(current, this.el.dataset.remindedAt)
+    if (icon) button.appendChild(icon)
+    button.appendChild(label)
     button.title = current
       ? "Change or clear this reminder. The time is stored unencrypted; the note is not."
       : "Set a reminder. The time is stored unencrypted; the note stays encrypted."
 
-    button.addEventListener("click", async (event) => {
+    button.addEventListener("click", (event) => {
       event.stopPropagation()
-      const answer = window.prompt(
-        "Reminder time (YYYY-MM-DDTHH:MM, your local time). Leave empty to clear it.",
-        current ? isoToLocalDateTime(current) : localDateTimeIn(60)
-      )
-      if (answer === null) return
-
-      const remindAt = answer.trim() === "" ? null : localDateTimeToIso(answer.trim())
-      if (answer.trim() !== "" && !remindAt) {
-        window.alert("That time could not be read. Use the form YYYY-MM-DDTHH:MM.")
-        return
-      }
-
-      button.disabled = true
-      try {
-        await pushWithReply(this, "set_reminder", {id: this.el.dataset.publicId, remind_at: remindAt})
-        this.el.dataset.remindAt = remindAt || ""
-      } catch (error) {
-        window.alert(error.message || "The reminder could not be set.")
-      } finally {
-        button.disabled = false
-      }
+      this.reminderDialog = openNoteReminderDialog({current: this.el.dataset.remindAt || "", save: async (remindAt) => {
+        const reply = await pushWithReply(this, "set_reminder", {id: this.el.dataset.publicId, remind_at: remindAt})
+        this.el.dataset.remindAt = reply.remind_at || ""
+        this.el.dataset.remindedAt = ""
+        this.render()
+      }})
     })
 
     return button

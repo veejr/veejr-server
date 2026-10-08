@@ -382,10 +382,39 @@ defmodule VeejrWeb.MessagesLiveTest do
     assert render_hook(view, "set_reminder", %{"id" => note.public_id, "remind_at" => remind_at}) =~
              "Reminder set."
 
-    assert has_element?(view, "#self-note-#{note.public_id} [data-remind-at]")
+    assert has_element?(view, "#self-notes-filter-reminders")
+
+    assert has_element?(
+             view,
+             "#self-note-content-#{note.public_id}[data-remind-at='#{remind_at}']"
+           )
 
     assert render_hook(view, "set_reminder", %{"id" => note.public_id, "remind_at" => nil}) =~
              "Reminder cleared."
+
+    refute has_element?(view, "#self-note-content-#{note.public_id}[data-remind-at]")
+  end
+
+  test "a delivered reminder exposes its delivery time on the board", %{conn: conn, user: user} do
+    {:ok, _batch, []} =
+      Messaging.send_batch(user, "self_doc", [
+        %{"recipient_id" => user.id, "ciphertext" => "encrypted", "nonce" => "nonce"}
+      ])
+
+    [note] = Messaging.list_self_envelopes(user, kinds: ["self_doc"])
+    remind_at = DateTime.utc_now(:second) |> DateTime.add(3600)
+    {:ok, _} = Messaging.set_reminder(user, note.public_id, remind_at)
+    {:ok, view, _html} = live(conn, "/messages?self_notes=true")
+    delivered_at = DateTime.add(remind_at, 1)
+
+    assert %{reminded: 1} = Messaging.dispatch_due_note_reminders(delivered_at)
+
+    assert has_element?(
+             view,
+             "#self-note-content-#{note.public_id}[data-reminded-at='#{DateTime.to_iso8601(delivered_at)}']"
+           )
+
+    assert has_element?(view, "#self-notes-show-reminders")
   end
 
   test "refuses a reminder on someone else's item", %{conn: conn, user: user} do

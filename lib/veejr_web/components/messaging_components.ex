@@ -1046,6 +1046,7 @@ defmodule VeejrWeb.MessagingComponents do
         data-updated-at={DateTime.to_iso8601(@envelope.updated_at)}
         data-kind={@envelope.kind}
         data-remind-at={@envelope.remind_at && DateTime.to_iso8601(@envelope.remind_at)}
+        data-reminded-at={@envelope.reminded_at && DateTime.to_iso8601(@envelope.reminded_at)}
       >
         <span class="loading loading-dots loading-xs"></span>
       </div>
