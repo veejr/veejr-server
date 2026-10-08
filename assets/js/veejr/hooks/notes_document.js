@@ -23,6 +23,31 @@ export function normalizeSelfNoteColor(value) {
   return selfNoteColors.has(value) ? value : "default"
 }
 
+// A note as the plain text of a message: its title, its body, and its checklist
+// as ticked and unticked lines. What the sender sees here is what goes, and
+// they can still edit it before sending.
+export function noteAsMessageText(payload = {}) {
+  const lines = []
+  const title = String(payload.title || "").trim()
+  const body = String(payload.body || "").trim()
+
+  if (title) lines.push(title)
+  if (title && body) lines.push("")
+  if (body) lines.push(body)
+
+  const items = Array.isArray(payload.checklist) ? payload.checklist : []
+  const checklist = items
+    .filter((item) => item && String(item.text || "").trim())
+    .map((item) => `${item.checked ? "☑" : "☐"} ${String(item.text).trim()}`)
+
+  if (checklist.length > 0) {
+    if (lines.length > 0) lines.push("")
+    lines.push(...checklist)
+  }
+
+  return lines.join("\n")
+}
+
 export function noteDocument(payload = {}) {
   const now = new Date().toISOString()
   return {

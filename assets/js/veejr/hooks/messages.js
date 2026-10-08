@@ -12,6 +12,7 @@ import {
   openFrom,
 } from "../crypto.js"
 import {appendLinkedText} from "../link_text.js"
+import {normalizeCard, renderCard} from "../cards.js"
 import {requestKeyUnlock} from "../key_unlock.js"
 import {attachmentMime, decryptAttachmentBlob, downloadAttachment, previewableMedia, pushWithReply, showLocationModal, showMediaModal} from "./shared.js"
 
@@ -76,7 +77,14 @@ export const Decrypt = {
       this.el.appendChild(h)
     }
 
-    if (payload.text) {
+    // A card is a plain message shown on a template and/or background. Only
+    // ordinary messages can wear one, and an unknown or malformed card falls
+    // back to the plain text below.
+    const card = kind === "message" ? normalizeCard(payload.card) : null
+
+    if (card && payload.text) {
+      this.el.appendChild(renderCard(document, card, payload.text))
+    } else if (payload.text) {
       const p = document.createElement("p")
       p.className = "whitespace-pre-wrap"
       appendLinkedText(p, payload.text)

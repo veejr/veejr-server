@@ -748,14 +748,36 @@ defmodule VeejrWeb.MessagesLive.Components do
   end
 
   @doc """
+  Who a note can be sent to as a message, as JSON for the notes board.
+
+  Only what the server already knows — names and ids of the viewer's own
+  friends and groups. The browser resolves and seals for them exactly as the
+  composer does.
+  """
+  def send_targets(friends, groups) do
+    people =
+      Enum.map(friends, fn friend ->
+        %{type: "friend", id: friend.id, label: friend.display_name || "@#{friend.username}"}
+      end)
+
+    circles = Enum.map(groups, fn group -> %{type: "group", id: group.id, label: group.name} end)
+
+    Jason.encode!(people ++ circles)
+  end
+
+  @doc """
   Notes to yourself: encrypted cards the browser decrypts locally. Rendered instead of a conversation thread when @self_notes is set.
   """
   attr :self_notes, :boolean, required: true
   attr :self_note_envelopes, :list, required: true
   attr :has_more_self_notes, :boolean, required: true
   attr :current_scope, :map, required: true
+  attr :friends, :list, default: []
+  attr :groups, :list, default: []
 
   def self_notes_pane(assigns) do
+    assigns = assign(assigns, :send_targets, send_targets(assigns.friends, assigns.groups))
+
     ~H"""
     <div :if={@self_notes} class="flex min-h-0 flex-1 flex-col">
       <div
@@ -825,6 +847,7 @@ defmodule VeejrWeb.MessagesLive.Components do
         phx-hook="SelfNotesBoard"
         data-user-id={@current_scope.user.id}
         data-peer-key={@current_scope.user.public_key}
+        data-send-targets={@send_targets}
         class="min-h-[26rem] flex-1 overflow-y-auto p-4 sm:p-6"
       >
         <input
