@@ -38,6 +38,13 @@ defmodule Veejr.DataCase do
   def setup_sandbox(tags) do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Veejr.Repo, shared: not tags[:async])
 
+    # Synchronous LiveView tests send mail from a channel process. Route the
+    # test adapter's messages to their owner instead of back into that channel.
+    if not tags[:async] do
+      Application.put_env(:swoosh, :shared_test_process, self())
+      on_exit(fn -> Application.delete_env(:swoosh, :shared_test_process) end)
+    end
+
     # Presence lives in ETS keyed by user id, outside the sandbox, and the
     # rollback hands those ids straight back to the next test. Without this,
     # a LiveView from an earlier test leaves the next test's fresh user

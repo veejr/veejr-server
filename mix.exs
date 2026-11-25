@@ -4,7 +4,7 @@ defmodule Veejr.MixProject do
   def project do
     [
       app: :veejr,
-      version: "0.4.35",
+      version: "0.4.36",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -63,6 +63,7 @@ defmodule Veejr.MixProject do
       {:gen_smtp, "~> 1.3"},
       {:qr_code, "~> 3.2"},
       {:req, "~> 0.5"},
+      {:wax_, "~> 0.7"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},

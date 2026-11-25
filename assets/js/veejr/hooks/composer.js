@@ -18,6 +18,7 @@ import {localDateTimeToIso} from "../schedule_time.js"
 import {Decrypt} from "./messages.js"
 import {createCardPicker} from "../cards.js"
 import {deleteDraftMedia, loadDraftMedia, saveDraftMedia} from "../local_media_drafts.js"
+import {enqueueMessage} from "../offline_outbox.js"
 
 // A drag only counts when it actually carries files: dragging selected text
 // or a link across the thread must not arm the drop target.
@@ -98,6 +99,7 @@ export const Composer = {
     this.setupCardPicker()
 
     this.onDraftInput = () => {
+      this.cacheRecipients()
       // The card preview shows the message as it will look.
       this.cardPicker?.setText(this.el.querySelector("[data-role=text]")?.value)
       clearTimeout(this.draftTimer)
@@ -280,6 +282,7 @@ export const Composer = {
       e.preventDefault()
       this.send().catch((err) => showError(this.el, err.message))
     })
+    this.cacheRecipients()
   },
 
   // Attachments: paste, drop, and the visible strip.
@@ -535,6 +538,31 @@ export const Composer = {
     this.textEl = this.el.querySelector("[data-role=text]")
     this.renderFilePreview()
     this.setupCardPicker()
+    this.cacheRecipients()
+  },
+
+  recipientSelection() {
+    const values = (name) => [...new Set([...this.el.querySelectorAll(`input[name='${name}']`)]
+      .filter((el) => el.type === "hidden" || el.checked).map((el) => el.value).filter(Boolean))].sort()
+    return {friend_ids: values("friends[]"), group_ids: values("groups[]"),
+      include_self: !!this.el.querySelector("input[name='self']:checked, input[name='self'][type='hidden']")}
+  },
+
+  recipientCacheKey(selection) {
+    return `veejr:recipient-cache:${this.el.dataset.userId}:${JSON.stringify(selection)}`
+  },
+
+  async cacheRecipients() {
+    const secret = getSecretKey(this.el.dataset.userId)
+    if (!secret || !liveViewConnected()) return
+    const selection = this.recipientSelection()
+    const key = this.recipientCacheKey(selection)
+    if (this.recipientCacheToken === key) return
+    this.recipientCacheToken = key
+    try {
+      const result = await this.pushWithReply("resolve_recipients", selection)
+      if (!result.missing_keys.length && result.recipients.length) localStorage.setItem(key, JSON.stringify(sealLocal(result.recipients, secret)))
+    } catch { this.recipientCacheToken = null }
   },
 
   // The card picker lives in a LiveView-ignored panel, so it is built once and
@@ -1247,9 +1275,34 @@ export const Composer = {
     }
 
     if (!liveViewConnected()) {
-      this.saveDraft()
-      this.pendingSend = true
-      this.beginSendStatus()
+      const secret = getSecretKey(userId)
+      if (!secret) throw new Error("Unlock your private space before queuing an offline message.")
+      if (!navigator.locks || !window.indexedDB) throw new Error("This browser cannot safely store an offline queue. Your draft is still here.")
+      const selection = this.recipientSelection()
+      const recipients = openLocal(JSON.parse(localStorage.getItem(this.recipientCacheKey(selection)) || "null"), secret)
+      if (!Array.isArray(recipients) || !recipients.length) throw new Error("Open this recipient selection while connected before queuing messages offline. Your draft is still here.")
+      const ttl = parseInt(form.querySelector("[data-role=ttl]")?.value || "", 10)
+      const maxDisplays = parseInt(form.querySelector("[data-role=max-displays]")?.value || "", 10)
+      const deliverAt = localDateTimeToIso(form.querySelector("[data-role=deliver-at]")?.value)
+      const options = {}
+      if (maxDisplays > 0) options.max_displays = maxDisplays
+      if (deliverAt) options.deliver_at = deliverAt
+      const payload = kind === "self_note" ? noteDocument({body: text, attachments: []}) : {v: 1, kind, text, sent_at: new Date().toISOString(),
+        ...(this.replyTo ? {reply_to: this.replyTo} : {}),
+        ...(this.cardPicker?.value() ? {card: this.cardPicker.value()} : {}), ...extra}
+      await enqueueMessage(userId, {id: this.clientBatchId, kind, payload, options, recipients, ttl: ttl > 0 ? ttl : null, selection},
+      [...files, ...recordedAudio, ...recordedVideo], secret)
+      this.draftClearing = true
+      form.reset()
+      this.clearReply()
+      this.cardPicker?.reset()
+      this.clearAudioRecordings()
+      this.clearVideoRecordings()
+      this.clearDraft()
+      this.clientBatchId = crypto.randomUUID()
+      this.draftClearing = false
+      this.renderFilePreview()
+      this.setDraftStatus("Queued on this device. It will send while veejr is open and unlocked after reconnection.")
       return
     }
 
@@ -1381,8 +1434,8 @@ export const Composer = {
       if (err) err.classList.add("hidden")
     } catch (error) {
       if (!liveViewConnected()) {
-        this.saveDraft()
-        this.pendingSend = true
+        this.sending = false
+        await this.send()
         return
       }
       throw error

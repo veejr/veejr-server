@@ -70,6 +70,18 @@ defmodule VeejrWeb.Router do
     get "/avatars/:username", AvatarController, :show
   end
 
+  scope "/unlock", VeejrWeb do
+    pipe_through [:browser, :limit_login]
+    post "/options", UnlockController, :options
+    post "/verify", UnlockController, :verify
+    post "/links", UnlockController, :start_link
+  end
+
+  scope "/unlock", VeejrWeb do
+    pipe_through [:browser, :limit_directory]
+    post "/links/:id/claim", UnlockController, :claim_link
+  end
+
   # Public instance API: the surface other veejr instances (and curious
   # humans) can query without authentication.
   scope "/api", VeejrWeb do
@@ -204,6 +216,16 @@ defmodule VeejrWeb.Router do
   scope "/", VeejrWeb do
     pipe_through [:browser, :require_authenticated_user]
 
+    post "/outbox/recipients", OutboxController, :recipients
+    post "/outbox/messages", OutboxController, :create
+    get "/unlock/methods", UnlockController, :index
+    post "/unlock/registration/options", UnlockController, :registration_options
+    post "/unlock/registration/verify", UnlockController, :registration_verify
+    post "/unlock/slots", UnlockController, :put_slot
+    delete "/unlock/passkeys/:id", UnlockController, :delete_passkey
+    get "/unlock/links/:id", UnlockController, :show_link
+    post "/unlock/links/:id/approve", UnlockController, :approve_link
+
     live_session :require_authenticated_user,
       on_mount: [{VeejrWeb.UserAuth, :require_authenticated}, VeejrWeb.TrackPresence] do
       live "/account", UserLive.Account, :index
@@ -212,6 +234,7 @@ defmodule VeejrWeb.Router do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
       live "/keys", KeysLive
+      live "/workspace", WorkspaceLive
     end
 
     live_session :app,

@@ -20,6 +20,9 @@
 
 import {KeySetup, KeyUnlock, KeyRewrap, KeyRotate, KeyReset, KeyLock} from "./hooks/keys.js"
 import {Composer} from "./hooks/composer.js"
+import {PrivateWorkspace} from "./hooks/workspace.js"
+import {OfflineOutbox} from "./offline_outbox.js"
+import {UnlockMethods} from "./hooks/unlock_methods.js"
 import {Decrypt, ConversationPreview, MessageBubble} from "./hooks/messages.js"
 import {SelfNotes, SelfNotesBoard} from "./hooks/self_notes.js"
 import {ContactsOrbit} from "./hooks/contacts_scenes.js"
@@ -81,6 +84,9 @@ export {
 }
 
 export default {
+  UnlockMethods,
+  OfflineOutbox,
+  PrivateWorkspace,
   KeyRemember,
   KeySession,
   KeySetup,

@@ -11,6 +11,23 @@ friendship, and consent rules.
 
 ## Highlights
 
+- **Passkeys and recovery** on the web. Enroll from an unlocked `/keys` page,
+  then sign in and unlock together on authenticators with PRF support. Recovery
+  codes stay client-side. A new browser can link by QR code and a matching
+  verification code approved on an existing unlocked, recently authenticated device.
+- **Private workspace** at `/workspace`: search accepted messages, personal
+  notes, document contents, labels and attachment names locally after unlocking.
+  Expiring and view-limited messages remain in their conversations. Create
+  encrypted shared checklists and planning polls with selected friends. Updates
+  follow message consent, and every participant must be friends with all other
+  participants to distribute an update. Concurrent item changes merge by item
+  clock and operation ID. Poll results can be carried locally into one-to-one call scheduling.
+  Shared membership pins the current identity keys, so create a new shared list
+  or poll after a participant rotates their identity key.
+- **Offline outbox** for messages and attachments. Open a recipient selection
+  while online to cache its public keys, then queue encrypted messages during an
+  outage. They retry while this browser is open and unlocked, with cancel and
+  retry controls. Changed recipients or keys pause delivery for review.
 - Browser-generated X25519 identity keys, with the secret key wrapped by a
   passphrase-derived key before it is stored on the server.
 - Pull-based delivery: a recipient normally accepts or declines a notification
@@ -31,7 +48,10 @@ friendship, and consent rules.
 - **Scheduled messages**: written and encrypted now, released later. Nothing
   reaches the recipient until it is due, and the sender can cancel or reschedule
   until then.
-- **One-shot reminders** on any note or document. The time is server-visible so
+- **One-shot or recurring reminders** on any note or document, with daily,
+  weekly and monthly repeats, snooze and mark-done controls. Repeats keep UTC
+  time, and monthly repeats clamp to shorter months while retaining the original
+  day for subsequent months. The time is server-visible so
   something can fire it; the reminder itself names no note content.
 - Personal notes attached to contacts and groups. Unlike Notes to yourself,
   these convenience notes are server-side plaintext and are not part of the

@@ -102,6 +102,17 @@ defmodule VeejrWeb.Layouts do
 
     ~H"""
     <div class="flex h-svh min-h-svh flex-col">
+      <aside
+        :if={@current_scope}
+        id="offline-outbox"
+        phx-hook="OfflineOutbox"
+        phx-update="ignore"
+        data-user-id={@current_scope.user.id}
+        data-public-key={@current_scope.user.public_key}
+        hidden
+        class="border-b border-primary/20 bg-base-200 px-6 py-3 text-sm"
+        aria-label="Queued messages"
+      />
       <div
         :if={@current_scope}
         id="key-session"
@@ -153,6 +164,12 @@ defmodule VeejrWeb.Layouts do
             class="app-menu-surface dropdown-content z-50 mt-2 w-72 rounded-2xl border p-2"
           >
             <ul class="menu gap-1 p-0">
+              <li>
+                <.link id="workspace-navigation" navigate={~p"/workspace"}><.icon
+                  name="hero-squares-2x2"
+                  class="size-5"
+                />Private workspace</.link>
+              </li>
               <li class="menu-title px-3 py-2 text-xs font-semibold tracking-wider uppercase opacity-55">
                 Navigate
               </li>

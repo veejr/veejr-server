@@ -49,6 +49,9 @@ defmodule Veejr.Messaging.Envelope do
     # One-shot reminder for an owner-only self note or document.
     field :remind_at, :utc_datetime
     field :reminded_at, :utc_datetime
+    field :reminder_repeat, :string, default: "once"
+    field :reminder_day, :integer
+    field :reminder_anchor_at, :utc_datetime
 
     belongs_to :sender, Veejr.Accounts.User
     belongs_to :recipient, Veejr.Accounts.User

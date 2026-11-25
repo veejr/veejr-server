@@ -1513,9 +1513,17 @@ export const SelfNotes = {
 
     button.addEventListener("click", (event) => {
       event.stopPropagation()
-      this.reminderDialog = openNoteReminderDialog({current: this.el.dataset.remindAt || "", save: async (remindAt) => {
-        const reply = await pushWithReply(this, "set_reminder", {id: this.el.dataset.publicId, remind_at: remindAt})
+      const reminderAction = async (action) => {
+        const reply = await pushWithReply(this, "reminder_action", {id: this.el.dataset.publicId, action})
         this.el.dataset.remindAt = reply.remind_at || ""
+        this.el.dataset.remindedAt = ""
+        this.render()
+      }
+      this.reminderDialog = openNoteReminderDialog({current: this.el.dataset.remindAt || "", repeat: this.el.dataset.reminderRepeat || "once",
+        complete: () => reminderAction("done"), snooze: () => reminderAction("snooze"), save: async (remindAt, repeat) => {
+        const reply = await pushWithReply(this, "set_reminder", {id: this.el.dataset.publicId, remind_at: remindAt, repeat})
+        this.el.dataset.remindAt = reply.remind_at || ""
+        this.el.dataset.reminderRepeat = repeat
         this.el.dataset.remindedAt = ""
         this.render()
       }})
