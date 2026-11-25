@@ -47,6 +47,7 @@ defmodule VeejrWeb.CallsLive do
               id="schedule-call-form"
               phx-submit="schedule"
               phx-hook="ScheduleTime"
+              data-user-id={@current_scope.user.id}
               class="mt-5 space-y-4"
             >
               <.input

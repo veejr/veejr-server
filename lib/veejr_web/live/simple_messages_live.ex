@@ -426,6 +426,7 @@ defmodule VeejrWeb.SimpleMessagesLive do
 
   @impl true
   def handle_info({:veejr_notification, _notification}, socket), do: {:noreply, refresh(socket)}
+  def handle_info({:veejr_outbox_sent}, socket), do: {:noreply, refresh(socket)}
 
   def handle_info({:veejr_schedule_released}, socket), do: {:noreply, refresh(socket)}
 

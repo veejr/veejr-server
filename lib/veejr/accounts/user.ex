@@ -35,6 +35,7 @@ defmodule Veejr.Accounts.User do
     # E2E key material: the secret key is encrypted in the browser with a
     # passphrase-derived key before upload. The server cannot decrypt it.
     field :public_key, :string
+    field :passkey_handle, :binary
     field :enc_secret_key, :string, redact: true
     field :key_salt, :string
     field :key_nonce, :string

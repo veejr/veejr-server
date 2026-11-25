@@ -8,6 +8,21 @@ defmodule VeejrWeb.KeysLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="mx-auto max-w-md">
+        <section
+          :if={@current_scope.user.public_key}
+          class="mb-8 rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm"
+        >
+          <h2 class="text-lg font-semibold">Passkeys and recovery</h2>
+          <div
+            id="unlock-methods"
+            phx-hook="UnlockMethods"
+            phx-update="ignore"
+            data-mode="manage"
+            data-user-id={@current_scope.user.id}
+            data-public-key={@current_scope.user.public_key}
+            class="mt-4"
+          />
+        </section>
         <section class="mb-8 rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
           <h2 class="text-lg font-semibold">Stay unlocked on this browser</h2>
           <p class="mt-2 text-sm text-base-content/70">

@@ -9,6 +9,7 @@ defmodule VeejrWeb.UserLive.Login do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="mx-auto max-w-sm space-y-4">
+        <div id="passkey-login" phx-hook="UnlockMethods" phx-update="ignore" data-mode="login" />
         <div class="text-center">
           <.header>
             <p>Log in</p>

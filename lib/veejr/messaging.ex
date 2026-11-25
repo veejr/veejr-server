@@ -47,6 +47,10 @@ defmodule Veejr.Messaging do
 
   defp topic(user_id), do: "user:#{user_id}"
 
+  def broadcast_outbox_sent(%Veejr.Accounts.Scope{user: user}) do
+    Phoenix.PubSub.broadcast(Veejr.PubSub, topic(user.id), {:veejr_outbox_sent})
+  end
+
   defp broadcast_notification(%Notification{} = notification) do
     Phoenix.PubSub.broadcast(
       Veejr.PubSub,
@@ -501,12 +505,23 @@ defmodule Veejr.Messaging do
   but the reminder that fires carries no note content. Setting a new time
   re-arms an already-fired reminder.
   """
-  def set_reminder(%User{id: user_id}, public_id, remind_at) when is_binary(public_id) do
+  def set_reminder(user, public_id, remind_at, repeat \\ "once")
+
+  def set_reminder(%Veejr.Accounts.Scope{user: user}, public_id, remind_at, repeat),
+    do: set_reminder(user, public_id, remind_at, repeat)
+
+  def set_reminder(%User{id: user_id}, public_id, remind_at, repeat) when is_binary(public_id) do
     with %Envelope{} = envelope <- self_item(user_id, public_id),
          value <- normalize_deliver_at(remind_at),
-         true <- value != :invalid do
+         true <- value != :invalid and repeat in ~w(once daily weekly monthly) do
       envelope
-      |> Ecto.Changeset.change(remind_at: value, reminded_at: nil)
+      |> Ecto.Changeset.change(
+        remind_at: value,
+        reminded_at: nil,
+        reminder_repeat: repeat,
+        reminder_anchor_at: value,
+        reminder_day: value && value.day
+      )
       |> Repo.update()
       |> case do
         {:ok, envelope} -> {:ok, envelope}
@@ -527,6 +542,32 @@ defmodule Veejr.Messaging do
     |> Repo.one()
   end
 
+  def reminder_action(%Veejr.Accounts.Scope{user: %User{id: id}}, public_id, action)
+      when action in ~w(done snooze) do
+    with %Envelope{} = envelope <- self_item(id, public_id),
+         %DateTime{} = current <- envelope.remind_at do
+      now = DateTime.utc_now(:second)
+      completed_at = if DateTime.compare(current, now) == :gt, do: current, else: now
+
+      next =
+        if action == "snooze",
+          do: DateTime.add(completed_at, 600),
+          else:
+            Veejr.Messaging.ReminderSchedule.next(
+              envelope.reminder_anchor_at || current,
+              envelope.reminder_repeat,
+              completed_at,
+              envelope.reminder_day
+            )
+
+      envelope
+      |> Ecto.Changeset.change(remind_at: next, reminded_at: nil)
+      |> Repo.update()
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
   @doc """
   Fires due note and document reminders exactly once each.
 
@@ -544,25 +585,44 @@ defmodule Veejr.Messaging do
       )
       |> Repo.all()
 
-    Enum.each(due, fn envelope ->
-      envelope
-      |> Ecto.Changeset.change(reminded_at: now)
-      |> Repo.update!()
+    reminded =
+      Enum.count(due, fn envelope ->
+        next =
+          Veejr.Messaging.ReminderSchedule.next(
+            envelope.reminder_anchor_at || envelope.remind_at,
+            envelope.reminder_repeat,
+            now,
+            envelope.reminder_day
+          )
 
-      Phoenix.PubSub.broadcast(
-        Veejr.PubSub,
-        topic(envelope.recipient_id),
-        {:veejr_note_reminder, envelope.public_id}
-      )
+        changes = if next, do: [remind_at: next, reminded_at: nil], else: [reminded_at: now]
 
-      Veejr.Push.notify_user_async(envelope.recipient, %{
-        title: "Note reminder",
-        body: "A note you set a reminder on is due.",
-        url: "/messages?self_notes=true"
-      })
-    end)
+        {claimed, _} =
+          from(e in Envelope,
+            where:
+              e.id == ^envelope.id and e.remind_at == ^envelope.remind_at and
+                is_nil(e.reminded_at)
+          )
+          |> Repo.update_all(set: changes)
 
-    %{reminded: length(due)}
+        if claimed == 1 do
+          Phoenix.PubSub.broadcast(
+            Veejr.PubSub,
+            topic(envelope.recipient_id),
+            {:veejr_note_reminder, envelope.public_id}
+          )
+
+          Veejr.Push.notify_user_async(envelope.recipient, %{
+            title: "Note reminder",
+            body: "A note you set a reminder on is due.",
+            url: "/messages?self_notes=true"
+          })
+        end
+
+        claimed == 1
+      end)
+
+    %{reminded: reminded}
   end
 
   @doc """

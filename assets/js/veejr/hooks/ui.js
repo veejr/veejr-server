@@ -10,6 +10,7 @@ import {
   generateEphemeralIdentity,
   cacheSecretKey,
   getSecretKey,
+  openLocal,
   sealFor,
 } from "../crypto.js"
 import {csrfToken, pushWithReply, sameBytes, urlB64ToBytes} from "./shared.js"
@@ -20,6 +21,19 @@ import {requestKeyUnlock} from "../key_unlock.js"
 export const ScheduleTime = {
   mounted() {
     this.bindInputs()
+    const userId = this.el.dataset.userId
+    try {
+      const secret = getSecretKey(userId)
+      const storageKey = `veejr:poll-call:${userId}`
+      const result = secret && openLocal(JSON.parse(sessionStorage.getItem(storageKey) || "null"), secret)
+      if (result && Date.now() - result.createdAt < 15 * 60_000) {
+        const summary = document.createElement("p")
+        summary.className = "mb-3 rounded-xl bg-primary/10 p-3 text-sm"
+        summary.textContent = `${result.title} · ${result.choices.length ? `Leading choice: ${result.choices.join(", ")}` : "No votes yet"}. Choose the date and time below.`
+        this.el.prepend(summary)
+      }
+      sessionStorage.removeItem(storageKey)
+    } catch { /* Poll context is optional and stays local to this browser. */ }
   },
 
   updated() {

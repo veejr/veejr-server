@@ -13,7 +13,7 @@ export function reminderLabel(remindAt, remindedAt) {
 }
 
 // This dialog contains only timing metadata. Note content stays on the card.
-export function openNoteReminderDialog({current, save, doc = document}) {
+export function openNoteReminderDialog({current, repeat = "once", save, complete, snooze, doc = document}) {
   const make = (tag, className, text) => {
     const node = doc.createElement(tag)
     node.className = className
@@ -33,6 +33,17 @@ export function openNoteReminderDialog({current, save, doc = document}) {
   input.type = "datetime-local"
   input.required = true
   input.value = current ? isoToLocalDateTime(current) : localDateTimeIn(60)
+  const repeatLabel = make("label", "block text-sm font-medium", "Repeat")
+  repeatLabel.htmlFor = "self-note-reminder-repeat"
+  const repeatInput = make("select", "w-full rounded-xl border border-base-300 bg-base-100 p-3 text-sm")
+  repeatInput.id = "self-note-reminder-repeat"
+  for (const [value, text] of [["once", "Once"], ["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"]]) {
+    const option = make("option", "", text)
+    option.value = value
+    repeatInput.appendChild(option)
+  }
+  repeatInput.value = repeat
+  const recurrenceHelp = make("p", "text-xs text-base-content/60", "Repeats keep the same UTC time. Your local time may shift when daylight saving changes. Monthly repeats use the last available day for shorter months.")
   const privacy = make("p", "text-xs text-base-content/60", "The reminder time is stored unencrypted so it can be delivered. Your note stays encrypted. Enable device notifications to receive reminders when this page is closed.")
   const error = make("p", "hidden text-sm text-error")
   error.setAttribute("role", "alert")
@@ -44,10 +55,12 @@ export function openNoteReminderDialog({current, save, doc = document}) {
     return node
   }
   const clear = current ? button("Clear reminder", "mr-auto text-error hover:bg-error/10") : null
+  const done = current && complete ? button("Mark done", "hover:bg-base-200") : null
+  const later = current && snooze ? button("Snooze 10 min", "hover:bg-base-200") : null
   const cancel = button("Cancel", "hover:bg-base-200")
   const submit = button("Save reminder", "bg-primary text-primary-content hover:opacity-90")
   submit.type = "submit"
-  form.append(label, input, privacy, error, actions)
+  form.append(label, input, repeatLabel, repeatInput, recurrenceHelp, privacy, error, actions)
   dialog.append(heading, form)
   const close = () => { dialog.close(); dialog.remove() }
   cancel.addEventListener("click", close)
@@ -59,7 +72,7 @@ export function openNoteReminderDialog({current, save, doc = document}) {
     actions.querySelectorAll("button").forEach((node) => { node.disabled = true })
     error.classList.add("hidden")
     try {
-      await save(value)
+      await save(value, repeatInput.value)
       close()
     } catch (failure) {
       error.textContent = failure.message || "The reminder could not be saved."
@@ -70,6 +83,15 @@ export function openNoteReminderDialog({current, save, doc = document}) {
     }
   }
   clear?.addEventListener("click", () => persist(null))
+  const runAction = async (action) => {
+    if (saving) return
+    saving = true
+    try { await action(); close() }
+    catch (failure) { error.textContent = failure.message; error.classList.remove("hidden") }
+    finally { saving = false }
+  }
+  done?.addEventListener("click", () => runAction(complete))
+  later?.addEventListener("click", () => runAction(snooze))
   form.addEventListener("submit", (event) => {
     event.preventDefault()
     const value = localDateTimeToIso(input.value)

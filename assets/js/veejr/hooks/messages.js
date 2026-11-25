@@ -54,6 +54,13 @@ export const Decrypt = {
     }
 
     this.el.veejrPayload = payload
+    if (payload.collaboration?.v === 1) {
+      const link = document.createElement("a")
+      link.href = "/workspace"
+      link.textContent = "Open shared lists and polls"
+      link.className = "mb-2 block text-sm text-primary underline"
+      this.el.append(link)
+    }
     this.recordDisplay()
 
     if (payload.reply_to && typeof payload.reply_to === "object") {

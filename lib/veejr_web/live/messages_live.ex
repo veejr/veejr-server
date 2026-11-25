@@ -467,9 +467,12 @@ defmodule VeejrWeb.MessagesLive do
   # has to be server-visible for anything to fire it; the note itself stays
   # encrypted and the reminder that fires names none of its content.
   def handle_event("set_reminder", %{"id" => public_id} = params, socket) do
-    user = socket.assigns.current_scope.user
-
-    case Messaging.set_reminder(user, public_id, params["remind_at"]) do
+    case Messaging.set_reminder(
+           socket.assigns.current_scope,
+           public_id,
+           params["remind_at"],
+           params["repeat"] || "once"
+         ) do
       {:ok, envelope} ->
         message = if envelope.remind_at, do: "Reminder set.", else: "Reminder cleared."
         remind_at = envelope.remind_at && DateTime.to_iso8601(envelope.remind_at)
@@ -482,6 +485,19 @@ defmodule VeejrWeb.MessagesLive do
 
       {:error, _reason} ->
         {:reply, %{error: "That note could not be found."}, socket}
+    end
+  end
+
+  def handle_event("reminder_action", %{"id" => id, "action" => action}, socket)
+      when action in ~w(done snooze) do
+    case Messaging.reminder_action(socket.assigns.current_scope, id, action) do
+      {:ok, envelope} ->
+        {:reply,
+         %{ok: true, remind_at: envelope.remind_at && DateTime.to_iso8601(envelope.remind_at)},
+         refresh(socket)}
+
+      _ ->
+        {:reply, %{error: "Could not update this reminder."}, socket}
     end
   end
 
@@ -548,6 +564,8 @@ defmodule VeejrWeb.MessagesLive do
 
   # A note reminder fired. The board reloads and lets the browser decrypt the
   # card; the server names no note content here.
+  def handle_info({:veejr_outbox_sent}, socket), do: {:noreply, refresh(socket)}
+
   def handle_info({:veejr_note_reminder, public_id}, socket) do
     {:noreply,
      socket

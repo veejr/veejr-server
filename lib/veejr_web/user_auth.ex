@@ -40,6 +40,13 @@ defmodule VeejrWeb.UserAuth do
     |> redirect(to: user_return_to || signed_in_path(conn))
   end
 
+  def log_in_user_json(conn, user, payload) do
+    conn
+    |> create_or_extend_session(%{user | authenticated_at: DateTime.utc_now(:second)}, %{})
+    |> put_resp_header("cache-control", "no-store")
+    |> Phoenix.Controller.json(payload)
+  end
+
   @doc false
   def local_return_to(path) when is_binary(path) do
     uri = URI.parse(path)
